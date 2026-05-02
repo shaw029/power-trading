@@ -3,6 +3,8 @@ import numpy as np
 import logging
 import os
 
+from src.utils.config import FEATURES_DIR
+
 logger = logging.getLogger(__name__)
 
 _AUCTION_WIND   = "wind_fc_da_d1_10h30"
@@ -58,7 +60,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     # -------------------------------------------------------------------------
     # Save
     # -------------------------------------------------------------------------
-    output_dir = "data/features/v1"
+    output_dir = FEATURES_DIR
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "features_dataset.parquet")
     df.to_parquet(output_path, index=False)

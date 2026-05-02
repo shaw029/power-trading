@@ -25,14 +25,13 @@ from src.utils.config import (
     MARKET_INDEX_CSV,
     DEMAND_ACTUAL_CSV,
     IMBALANCE_PRICE_CSV,
+    RAW_DATA_DIR,
 )
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Ensure raw data directory exists
-RAW_DATA_DIR = "data/raw"
 os.makedirs(RAW_DATA_DIR, exist_ok=True)
 
 
@@ -188,9 +187,9 @@ def fetch_elexon_dataset(dataset: str, start_date: str, end_date: str) -> pd.Dat
     return read_elexon_dataset(dataset, start_date, end_date)
 
 
-def _normalize_forecast(df: pd.DataFrame) -> pd.DataFrame:
+def _normalize_elexon_ndfd(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Normalize NDFD (demand forecast) or WINDFOR (wind forecast) data.
+    Normalize Elexon NDFD (demand forecast) data.
     
     Column mapping:
     - time: startTime (delivery time)
@@ -199,38 +198,20 @@ def _normalize_forecast(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    # --- CASE 1: WINDFOR (hourly forecast) ---
-    if "startTime" in df.columns:
-        if "publishTime" not in df.columns:
-            raise ValueError("publishTime missing for WINDFOR")
+    if "forecastDate" not in df.columns:
+        raise ValueError(f"forecastDate column missing for Elexon NDFD. Available: {df.columns}")
+    if "publishTime" not in df.columns:
+        raise ValueError(f"publishTime missing for Elexon NDFD. Available: {df.columns}")
+    if "demand" not in df.columns:
+        raise ValueError(f"demand column missing for Elexon NDFD. Available: {df.columns}")
 
-        if "generation" in df.columns:
-            df["value"] = df["generation"]
-        elif "quantity" in df.columns:
-            df["value"] = df["quantity"]
-        else:
-            raise ValueError("No value column for WINDFOR")
+    df["value"] = df["demand"]
 
-        df["time"] = pd.to_datetime(df["startTime"], utc=True)
-        df["forecast_time"] = pd.to_datetime(df["publishTime"], utc=True)
+    # convert forecastDate → datetime
+    df["time"] = pd.to_datetime(df["forecastDate"])
+    df["time"] = df["time"].dt.tz_localize("UTC")
 
-    # --- CASE 2: NDFD (daily forecast) ---
-    elif "forecastDate" in df.columns:
-        if "publishTime" not in df.columns:
-            raise ValueError("publishTime missing for NDFD")
-        if "demand" not in df.columns:
-            raise ValueError("demand column missing for NDFD")
-
-        df["value"] = df["demand"]
-
-        # convert forecastDate → datetime
-        df["time"] = pd.to_datetime(df["forecastDate"])
-        df["time"] = df["time"].dt.tz_localize("UTC")
-
-        df["forecast_time"] = pd.to_datetime(df["publishTime"], utc=True)
-
-    else:
-        raise ValueError(f"Unknown dataset structure: {df.columns}")
+    df["forecast_time"] = pd.to_datetime(df["publishTime"], utc=True)
 
     # --- CLEAN ---
     df = df[df["time"].notna()]
@@ -238,8 +219,6 @@ def _normalize_forecast(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop_duplicates(subset=["time", "forecast_time", "value"])
 
     return df[["time", "forecast_time", "value"]]
-
-
 
 
 def download_neso_ndfd_daily(start_date: str, end_date: str) -> None:
@@ -435,6 +414,7 @@ def _normalize_neso_ndfd(df: pd.DataFrame) -> pd.DataFrame:
         df["forecast_time"] = pd.to_datetime(df[forecast_col], utc=True, errors="coerce")
     else:
         # If no forecast_time, use delivery time
+        logger.warning("No forecast/publish time column found. Falling back to using delivery time.")
         df["forecast_time"] = df["time"]
     
     # Clean and deduplicate
@@ -498,11 +478,14 @@ def fetch_neso_ndfd() -> pd.DataFrame:
 
 def fetch_neso_ndfd_api(resource_id: str | None = None) -> pd.DataFrame:
     """
-    Fetch NESO day-ahead demand forecast via CKAN SQL API without caching.
-    Kept for backward compatibility. Prefer fetch_neso_ndfd() for daily chunking.
+    Fetch entire NESO day-ahead demand forecast via CKAN SQL API without daily chunking or caching.
+
+    NOTE: This fetches the full dataset in one go and may be slow or fail for large
+    date ranges. It is kept for debugging or specific use cases.
+    Prefer `fetch_neso_ndfd()` for robust, cached, daily-chunked downloads.
     
     Args:
-        resource_id: CKAN resource ID (defaults to NESO_NDFD_RESOURCE_ID)
+        resource_id: CKAN resource ID (defaults to NESO_NDFD_RESOURCE_ID from config)
     
     Returns:
         DataFrame with columns: time, forecast_time, value (UTC datetime)
@@ -691,7 +674,7 @@ def fetch_demand_forecast(source: str | None = None) -> pd.DataFrame:
     if source == "ELEXON":
         logger.info("Fetching demand forecast data (NDFD via ELEXON)")
         df = fetch_elexon_dataset("NDFD", START_DATE, END_DATE)
-        df = _normalize_forecast(df)
+        df = _normalize_elexon_ndfd(df)
         logger.info(f"Demand forecast: {len(df)} records")
         return df
     
@@ -1060,4 +1043,3 @@ def fetch_imbalance_price(source: str | None = None) -> pd.DataFrame:
 
     # logger.info(f"Loaded local day-ahead price data. Shape: {df.shape}")
     # return df
-

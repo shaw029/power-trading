@@ -18,6 +18,8 @@ Column naming conventions:
 import pandas as pd
 import logging
 
+from src.utils.config import PROCESSED_DATA_DIR
+
 logger = logging.getLogger(__name__)
 
 _30MIN = "30min"
@@ -390,5 +392,5 @@ def merge_all(
         "Merge complete. Shape: %s, range: %s to %s",
         merged.shape, merged["time"].min(), merged["time"].max(),
     )
-    merged.to_parquet("data/processed/processed_data.parquet", index=False)
+    merged.to_parquet(PROCESSED_DATA_DIR / "processed_data.parquet", index=False)
     return merged

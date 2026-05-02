@@ -4,6 +4,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 import logging
 import os
 
+from src.utils.config import FEATURES_DATASET
+
 logger = logging.getLogger(__name__)
 
 # Pre-auction features — all known by 11:00 AM on Day-1 before the EPEX auction.
@@ -29,7 +31,7 @@ _PENALTY_LAG     = 96
 
 
 def train_model(
-    features_path: str = "data/features/v1/features_dataset.parquet",
+    features_path: str | None = None,
     model_type: str = "xgboost",
 ) -> tuple:
     """Train a model to predict target_pnl_long = system_sell_price - day_ahead_price.
@@ -42,6 +44,9 @@ def train_model(
         penalty_buffer   — rolling imbalance cost used by generate_signal
     """
     logger.info("Starting model training — target: system_sell_price − day_ahead_price")
+
+    if features_path is None:
+        features_path = str(FEATURES_DATASET)
 
     if not os.path.exists(features_path):
         raise FileNotFoundError(f"Features file not found: {features_path}")
