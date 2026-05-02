@@ -1,0 +1,10 @@
+pandas
+requests
+numpy
+scikit-learn
+joblib
+xgboost
+pyarrow
+python-dateutil
+debugpy
+pytest
