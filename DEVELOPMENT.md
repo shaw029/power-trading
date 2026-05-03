@@ -83,6 +83,8 @@ DEFAULT_IMBALANCE_PRICE_SOURCE=ELEXON     # ELEXON | CSV
 Select the `quantenv` interpreter via **Python: Select Interpreter** (`⌘⇧P`) after cloning.
 
 Launch configs are pre-configured in `.vscode/launch.json` (`⌘⇧D` to open):
-- **Run Full Pipeline / Features Mode / Model Mode** — runs `main.py` with the appropriate `--mode` flag
+- **Run Full Pipeline** — downloads data, preprocesses, builds features, trains, generates signals, runs backtest
+- **Features Mode** (`--mode features`) — skips download; rebuilds features from already-processed data. Use after changing feature engineering.
+- **Model Mode** (`--mode model`) — skips download and feature build; retrains and backtests on saved features. Fastest for tuning signal thresholds or model hyperparameters.
 - **Static Analysis** — runs mypy + flake8 in parallel
 - **Run All Tests** — pytest with verbose output
