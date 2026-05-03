@@ -31,7 +31,7 @@ def generate_signal(
         SELL if predicted_spread  < −(clip(penalty_buffer, 0) + threshold)
     """
     predicted_spread = np.asarray(predicted_spread, dtype=float)
-    penalty          = np.nan_to_num(np.asarray(penalty_buffer, dtype=float), nan=0.0)
+    penalty = np.nan_to_num(np.asarray(penalty_buffer, dtype=float), nan=0.0)
 
     if len(predicted_spread) != len(penalty):
         raise ValueError(
@@ -42,18 +42,21 @@ def generate_signal(
     adjusted = np.clip(penalty, 0.0, None) + threshold
 
     signals = np.zeros(len(predicted_spread), dtype=int)
-    signals[predicted_spread >  adjusted] =  1
+    signals[predicted_spread > adjusted] = 1
     signals[predicted_spread < -adjusted] = -1
 
-    n_long    = int((signals ==  1).sum())
-    n_short   = int((signals == -1).sum())
-    n_neutral = int((signals ==  0).sum())
-    total     = len(signals)
+    n_long = int((signals == 1).sum())
+    n_short = int((signals == -1).sum())
+    n_neutral = int((signals == 0).sum())
+    total = len(signals)
     logger.info(
         "Raw signals — LONG: %d (%.1f%%)  SHORT: %d (%.1f%%)  NEUTRAL: %d (%.1f%%)",
-        n_long,    n_long    / total * 100,
-        n_short,   n_short   / total * 100,
-        n_neutral, n_neutral / total * 100,
+        n_long,
+        n_long / total * 100,
+        n_short,
+        n_short / total * 100,
+        n_neutral,
+        n_neutral / total * 100,
     )
 
     return signals
@@ -87,40 +90,38 @@ def build_daily_schedule(
         filtered_signals — signal array with non-top-N entries zeroed out
     """
     predicted_spread = np.asarray(predicted_spread, dtype=float)
-    signals          = np.asarray(signals, dtype=int)
-    ts               = pd.DatetimeIndex(pd.to_datetime(timestamps, utc=True))
+    signals = np.asarray(signals, dtype=int)
+    ts = pd.DatetimeIndex(pd.to_datetime(timestamps, utc=True))
 
-    df = pd.DataFrame({
-        "time":             ts,
-        "market_date":      ts.tz_convert("Europe/London").normalize(),
-        "predicted_spread": predicted_spread,
-        "signal":           signals,
-        "abs_spread":       np.abs(predicted_spread),
-    })
+    df = pd.DataFrame(
+        {
+            "time": ts,
+            "market_date": ts.tz_convert("Europe/London").normalize(),
+            "predicted_spread": predicted_spread,
+            "signal": signals,
+            "abs_spread": np.abs(predicted_spread),
+        }
+    )
 
     # Rank within each (day, direction) group — keep top_n per direction per day
     filtered = np.zeros(len(df), dtype=int)
     for direction in (1, -1):
-        mask   = df["signal"] == direction
+        mask = df["signal"] == direction
         active = df[mask].copy()
         if active.empty:
             continue
-        active["rank"] = (
-            active
-            .groupby("market_date")["abs_spread"]
-            .rank(ascending=False, method="first")
+        active["rank"] = active.groupby("market_date")["abs_spread"].rank(
+            ascending=False, method="first"
         )
         top_idx = active[active["rank"] <= top_n].index
         filtered[top_idx] = direction
 
     # Build human-readable schedule
-    kept     = df.copy()
+    kept = df.copy()
     kept["final_signal"] = filtered
-    schedule = (
-        kept[kept["final_signal"] != 0]
-        [["market_date", "time", "predicted_spread", "final_signal"]]
-        .copy()
-    )
+    schedule = kept[kept["final_signal"] != 0][
+        ["market_date", "time", "predicted_spread", "final_signal"]
+    ].copy()
     schedule["direction"] = schedule["final_signal"].map({1: "BUY", -1: "SELL"})
     schedule = schedule.drop(columns="final_signal").sort_values(
         ["market_date", "predicted_spread"],
@@ -128,10 +129,12 @@ def build_daily_schedule(
     )
 
     n_retained = int((filtered != 0).sum())
-    n_raw      = int((signals != 0).sum())
+    n_raw = int((signals != 0).sum())
     logger.info(
         "Daily schedule (top-%d per direction): %d → %d active signals retained",
-        top_n, n_raw, n_retained,
+        top_n,
+        n_raw,
+        n_retained,
     )
 
     return schedule, filtered
@@ -139,9 +142,9 @@ def build_daily_schedule(
 
 def generate_signal_from_dataframe(
     df: pd.DataFrame,
-    pred_col:    str   = "predicted_spread",
-    penalty_col: str   = "penalty_buffer",
-    threshold:   float = 5.0,
+    pred_col: str = "predicted_spread",
+    penalty_col: str = "penalty_buffer",
+    threshold: float = 5.0,
 ) -> pd.DataFrame:
     """Convenience wrapper: generate signals from a DataFrame and attach as a column."""
     if pred_col not in df.columns:

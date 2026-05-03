@@ -4,13 +4,11 @@ All functions under test are pure (same input → same output, no network/IO),
 except merge_all which writes a parquet file — patched via monkeypatch.
 """
 
-import datetime
 import numpy as np
 import pandas as pd
 import pytest
+from datetime import timezone
 from unittest.mock import patch
-
-UTC = datetime.timezone.utc
 
 from src.data.preprocess import (
     _utc_index,
@@ -26,10 +24,12 @@ from src.data.preprocess import (
     merge_all,
 )
 
+UTC = timezone.utc
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _ts(s: str) -> pd.Timestamp:
     return pd.Timestamp(s, tz="UTC")
@@ -42,6 +42,7 @@ def _range(start: str, periods: int, freq: str = "30min") -> pd.DatetimeIndex:
 # ---------------------------------------------------------------------------
 # _utc_index
 # ---------------------------------------------------------------------------
+
 
 class TestUtcIndex:
     def test_string_input_becomes_utc_datetimeindex(self):
@@ -67,15 +68,18 @@ class TestUtcIndex:
 # process_imbalance_price
 # ---------------------------------------------------------------------------
 
+
 class TestProcessImbalancePrice:
     def _make(self, n: int = 3):
         idx = _range("2018-01-01", n)
-        return pd.DataFrame({
-            "startTime":          idx.strftime("%Y-%m-%d %H:%M:%S+00:00"),
-            "systemBuyPrice":     [100.0, 110.0, 105.0],
-            "systemSellPrice":    [90.0,  95.0,  88.0],
-            "netImbalanceVolume": [10.0, -5.0,   3.0],
-        })
+        return pd.DataFrame(
+            {
+                "startTime": idx.strftime("%Y-%m-%d %H:%M:%S+00:00"),
+                "systemBuyPrice": [100.0, 110.0, 105.0],
+                "systemSellPrice": [90.0, 95.0, 88.0],
+                "netImbalanceVolume": [10.0, -5.0, 3.0],
+            }
+        )
 
     def test_output_columns(self):
         result = process_imbalance_price(self._make())
@@ -124,20 +128,21 @@ class TestProcessImbalancePrice:
 # process_generation_mix
 # ---------------------------------------------------------------------------
 
+
 class TestProcessGenerationMix:
     def _make(self):
-        times = _range("2018-01-01", 4)
-        return pd.DataFrame({
-            "startTime":  list(times.strftime("%Y-%m-%d %H:%M:%S+00:00")) * 1,
-            "fuelType":   ["CCGT", "WIND", "CCGT", "WIND"],
-            "generation": [200.0, 50.0, 210.0, 55.0],
-            "startTime":  [
-                "2018-01-01 00:00:00+00:00",
-                "2018-01-01 00:00:00+00:00",
-                "2018-01-01 00:30:00+00:00",
-                "2018-01-01 00:30:00+00:00",
-            ],
-        })
+        return pd.DataFrame(
+            {
+                "startTime": [
+                    "2018-01-01 00:00:00+00:00",
+                    "2018-01-01 00:00:00+00:00",
+                    "2018-01-01 00:30:00+00:00",
+                    "2018-01-01 00:30:00+00:00",
+                ],
+                "fuelType": ["CCGT", "WIND", "CCGT", "WIND"],
+                "generation": [200.0, 50.0, 210.0, 55.0],
+            }
+        )
 
     def test_columns_prefixed_with_gen(self):
         result = process_generation_mix(self._make())
@@ -155,11 +160,13 @@ class TestProcessGenerationMix:
 
     def test_values_aggregated_correctly(self):
         # Two CCGT rows at same timestamp should average
-        df = pd.DataFrame({
-            "startTime":  ["2018-01-01 00:00:00+00:00"] * 2,
-            "fuelType":   ["CCGT", "CCGT"],
-            "generation": [200.0, 300.0],
-        })
+        df = pd.DataFrame(
+            {
+                "startTime": ["2018-01-01 00:00:00+00:00"] * 2,
+                "fuelType": ["CCGT", "CCGT"],
+                "generation": [200.0, 300.0],
+            }
+        )
         result = process_generation_mix(df)
         assert result["gen_CCGT"].iloc[0] == pytest.approx(250.0)
 
@@ -175,13 +182,16 @@ class TestProcessGenerationMix:
 # process_market_index_price
 # ---------------------------------------------------------------------------
 
+
 class TestProcessMarketIndexPrice:
     def _make(self):
-        return pd.DataFrame({
-            "startTime":    ["2018-01-01 00:00:00+00:00", "2018-01-01 00:00:00+00:00"],
-            "dataProvider": ["APXMIDP", "OTHER"],
-            "price":        [50.0, 99.0],
-        })
+        return pd.DataFrame(
+            {
+                "startTime": ["2018-01-01 00:00:00+00:00", "2018-01-01 00:00:00+00:00"],
+                "dataProvider": ["APXMIDP", "OTHER"],
+                "price": [50.0, 99.0],
+            }
+        )
 
     def test_filters_to_apxmidp_only(self):
         result = process_market_index_price(self._make())
@@ -197,20 +207,24 @@ class TestProcessMarketIndexPrice:
         assert result.index.tz == UTC
 
     def test_non_numeric_price_coerced(self):
-        df = pd.DataFrame({
-            "startTime":    ["2018-01-01 00:00:00+00:00"],
-            "dataProvider": ["APXMIDP"],
-            "price":        ["N/A"],
-        })
+        df = pd.DataFrame(
+            {
+                "startTime": ["2018-01-01 00:00:00+00:00"],
+                "dataProvider": ["APXMIDP"],
+                "price": ["N/A"],
+            }
+        )
         result = process_market_index_price(df)
         assert np.isnan(result["mid_price"].iloc[0])
 
     def test_no_apxmidp_rows_returns_empty(self):
-        df = pd.DataFrame({
-            "startTime":    ["2018-01-01 00:00:00+00:00"],
-            "dataProvider": ["OTHER"],
-            "price":        [10.0],
-        })
+        df = pd.DataFrame(
+            {
+                "startTime": ["2018-01-01 00:00:00+00:00"],
+                "dataProvider": ["OTHER"],
+                "price": [10.0],
+            }
+        )
         result = process_market_index_price(df)
         assert result.empty
 
@@ -219,12 +233,15 @@ class TestProcessMarketIndexPrice:
 # process_demand_actual
 # ---------------------------------------------------------------------------
 
+
 class TestProcessDemandActual:
     def _make(self):
-        return pd.DataFrame({
-            "startTime": ["2018-01-01 00:00:00+00:00", "2018-01-01 00:30:00+00:00"],
-            "demand":    [25000.0, 25500.0],
-        })
+        return pd.DataFrame(
+            {
+                "startTime": ["2018-01-01 00:00:00+00:00", "2018-01-01 00:30:00+00:00"],
+                "demand": [25000.0, 25500.0],
+            }
+        )
 
     def test_output_column(self):
         result = process_demand_actual(self._make())
@@ -252,6 +269,7 @@ class TestProcessDemandActual:
 # process_day_ahead_price
 # ---------------------------------------------------------------------------
 
+
 class TestProcessDayAheadPrice:
     def _make_hourly(self, n_hours: int = 4):
         times = pd.date_range("2018-01-01", periods=n_hours, freq="h", tz="UTC")
@@ -268,19 +286,23 @@ class TestProcessDayAheadPrice:
 
     def test_forward_fill_fills_30min_slot(self):
         # Two hourly points: 00:00 and 01:00 — the 00:30 slot is filled from 00:00
-        df = pd.DataFrame({
-            "time":  pd.date_range("2018-01-01", periods=2, freq="h", tz="UTC"),
-            "value": [75.0, 80.0],
-        })
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2018-01-01", periods=2, freq="h", tz="UTC"),
+                "value": [75.0, 80.0],
+            }
+        )
         result = process_day_ahead_price(df)
         assert result["day_ahead_price"].iloc[0] == pytest.approx(75.0)
         assert result["day_ahead_price"].iloc[1] == pytest.approx(75.0)  # ffill from 00:00
 
     def test_non_numeric_coerced(self):
-        df = pd.DataFrame({
-            "time":  [pd.Timestamp("2018-01-01", tz="UTC")],
-            "value": ["bad"],
-        })
+        df = pd.DataFrame(
+            {
+                "time": [pd.Timestamp("2018-01-01", tz="UTC")],
+                "value": ["bad"],
+            }
+        )
         result = process_day_ahead_price(df)
         assert np.isnan(result["day_ahead_price"].iloc[0])
 
@@ -294,6 +316,7 @@ class TestProcessDayAheadPrice:
 # _build_rolling_snapshots
 # ---------------------------------------------------------------------------
 
+
 class TestBuildRollingSnapshots:
     def _delivery(self, h: int) -> pd.Timestamp:
         return pd.Timestamp("2018-01-02 12:00", tz="UTC") + pd.Timedelta(hours=h)
@@ -305,11 +328,13 @@ class TestBuildRollingSnapshots:
         delivery = pd.Timestamp("2018-01-02 12:00", tz="UTC")
         rows = []
         for lh in lead_hours:
-            rows.append({
-                "_time": delivery,
-                "_pub":  delivery - pd.Timedelta(hours=lh),
-                "_gen":  value,
-            })
+            rows.append(
+                {
+                    "_time": delivery,
+                    "_pub": delivery - pd.Timedelta(hours=lh),
+                    "_gen": value,
+                }
+            )
         return pd.DataFrame(rows)
 
     def test_24h_lead_captured(self):
@@ -346,13 +371,18 @@ class TestBuildRollingSnapshots:
 # _build_static_snapshots
 # ---------------------------------------------------------------------------
 
+
 class TestBuildStaticSnapshots:
     def _make_df(self, delivery: str, publish: str, value: float = 100.0):
-        return pd.DataFrame([{
-            "_time": pd.Timestamp(delivery, tz="UTC"),
-            "_pub":  pd.Timestamp(publish,  tz="UTC"),
-            "_gen":  value,
-        }])
+        return pd.DataFrame(
+            [
+                {
+                    "_time": pd.Timestamp(delivery, tz="UTC"),
+                    "_pub": pd.Timestamp(publish, tz="UTC"),
+                    "_gen": value,
+                }
+            ]
+        )
 
     def test_d1_1030_winter_cutoff(self):
         # Delivery on 2018-01-10 (GMT = UTC); d-1 10:30 London = 10:30 UTC
@@ -396,11 +426,13 @@ class TestBuildStaticSnapshots:
         assert "wind_fc_da_d2_noon" in result.columns
 
     def test_empty_input_returns_empty(self):
-        df = pd.DataFrame({
-            "_time": pd.Series(dtype="datetime64[ns, UTC]"),
-            "_pub":  pd.Series(dtype="datetime64[ns, UTC]"),
-            "_gen":  pd.Series(dtype=float),
-        })
+        df = pd.DataFrame(
+            {
+                "_time": pd.Series(dtype="datetime64[ns, UTC]"),
+                "_pub": pd.Series(dtype="datetime64[ns, UTC]"),
+                "_gen": pd.Series(dtype=float),
+            }
+        )
         result = _build_static_snapshots(df, "_time", "_pub", "_gen", "wind")
         assert result.empty
 
@@ -409,15 +441,18 @@ class TestBuildStaticSnapshots:
 # process_wind_forecast (end-to-end)
 # ---------------------------------------------------------------------------
 
+
 class TestProcessWindForecast:
     def _make(self):
         delivery = pd.date_range("2018-01-10", periods=4, freq="30min", tz="UTC")
-        publish  = [d - pd.Timedelta(hours=25) for d in delivery]
-        return pd.DataFrame({
-            "startTime":   [str(d) for d in delivery],
-            "publishTime": [str(p) for p in publish],
-            "generation":  [100.0] * 4,
-        })
+        publish = [d - pd.Timedelta(hours=25) for d in delivery]
+        return pd.DataFrame(
+            {
+                "startTime": [str(d) for d in delivery],
+                "publishTime": [str(p) for p in publish],
+                "generation": [100.0] * 4,
+            }
+        )
 
     def test_returns_dataframe(self):
         result = process_wind_forecast(self._make())
@@ -446,15 +481,18 @@ class TestProcessWindForecast:
 # process_demand_forecast (end-to-end)
 # ---------------------------------------------------------------------------
 
+
 class TestProcessDemandForecast:
     def _make(self):
         delivery = pd.date_range("2018-01-10", periods=4, freq="30min", tz="UTC")
         forecast = [d - pd.Timedelta(hours=25) for d in delivery]
-        return pd.DataFrame({
-            "time":          [str(d) for d in delivery],
-            "forecast_time": [str(f) for f in forecast],
-            "value":         [25000.0] * 4,
-        })
+        return pd.DataFrame(
+            {
+                "time": [str(d) for d in delivery],
+                "forecast_time": [str(f) for f in forecast],
+                "value": [25000.0] * 4,
+            }
+        )
 
     def test_returns_dataframe(self):
         result = process_demand_forecast(self._make())
@@ -474,6 +512,7 @@ class TestProcessDemandForecast:
 # merge_all
 # ---------------------------------------------------------------------------
 
+
 class TestMergeAll:
     """merge_all is pure except for the final to_parquet call, which is patched."""
 
@@ -483,11 +522,14 @@ class TestMergeAll:
 
     def _imbalance(self):
         idx = _range("2018-01-01", 4)
-        return pd.DataFrame({
-            "system_buy_price":  [100.0] * 4,
-            "system_sell_price": [90.0]  * 4,
-            "niv":               [5.0]   * 4,
-        }, index=idx)
+        return pd.DataFrame(
+            {
+                "system_buy_price": [100.0] * 4,
+                "system_sell_price": [90.0] * 4,
+                "niv": [5.0] * 4,
+            },
+            index=idx,
+        )
 
     def _da_price(self):
         idx = _range("2018-01-01", 4)
@@ -503,8 +545,11 @@ class TestMergeAll:
     def test_optional_none_skipped(self):
         with patch("src.data.preprocess.pd.DataFrame.to_parquet"):
             result = merge_all(
-                self._gen_mix(), self._imbalance(), self._da_price(),
-                wind_forecast=None, demand_forecast=None,
+                self._gen_mix(),
+                self._imbalance(),
+                self._da_price(),
+                wind_forecast=None,
+                demand_forecast=None,
             )
         assert not result.empty
 
@@ -522,9 +567,7 @@ class TestMergeAll:
     def test_raises_when_all_empty(self):
         with patch("src.data.preprocess.pd.DataFrame.to_parquet"):
             with pytest.raises(ValueError, match="No data to merge"):
-                merge_all(
-                    pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-                )
+                merge_all(pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
 
     def test_duplicate_timestamps_removed(self):
         idx = _range("2018-01-01", 4)

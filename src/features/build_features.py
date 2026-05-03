@@ -1,15 +1,14 @@
 import pandas as pd
 import numpy as np
 import logging
-import os
 
 from src.utils.config import FEATURES_DIR
 
 logger = logging.getLogger(__name__)
 
-_AUCTION_WIND   = "wind_fc_da_d1_10h30"
+_AUCTION_WIND = "wind_fc_da_d1_10h30"
 _AUCTION_DEMAND = "demand_fc_da_d1_10h30"
-_MORNING_WIND   = "wind_fc_da_d1_07h"
+_MORNING_WIND = "wind_fc_da_d1_07h"
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -50,19 +49,19 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     # -------------------------------------------------------------------------
     local_time = df["time"].dt.tz_convert("Europe/London")
     hour = local_time.dt.hour + local_time.dt.minute / 60
-    dow  = local_time.dt.dayofweek
+    dow = local_time.dt.dayofweek
 
     df["hour_sin"] = np.sin(2 * np.pi * hour / 24)
     df["hour_cos"] = np.cos(2 * np.pi * hour / 24)
-    df["dow_sin"]  = np.sin(2 * np.pi * dow  / 7)
-    df["dow_cos"]  = np.cos(2 * np.pi * dow  / 7)
+    df["dow_sin"] = np.sin(2 * np.pi * dow / 7)
+    df["dow_cos"] = np.cos(2 * np.pi * dow / 7)
 
     # -------------------------------------------------------------------------
     # Save
     # -------------------------------------------------------------------------
     output_dir = FEATURES_DIR
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "features_dataset.parquet")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "features_dataset.parquet"
     df.to_parquet(output_path, index=False)
 
     logger.info("Features saved to %s, shape: %s", output_path, df.shape)

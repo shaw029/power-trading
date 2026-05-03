@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "mypy: type check",
+      "type": "shell",
+      "command": "mypy src/ --config-file pyproject.toml",
+      "problemMatcher": "$mypy",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "flake8: lint",
+      "type": "shell",
+      "command": "flake8 src/ tests/",
+      "problemMatcher": "$flake8",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "static analysis: all",
+      "dependsOn": ["mypy: type check", "flake8: lint"],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    }
+  ]
+}

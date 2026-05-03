@@ -35,15 +35,18 @@ def _utc_index(series: pd.Series) -> pd.DatetimeIndex:
 # 30-min native datasets (settlement-period aligned, use startTime directly)
 # ---------------------------------------------------------------------------
 
+
 def process_imbalance_price(df: pd.DataFrame) -> pd.DataFrame:
     """B1770 → system_buy_price, system_sell_price, niv (30-min native)."""
     df = df.copy()
     df.index = _utc_index(df["startTime"])
-    df = df.rename(columns={
-        "systemBuyPrice":     "system_buy_price",
-        "systemSellPrice":    "system_sell_price",
-        "netImbalanceVolume": "niv",
-    })
+    df = df.rename(
+        columns={
+            "systemBuyPrice": "system_buy_price",
+            "systemSellPrice": "system_sell_price",
+            "netImbalanceVolume": "niv",
+        }
+    )
     cols = [c for c in ["system_buy_price", "system_sell_price", "niv"] if c in df.columns]
     for c in cols:
         df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -60,14 +63,14 @@ def process_generation_mix(df: pd.DataFrame) -> pd.DataFrame:
     df = df[df["_time"].notna()]
     df["generation"] = pd.to_numeric(df["generation"], errors="coerce")
 
-    pivoted = df.pivot_table(
-        index="_time", columns="fuelType", values="generation", aggfunc="mean"
-    )
+    pivoted = df.pivot_table(index="_time", columns="fuelType", values="generation", aggfunc="mean")
     pivoted.index.name = "time"
     pivoted.columns = [f"gen_{c}" for c in pivoted.columns]
     pivoted = pivoted.sort_index()
     pivoted = pivoted[~pivoted.index.duplicated(keep="first")]
-    logger.info("Generation mix processed. Shape: %s, fuels: %s", pivoted.shape, list(pivoted.columns))
+    logger.info(
+        "Generation mix processed. Shape: %s, fuels: %s", pivoted.shape, list(pivoted.columns)
+    )
     return pivoted
 
 
@@ -101,16 +104,16 @@ def process_demand_actual(df: pd.DataFrame) -> pd.DataFrame:
 _ROLLING_SNAPSHOTS: dict[str, pd.Timedelta] = {
     "fc_rel_24h": pd.Timedelta("24h"),
     "fc_rel_12h": pd.Timedelta("12h"),
-    "fc_rel_6h":  pd.Timedelta("6h"),
-    "fc_rel_3h":  pd.Timedelta("3h"),
-    "fc_rel_1h":  pd.Timedelta("1h"),
+    "fc_rel_6h": pd.Timedelta("6h"),
+    "fc_rel_3h": pd.Timedelta("3h"),
+    "fc_rel_1h": pd.Timedelta("1h"),
 }
 
 # Days before delivery-market-date, clock time in Europe/London
 _STATIC_SNAPSHOTS: dict[str, tuple[int, pd.Timedelta]] = {
-    "fc_da_d2_noon":  (2, pd.Timedelta(hours=12)),
-    "fc_da_d1_00h":   (1, pd.Timedelta(hours=0)),
-    "fc_da_d1_07h":   (1, pd.Timedelta(hours=7)),
+    "fc_da_d2_noon": (2, pd.Timedelta(hours=12)),
+    "fc_da_d1_00h": (1, pd.Timedelta(hours=0)),
+    "fc_da_d1_07h": (1, pd.Timedelta(hours=7)),
     "fc_da_d1_10h30": (1, pd.Timedelta(hours=10, minutes=30)),
 }
 
@@ -129,8 +132,7 @@ def _build_rolling_snapshots(
         if eligible.empty:
             continue
         snap = (
-            eligible
-            .sort_values([delivery_col, publish_col])
+            eligible.sort_values([delivery_col, publish_col])
             .groupby(delivery_col, as_index=False)
             .last()[[delivery_col, value_col]]
             .rename(columns={delivery_col: "time", value_col: f"{prefix}_{suffix}"})
@@ -162,10 +164,7 @@ def _build_static_snapshots(
     """
     df = df.copy()
     market_midnight_utc = (
-        df[delivery_col]
-        .dt.tz_convert("Europe/London")
-        .dt.normalize()
-        .dt.tz_convert("UTC")
+        df[delivery_col].dt.tz_convert("Europe/London").dt.normalize().dt.tz_convert("UTC")
     )
 
     frames: list[pd.DataFrame] = []
@@ -175,8 +174,7 @@ def _build_static_snapshots(
         if eligible.empty:
             continue
         snap = (
-            eligible
-            .sort_values([delivery_col, publish_col])
+            eligible.sort_values([delivery_col, publish_col])
             .groupby(delivery_col, as_index=False)
             .last()[[delivery_col, value_col]]
             .rename(columns={delivery_col: "time", value_col: f"{prefix}_{suffix}"})
@@ -200,13 +198,13 @@ def process_wind_forecast(df: pd.DataFrame) -> pd.DataFrame:
     Static:  latest forecast at d-2 noon, d-1 00h/07h/10h30 (Europe/London).
     """
     df = df.copy()
-    df["_time"] = pd.to_datetime(df["startTime"],  utc=True)
-    df["_pub"]  = pd.to_datetime(df["publishTime"], utc=True)
+    df["_time"] = pd.to_datetime(df["startTime"], utc=True)
+    df["_pub"] = pd.to_datetime(df["publishTime"], utc=True)
     df = df[df["_time"].notna() & df["_pub"].notna()]
-    df["_gen"]  = pd.to_numeric(df["generation"], errors="coerce")
+    df["_gen"] = pd.to_numeric(df["generation"], errors="coerce")
 
     rolling = _build_rolling_snapshots(df, "_time", "_pub", "_gen", "wind")
-    static  = _build_static_snapshots(df,  "_time", "_pub", "_gen", "wind")
+    static = _build_static_snapshots(df, "_time", "_pub", "_gen", "wind")
 
     if rolling.empty and static.empty:
         logger.warning("Wind forecast: no snapshot data produced")
@@ -251,13 +249,13 @@ def process_demand_forecast(df: pd.DataFrame) -> pd.DataFrame:
     Static:  latest forecast at d-2 noon, d-1 00h/07h/10h30 (Europe/London).
     """
     df = df.copy()
-    df["time"]          = pd.to_datetime(df["time"],          utc=True)
+    df["time"] = pd.to_datetime(df["time"], utc=True)
     df["forecast_time"] = pd.to_datetime(df["forecast_time"], utc=True)
     df = df[df["time"].notna() & df["forecast_time"].notna()]
     df["_value"] = pd.to_numeric(df["value"], errors="coerce")
 
     rolling = _build_rolling_snapshots(df, "time", "forecast_time", "_value", "demand")
-    static  = _build_static_snapshots(df,  "time", "forecast_time", "_value", "demand")
+    static = _build_static_snapshots(df, "time", "forecast_time", "_value", "demand")
 
     if rolling.empty and static.empty:
         logger.warning("Demand forecast: no snapshot data produced")
@@ -280,6 +278,7 @@ def process_demand_forecast(df: pd.DataFrame) -> pd.DataFrame:
 # Merge
 # ---------------------------------------------------------------------------
 
+
 def merge_all(
     generation_mix: pd.DataFrame,
     imbalance_price: pd.DataFrame,
@@ -297,13 +296,13 @@ def merge_all(
     logger.info("Merging all datasets")
 
     named = {
-        "generation_mix":      generation_mix,
-        "imbalance_price":     imbalance_price,
-        "day_ahead_price":     day_ahead_price,
-        "market_index_price":  market_index_price,
-        "demand_actual":       demand_actual,
-        "wind_forecast":       wind_forecast,
-        "demand_forecast":     demand_forecast,
+        "generation_mix": generation_mix,
+        "imbalance_price": imbalance_price,
+        "day_ahead_price": day_ahead_price,
+        "market_index_price": market_index_price,
+        "demand_actual": demand_actual,
+        "wind_forecast": wind_forecast,
+        "demand_forecast": demand_forecast,
     }
 
     merged = None
@@ -365,13 +364,12 @@ def merge_all(
         n_missing = int((~days_with_any).sum())
         total_days = int(days_with_any.size)
         if n_missing:
-            logger.warning(
-                "_da_ snapshots absent for %d of %d market days", n_missing, total_days
-            )
+            logger.warning("_da_ snapshots absent for %d of %d market days", n_missing, total_days)
         else:
             logger.info(
                 "_da_ snapshot columns verified: all %d market days have coverage (%s)",
-                total_days, da_cols,
+                total_days,
+                da_cols,
             )
 
     # 5. Add total_gen_actual (MW) — sum of all gen_ fuel columns.
@@ -381,7 +379,8 @@ def merge_all(
         merged["total_gen_actual"] = merged[gen_cols].sum(axis=1, min_count=1)
         logger.info(
             "total_gen_actual (MW) computed from %d fuel columns: %s",
-            len(gen_cols), gen_cols,
+            len(gen_cols),
+            gen_cols,
         )
 
     # ---------------------------------------------------------------------------
@@ -390,7 +389,9 @@ def merge_all(
     merged = merged.reset_index()
     logger.info(
         "Merge complete. Shape: %s, range: %s to %s",
-        merged.shape, merged["time"].min(), merged["time"].max(),
+        merged.shape,
+        merged["time"].min(),
+        merged["time"].max(),
     )
     merged.to_parquet(PROCESSED_DATA_DIR / "processed_data.parquet", index=False)
     return merged

@@ -4,28 +4,29 @@ Both _normalize_forecast and _normalize_neso_ndfd are pure functions —
 no network or filesystem access required.
 """
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from src.data.download import _normalize_elexon_ndfd, _normalize_neso_ndfd
 
-
 # ---------------------------------------------------------------------------
 # _normalize_elexon_ndfd
 # ---------------------------------------------------------------------------
+
 
 class TestNormalizeElexonNdfd:
     """NDFD path: DataFrame has forecastDate + publishTime + demand."""
 
     def _make(self, n: int = 3):
-        dates   = pd.date_range("2018-01-10", periods=n, freq="D")
+        dates = pd.date_range("2018-01-10", periods=n, freq="D")
         publish = dates - pd.Timedelta(hours=16)
-        return pd.DataFrame({
-            "forecastDate": [str(d.date()) for d in dates],
-            "publishTime":  [str(p) for p in publish],
-            "demand":       [25000.0 + i * 100 for i in range(n)],
-        })
+        return pd.DataFrame(
+            {
+                "forecastDate": [str(d.date()) for d in dates],
+                "publishTime": [str(p) for p in publish],
+                "demand": [25000.0 + i * 100 for i in range(n)],
+            }
+        )
 
     def test_output_columns(self):
         result = _normalize_elexon_ndfd(self._make())
@@ -56,23 +57,28 @@ class TestNormalizeElexonNdfd:
 # _normalize_neso_ndfd
 # ---------------------------------------------------------------------------
 
+
 class TestNormalizeNesoNdfd:
     def _make(self, upper: bool = True, n: int = 3):
         """upper=True mimics the real NESO API column names (ALLCAPS)."""
         delivery = pd.date_range("2018-01-10", periods=n, freq="30min", tz="UTC")
-        publish  = delivery - pd.Timedelta(hours=24)
+        publish = delivery - pd.Timedelta(hours=24)
         if upper:
-            return pd.DataFrame({
-                "DELIVERYTIME":   [str(d) for d in delivery],
-                "PUBLISHTIME":    [str(p) for p in publish],
-                "FORECASTDEMAND": [25000.0 + i for i in range(n)],
-            })
+            return pd.DataFrame(
+                {
+                    "DELIVERYTIME": [str(d) for d in delivery],
+                    "PUBLISHTIME": [str(p) for p in publish],
+                    "FORECASTDEMAND": [25000.0 + i for i in range(n)],
+                }
+            )
         else:
-            return pd.DataFrame({
-                "deliverytime":   [str(d) for d in delivery],
-                "publishtime":    [str(p) for p in publish],
-                "forecastdemand": [25000.0 + i for i in range(n)],
-            })
+            return pd.DataFrame(
+                {
+                    "deliverytime": [str(d) for d in delivery],
+                    "publishtime": [str(p) for p in publish],
+                    "forecastdemand": [25000.0 + i for i in range(n)],
+                }
+            )
 
     def test_required_output_columns_present(self):
         result = _normalize_neso_ndfd(self._make())
@@ -109,10 +115,12 @@ class TestNormalizeNesoNdfd:
 
     def test_fallback_when_no_publish_time(self):
         # No PUBLISHTIME → forecast_time should equal time (delivery)
-        df = pd.DataFrame({
-            "DELIVERYTIME":   ["2018-01-10 00:00:00+00:00"],
-            "FORECASTDEMAND": [25000.0],
-        })
+        df = pd.DataFrame(
+            {
+                "DELIVERYTIME": ["2018-01-10 00:00:00+00:00"],
+                "FORECASTDEMAND": [25000.0],
+            }
+        )
         result = _normalize_neso_ndfd(df)
         assert result["forecast_time"].iloc[0] == result["time"].iloc[0]
 
@@ -157,10 +165,12 @@ class TestNormalizeNesoNdfd:
 
     def test_targetdate_column_accepted_as_time(self):
         # When only TARGETDATE is present (no DELIVERYTIME)
-        df = pd.DataFrame({
-            "TARGETDATE":     ["2018-01-10", "2018-01-11"],
-            "PUBLISHTIME":    ["2018-01-09 10:00:00+00:00"] * 2,
-            "FORECASTDEMAND": [25000.0, 26000.0],
-        })
+        df = pd.DataFrame(
+            {
+                "TARGETDATE": ["2018-01-10", "2018-01-11"],
+                "PUBLISHTIME": ["2018-01-09 10:00:00+00:00"] * 2,
+                "FORECASTDEMAND": [25000.0, 26000.0],
+            }
+        )
         result = _normalize_neso_ndfd(df)
         assert not result.empty

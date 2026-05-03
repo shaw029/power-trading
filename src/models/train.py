@@ -11,12 +11,12 @@ logger = logging.getLogger(__name__)
 # Pre-auction features — all known by 11:00 AM on Day-1 before the EPEX auction.
 # No Day-1 settlement data (system_buy/sell, niv, demand_actual) is included here.
 _FEATURE_COLS = [
-    "wind_fc_da_d1_10h30",      # wind auction fundamental
-    "demand_fc_da_d1_10h30",    # demand auction fundamental
-    "auction_residual_load",    # demand_da - wind_da (computed in build_features)
-    "wind_auction_drift",       # wind_da_10h30 - wind_da_07h (momentum)
-    "day_ahead_price_lag48",    # DA price 24 h ago (last complete day)
-    "day_ahead_price_lag96",    # DA price 48 h ago
+    "wind_fc_da_d1_10h30",  # wind auction fundamental
+    "demand_fc_da_d1_10h30",  # demand auction fundamental
+    "auction_residual_load",  # demand_da - wind_da (computed in build_features)
+    "wind_auction_drift",  # wind_da_10h30 - wind_da_07h (momentum)
+    "day_ahead_price_lag48",  # DA price 24 h ago (last complete day)
+    "day_ahead_price_lag96",  # DA price 48 h ago
     "system_sell_price_lag48",  # imbalance sell price 24 h ago
     "system_sell_price_lag96",  # imbalance sell price 48 h ago
     "hour_sin",
@@ -26,8 +26,8 @@ _FEATURE_COLS = [
 ]
 
 # Penalty buffer: 7 days × 48 half-hours = 336 periods; 48-h lag = 96 periods
-_PENALTY_WINDOW  = 336
-_PENALTY_LAG     = 96
+_PENALTY_WINDOW = 336
+_PENALTY_LAG = 96
 
 
 def train_model(
@@ -70,10 +70,7 @@ def train_model(
     if "system_buy_price" in df.columns:
         imbalance_spread = df["system_buy_price"] - df["system_sell_price"]
         df["_penalty_buffer"] = (
-            imbalance_spread
-            .shift(_PENALTY_LAG)
-            .rolling(_PENALTY_WINDOW, min_periods=48)
-            .mean()
+            imbalance_spread.shift(_PENALTY_LAG).rolling(_PENALTY_WINDOW, min_periods=48).mean()
         )
     else:
         logger.warning("system_buy_price not found — penalty buffer will be zero")
@@ -90,11 +87,11 @@ def train_model(
 
     # Drop rows where target or any feature is NaN, then keep a full-column
     # view (df_valid) so we can extract raw prices for the backtest.
-    valid    = ~(df[features].isna().any(axis=1) | df["target_pnl_long"].isna())
+    valid = ~(df[features].isna().any(axis=1) | df["target_pnl_long"].isna())
     df_valid = df[valid].reset_index(drop=True)
-    X        = df_valid[features]
-    y        = df_valid["target_pnl_long"]
-    penalty  = df_valid["_penalty_buffer"]
+    X = df_valid[features]
+    y = df_valid["target_pnl_long"]
+    penalty = df_valid["_penalty_buffer"]
     logger.info("After NaN drop: %d rows remain (dropped %d)", len(df_valid), (~valid).sum())
 
     # ------------------------------------------------------------------
@@ -103,16 +100,21 @@ def train_model(
     split = int(len(df_valid) * 0.8)
     X_train, X_test = X.iloc[:split].reset_index(drop=True), X.iloc[split:].reset_index(drop=True)
     y_train, y_test = y.iloc[:split].reset_index(drop=True), y.iloc[split:].reset_index(drop=True)
-    penalty_test    = penalty.iloc[split:].reset_index(drop=True)
+    penalty_test = penalty.iloc[split:].reset_index(drop=True)
 
     # Raw price series and timestamps for the test window — needed by the backtest engine.
     _test = df_valid.iloc[split:].reset_index(drop=True)
     test_refs = {
-        "timestamps":        _test["time"].values            if "time"              in _test.columns else None,
-        "da_prices":         _test["day_ahead_price"].values if "day_ahead_price"   in _test.columns else None,
+        "timestamps": _test["time"].values if "time" in _test.columns else None,
+        "da_prices": (
+            _test["day_ahead_price"].values if "day_ahead_price" in _test.columns else None
+        ),
         "system_sell_price": _test["system_sell_price"].values,
-        "system_buy_price":  _test["system_buy_price"].values if "system_buy_price" in _test.columns
-                             else np.zeros(len(y_test)),
+        "system_buy_price": (
+            _test["system_buy_price"].values
+            if "system_buy_price" in _test.columns
+            else np.zeros(len(y_test))
+        ),
     }
 
     logger.info("Train: %d rows | Test: %d rows", len(X_train), len(X_test))
@@ -123,6 +125,7 @@ def train_model(
     if model_type == "xgboost":
         try:
             from xgboost import XGBRegressor
+
             model = XGBRegressor(
                 n_estimators=300,
                 max_depth=5,
@@ -139,6 +142,7 @@ def train_model(
 
     if model_type == "random_forest":
         from sklearn.ensemble import RandomForestRegressor
+
         model = RandomForestRegressor(
             n_estimators=200,
             max_depth=8,
@@ -153,7 +157,7 @@ def train_model(
     # Evaluation
     # ------------------------------------------------------------------
     predictions = model.predict(X_test)
-    mae  = mean_absolute_error(y_test, predictions)
+    mae = mean_absolute_error(y_test, predictions)
     rmse = np.sqrt(mean_squared_error(y_test, predictions))
     logger.info("Spread prediction — MAE: %.2f £/MWh | RMSE: %.2f £/MWh", mae, rmse)
 
