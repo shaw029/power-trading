@@ -1,8 +1,10 @@
-# Configuration Quick Reference
+# Data Sources
 
-## Data Sources
+Seven datasets are fetched from three APIs. Each source can be switched to a local CSV for offline runs or faster iteration.
 
-Configure via `.env` (preferred) or by editing defaults in `src/utils/config.py`.
+## Source Configuration
+
+Set in `.env` (or override per-call — see below):
 
 ```python
 DEFAULT_DEMAND_FORECAST_SOURCE = "NESO_API"   # "ELEXON" | "NESO_API" | "CSV"
@@ -14,7 +16,7 @@ DEFAULT_DEMAND_ACTUAL_SOURCE   = "ELEXON"     # "ELEXON" | "CSV"
 DEFAULT_IMBALANCE_PRICE_SOURCE = "ELEXON"     # "ELEXON" | "CSV"
 ```
 
-Per-call override: `fetch_wind_forecast("CSV")` — ignores the config default.
+Per-call override (ignores the `.env` default): `fetch_wind_forecast("CSV")`
 
 ## Using CSV Sources (offline / fast re-runs)
 
@@ -30,7 +32,7 @@ fetch_imbalance_price("ELEXON").to_csv("data/raw/imbalance_price.csv", index=Fal
 fetch_neso_ndfd().to_csv("data/raw/neso_ndfd.csv", index=False)
 ```
 
-**Step 2** — set `"CSV"` in `.env` for all sources.
+**Step 2** — set `"CSV"` in `.env` for the relevant sources.
 
 ### Required CSV columns
 
@@ -60,4 +62,4 @@ rm -rf data/raw/entsoe_day_ahead_price/  # day-ahead price (ENTSO-E)
 
 ## Date Range
 
-All API fetches use `START_DATE` / `END_DATE` from `src/utils/config.py`. CSV sources load the file as-is — filter afterwards if needed.
+All API fetches use `START_DATE` / `END_DATE` from `.env`. CSV sources load the file as-is — filter afterwards if needed.

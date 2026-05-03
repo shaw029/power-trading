@@ -21,5 +21,5 @@ python main.py --config configs/config.yaml --mode model             # retrain o
 ## Docs
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — strategy design, signal logic, backtest mechanics
-- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — data sources, CSV fallbacks, caching
+- [DATA_SOURCES.md](DATA_SOURCES.md) — data sources, CSV fallbacks, caching
 - [DEVELOPMENT.md](DEVELOPMENT.md) — environment setup, static analysis, VS Code
