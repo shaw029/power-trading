@@ -3,7 +3,7 @@ import numpy as np
 import logging
 from pathlib import Path
 
-from src.utils.config import FEATURES_DIR
+from src.utils.config import VERSIONED_FEATURES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def build_features(df: pd.DataFrame, save_path: Path | str | None = None) -> pd.
     # -------------------------------------------------------------------------
     # Save
     # -------------------------------------------------------------------------
-    output_path = Path(save_path) if save_path is not None else FEATURES_DIR / "features_dataset.parquet"
+    output_path = Path(save_path) if save_path is not None else VERSIONED_FEATURES_DIR / "features_dataset.parquet"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(output_path, index=False)
 

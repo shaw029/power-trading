@@ -104,12 +104,6 @@ METRICS_FILE      = VERSIONED_TRADING_DIR  / "metrics.json"
 
 
 def ensure_directories():
-    """Create all necessary directories if they don't exist."""
-    for directory in [
-        RAW_DATA_DIR,
-        PROCESSED_DATA_DIR,
-        VERSIONED_FEATURES_DIR,
-        VERSIONED_MODELS_DIR,
-        VERSIONED_TRADING_DIR,
-    ]:
+    """Create base data directories. Artifact dirs are created on-demand by save functions."""
+    for directory in [RAW_DATA_DIR, PROCESSED_DATA_DIR]:
         directory.mkdir(parents=True, exist_ok=True)
