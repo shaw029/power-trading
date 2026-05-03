@@ -1,5 +1,5 @@
-experiment_name: DA_Imbalance_XGB
-version: v2
+strategy: "da_imbalance"
+run_name: "xgb_wf_v1"
 
 data:
   start_date: "2018-01-01"

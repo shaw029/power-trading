@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import logging
+from pathlib import Path
 
 from src.utils.config import FEATURES_DIR
 
@@ -11,11 +12,16 @@ _AUCTION_DEMAND = "demand_fc_da_d1_10h30"
 _MORNING_WIND = "wind_fc_da_d1_07h"
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
+def build_features(df: pd.DataFrame, save_path: Path | str | None = None) -> pd.DataFrame:
     """Build feature engineering layer for electricity price forecasting.
 
     All features use only information available before the 11:00 AM EPEX auction.
     Target variable: day_ahead_price.
+
+    Args:
+        df:        Preprocessed merged DataFrame.
+        save_path: Where to write features.parquet.  Defaults to the global
+                   FEATURES_DIR / features_dataset.parquet from config.
     """
     logger.info("Building features from preprocessed data")
 
@@ -59,9 +65,8 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     # -------------------------------------------------------------------------
     # Save
     # -------------------------------------------------------------------------
-    output_dir = FEATURES_DIR
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "features_dataset.parquet"
+    output_path = Path(save_path) if save_path is not None else FEATURES_DIR / "features_dataset.parquet"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(output_path, index=False)
 
     logger.info("Features saved to %s, shape: %s", output_path, df.shape)

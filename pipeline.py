@@ -37,39 +37,41 @@ logger = logging.getLogger(__name__)
 
 
 def setup_experiment_paths(config: dict | None = None) -> dict:
-    """Return a dict of Path objects for all experiment outputs.
+    """Return a dict of Path objects for all experiment artifacts.
 
-    When config is provided, paths are rooted at:
-        outputs/{experiment_name}/{version}/
-        models/{experiment_name}/{version}/
+    When config is provided, paths follow a two-tier structure:
+        outputs/{strategy}/{run_name}/
+        models/{strategy}/{run_name}/
 
     When config is None, falls back to the static versioned paths from config.py.
     """
     if config is None:
         return {
-            "outputs_dir":    VERSIONED_OUTPUTS_DIR,
-            "models_dir":     VERSIONED_MODELS_DIR,
-            "model_file":     MODEL_FILE,
-            "metadata_file":  MODEL_METADATA_FILE,
+            "outputs_dir":      VERSIONED_OUTPUTS_DIR,
+            "models_dir":       VERSIONED_MODELS_DIR,
+            "features_file":    FEATURES_DATASET,
+            "model_file":       MODEL_FILE,
+            "metadata_file":    MODEL_METADATA_FILE,
             "predictions_file": PREDICTIONS_FILE,
-            "signals_file":   SIGNALS_FILE,
-            "pnl_file":       PNL_FILE,
-            "metrics_file":   METRICS_FILE,
+            "signals_file":     SIGNALS_FILE,
+            "pnl_file":         PNL_FILE,
+            "metrics_file":     METRICS_FILE,
         }
 
-    name = config["experiment_name"]
-    version = config["version"]
-    outputs_dir = PROJECT_ROOT / "outputs" / name / version
-    models_dir  = PROJECT_ROOT / "models"  / name / version
+    strategy = config["strategy"]
+    run_name = config["run_name"]
+    outputs_dir = PROJECT_ROOT / "outputs" / strategy / run_name
+    models_dir  = PROJECT_ROOT / "models"  / strategy / run_name
     return {
-        "outputs_dir":    outputs_dir,
-        "models_dir":     models_dir,
-        "model_file":     models_dir  / "model.joblib",
-        "metadata_file":  models_dir  / "metadata.json",
+        "outputs_dir":      outputs_dir,
+        "models_dir":       models_dir,
+        "features_file":    outputs_dir / "features.parquet",
+        "model_file":       models_dir  / "model.joblib",
+        "metadata_file":    models_dir  / "metadata.json",
         "predictions_file": outputs_dir / "predictions.csv",
-        "signals_file":   outputs_dir / "signals.csv",
-        "pnl_file":       outputs_dir / "pnl.csv",
-        "metrics_file":   outputs_dir / "metrics.json",
+        "signals_file":     outputs_dir / "signals.csv",
+        "pnl_file":         outputs_dir / "pnl.csv",
+        "metrics_file":     outputs_dir / "metrics.json",
     }
 
 
@@ -95,14 +97,8 @@ def load_processed_data(version: str = CURRENT_VERSION) -> pd.DataFrame:
     return df
 
 
-def build_features_pipeline(version: str = CURRENT_VERSION):
-    """
-    Build features dataset from raw data by calling the actual data pipeline functions.
-
-    Args:
-        version: Version string for experiment tracking
-    """
-    logger.info(f"Building features pipeline for version {version}")
+def build_features_pipeline(features_save_path=None):
+    logger.info("Building features from raw data")
 
     try:
         # Step 1: Download raw data
@@ -139,7 +135,7 @@ def build_features_pipeline(version: str = CURRENT_VERSION):
 
         # Step 3: Build features
         logger.info("Step 3: Building features")
-        features_df = build_features(processed_df)
+        features_df = build_features(processed_df, save_path=features_save_path)
 
         logger.info(f"Features pipeline completed successfully. Final shape: {features_df.shape}")
 
@@ -264,15 +260,14 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
         # Step 1: Data preparation (varies by execution mode)
         if execution_mode == "full":
             logger.info("Full mode: Building features from raw data")
-            build_features_pipeline()
+            build_features_pipeline(features_save_path=paths["features_file"])
 
         elif execution_mode == "features":
             logger.info("Features mode: Using existing processed data")
             processed_data = load_processed_data()
             if processed_data is None:
                 raise FileNotFoundError("Processed data not found. Run in 'full' mode first.")
-            # Build features from processed data
-            build_features(processed_data)
+            build_features(processed_data, save_path=paths["features_file"])
 
         elif execution_mode == "model":
             logger.info("Model mode: Using existing features")
@@ -284,7 +279,7 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
         # Step 2: Train model (always executed)
         logger.info("Step 2: Training model")
         model, predictions_df, X_test = train_model(
-            features_path=str(FEATURES_DATASET),
+            features_path=str(paths["features_file"]),
             model_type=model_type,
             model_params=model_params,
             validation_type=val_type,
