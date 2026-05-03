@@ -82,8 +82,9 @@ python main.py --config configs/config.yaml
 The config controls model hyperparameters, walk-forward settings, signal threshold, and where all artifacts are written. Each config must declare a `strategy` and `run_name`; the pipeline writes everything to:
 
 ```
-outputs/{strategy}/{run_name}/   # features.parquet, predictions.csv, signals.csv, pnl.csv, metrics.json
-models/{strategy}/{run_name}/    # model.joblib, metadata.json
+artifacts/{strategy}/{run_name}/features/   # features.parquet
+artifacts/{strategy}/{run_name}/model/      # model.joblib, metadata.json
+artifacts/{strategy}/{run_name}/trading/    # predictions.csv, signals.csv, pnl.csv, metrics.json
 ```
 
 ## Project Structure
@@ -103,15 +104,18 @@ power-trading/
 │   │   └── entsoe_day_ahead_price/ # Day-ahead price (ENTSO-E)
 │   └── processed/
 │       └── processed_data.parquet  # All sources merged on a 30-min UTC grid
-├── models/
-│   └── {strategy}/{run_name}/      # model.joblib, metadata.json
-├── outputs/
+├── artifacts/
 │   └── {strategy}/{run_name}/
-│       ├── features.parquet        # Engineered features for this run
-│       ├── predictions.csv         # actual_spread, predicted_spread
-│       ├── signals.csv             # auction_time, signal, direction
-│       ├── pnl.csv                 # Per-period net PnL (£)
-│       └── metrics.json            # Model + trading performance
+│       ├── features/
+│       │   └── features.parquet    # Engineered features for this run
+│       ├── model/
+│       │   ├── model.joblib        # Serialised XGBoost model
+│       │   └── metadata.json       # Training params, feature list, dates
+│       └── trading/
+│           ├── predictions.csv     # actual_spread, predicted_spread
+│           ├── signals.csv         # auction_time, signal, direction
+│           ├── pnl.csv             # Per-period net PnL (£)
+│           └── metrics.json        # Model + trading performance
 ├── src/
 │   ├── data/                       # download.py, preprocess.py
 │   ├── evaluation/                 # splitter.py (walk-forward)

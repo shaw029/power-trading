@@ -6,10 +6,9 @@ __pycache__/
 .pytest_cache/
 .coverage
 
-# Data, models, outputs — all generated/downloaded; recreated by the pipeline
+# Data and artifacts — all generated/downloaded; recreated by the pipeline
 /data/
-/models/
-/outputs/
+/artifacts/
 
 # Local config — keep .env and .env.example local, never commit
 .env*

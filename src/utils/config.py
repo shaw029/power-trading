@@ -69,8 +69,7 @@ SAVE_OUTPUTS_DEFAULT = True
 # ============================================================================
 
 DATA_DIR = PROJECT_ROOT / "data"
-MODELS_DIR = PROJECT_ROOT / "models"
-OUTPUTS_DIR = PROJECT_ROOT / "outputs"
+ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 
 # Raw data paths (not versioned)
 RAW_DATA_DIR = DATA_DIR / "raw"
@@ -85,20 +84,19 @@ MARKET_INDEX_CSV = RAW_DATA_DIR / "market_index_price.csv"
 DEMAND_ACTUAL_CSV = RAW_DATA_DIR / "demand_actual.csv"
 IMBALANCE_PRICE_CSV = RAW_DATA_DIR / "imbalance_price.csv"
 
-# Versioned paths
-VERSIONED_DATA_DIR = DATA_DIR / CURRENT_VERSION
-VERSIONED_MODELS_DIR = MODELS_DIR / CURRENT_VERSION
-VERSIONED_OUTPUTS_DIR = OUTPUTS_DIR / CURRENT_VERSION
-FEATURES_DIR = DATA_DIR / "features" / CURRENT_VERSION
+# Versioned fallback paths (used when no YAML config is provided)
+VERSIONED_FEATURES_DIR = ARTIFACTS_DIR / CURRENT_VERSION / "features"
+VERSIONED_MODELS_DIR   = ARTIFACTS_DIR / CURRENT_VERSION / "model"
+VERSIONED_TRADING_DIR  = ARTIFACTS_DIR / CURRENT_VERSION / "trading"
 
 # File paths
-FEATURES_DATASET = FEATURES_DIR / "features_dataset.parquet"
-MODEL_FILE = VERSIONED_MODELS_DIR / "model.joblib"
+FEATURES_DATASET  = VERSIONED_FEATURES_DIR / "features_dataset.parquet"
+MODEL_FILE        = VERSIONED_MODELS_DIR   / "model.joblib"
 MODEL_METADATA_FILE = VERSIONED_MODELS_DIR / "metadata.json"
-PREDICTIONS_FILE = VERSIONED_OUTPUTS_DIR / "predictions.csv"
-SIGNALS_FILE = VERSIONED_OUTPUTS_DIR / "signals.csv"
-PNL_FILE = VERSIONED_OUTPUTS_DIR / "pnl.csv"
-METRICS_FILE = VERSIONED_OUTPUTS_DIR / "metrics.json"
+PREDICTIONS_FILE  = VERSIONED_TRADING_DIR  / "predictions.csv"
+SIGNALS_FILE      = VERSIONED_TRADING_DIR  / "signals.csv"
+PNL_FILE          = VERSIONED_TRADING_DIR  / "pnl.csv"
+METRICS_FILE      = VERSIONED_TRADING_DIR  / "metrics.json"
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -110,8 +108,8 @@ def ensure_directories():
     for directory in [
         RAW_DATA_DIR,
         PROCESSED_DATA_DIR,
-        FEATURES_DIR,
+        VERSIONED_FEATURES_DIR,
         VERSIONED_MODELS_DIR,
-        VERSIONED_OUTPUTS_DIR,
+        VERSIONED_TRADING_DIR,
     ]:
         directory.mkdir(parents=True, exist_ok=True)

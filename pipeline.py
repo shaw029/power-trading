@@ -25,7 +25,7 @@ from src.utils.config import (
     ensure_directories, FEATURES_DATASET, MODEL_FILE, PREDICTIONS_FILE,
     SIGNALS_FILE, PNL_FILE, METRICS_FILE, MODEL_METADATA_FILE, CURRENT_VERSION,
     PROCESSED_DATA_DIR, RAW_DATA_DIR, DEFAULT_SIGNAL_THRESHOLD, SAVE_OUTPUTS_DEFAULT,
-    PROJECT_ROOT, VERSIONED_OUTPUTS_DIR, VERSIONED_MODELS_DIR,
+    PROJECT_ROOT, VERSIONED_FEATURES_DIR, VERSIONED_MODELS_DIR, VERSIONED_TRADING_DIR,
 )
 
 # Set up logging
@@ -39,16 +39,18 @@ logger = logging.getLogger(__name__)
 def setup_experiment_paths(config: dict | None = None) -> dict:
     """Return a dict of Path objects for all experiment artifacts.
 
-    When config is provided, paths follow a two-tier structure:
-        outputs/{strategy}/{run_name}/
-        models/{strategy}/{run_name}/
+    Paths follow a three-tier structure under artifacts/:
+        artifacts/{strategy}/{run_name}/features/  — engineered features
+        artifacts/{strategy}/{run_name}/model/     — model + metadata
+        artifacts/{strategy}/{run_name}/trading/   — predictions, signals, pnl, metrics
 
     When config is None, falls back to the static versioned paths from config.py.
     """
     if config is None:
         return {
-            "outputs_dir":      VERSIONED_OUTPUTS_DIR,
-            "models_dir":       VERSIONED_MODELS_DIR,
+            "features_dir":     VERSIONED_FEATURES_DIR,
+            "model_dir":        VERSIONED_MODELS_DIR,
+            "trading_dir":      VERSIONED_TRADING_DIR,
             "features_file":    FEATURES_DATASET,
             "model_file":       MODEL_FILE,
             "metadata_file":    MODEL_METADATA_FILE,
@@ -60,18 +62,21 @@ def setup_experiment_paths(config: dict | None = None) -> dict:
 
     strategy = config["strategy"]
     run_name = config["run_name"]
-    outputs_dir = PROJECT_ROOT / "outputs" / strategy / run_name
-    models_dir  = PROJECT_ROOT / "models"  / strategy / run_name
+    run_dir      = PROJECT_ROOT / "artifacts" / strategy / run_name
+    features_dir = run_dir / "features"
+    model_dir    = run_dir / "model"
+    trading_dir  = run_dir / "trading"
     return {
-        "outputs_dir":      outputs_dir,
-        "models_dir":       models_dir,
-        "features_file":    outputs_dir / "features.parquet",
-        "model_file":       models_dir  / "model.joblib",
-        "metadata_file":    models_dir  / "metadata.json",
-        "predictions_file": outputs_dir / "predictions.csv",
-        "signals_file":     outputs_dir / "signals.csv",
-        "pnl_file":         outputs_dir / "pnl.csv",
-        "metrics_file":     outputs_dir / "metrics.json",
+        "features_dir":     features_dir,
+        "model_dir":        model_dir,
+        "trading_dir":      trading_dir,
+        "features_file":    features_dir / "features.parquet",
+        "model_file":       model_dir    / "model.joblib",
+        "metadata_file":    model_dir    / "metadata.json",
+        "predictions_file": trading_dir  / "predictions.csv",
+        "signals_file":     trading_dir  / "signals.csv",
+        "pnl_file":         trading_dir  / "pnl.csv",
+        "metrics_file":     trading_dir  / "metrics.json",
     }
 
 
@@ -152,7 +157,7 @@ def save_model(model, metadata: dict, paths: dict):
         return
 
     metadata['saved_at'] = datetime.now().isoformat()
-    paths["models_dir"].mkdir(parents=True, exist_ok=True)
+    paths["model_dir"].mkdir(parents=True, exist_ok=True)
     joblib.dump(model, paths["model_file"])
     logger.info(f"Model saved to {paths['model_file']}")
     with open(paths["metadata_file"], 'w') as f:
@@ -202,7 +207,7 @@ def save_outputs(predictions_df: pd.DataFrame, signals: np.ndarray, pnl_series: 
     })
     signals_df['direction'] = signals_df['direction'].map({1: 'BUY', -1: 'SELL', 0: 'NEUTRAL'})
 
-    paths["outputs_dir"].mkdir(parents=True, exist_ok=True)
+    paths["trading_dir"].mkdir(parents=True, exist_ok=True)
     predictions_df[["time", "actual_spread", "predicted_spread"]].to_csv(paths["predictions_file"], index=False)
     logger.info(f"Predictions saved to {paths['predictions_file']}")
 
@@ -219,7 +224,7 @@ def save_metrics(model_metrics: dict, trading_metrics: dict, paths: dict):
         'model_performance': model_metrics,
         'trading_performance': trading_metrics,
     }
-    paths["outputs_dir"].mkdir(parents=True, exist_ok=True)
+    paths["trading_dir"].mkdir(parents=True, exist_ok=True)
     with open(paths["metrics_file"], 'w') as f:
         json.dump(metrics, f, indent=2, default=str)
     logger.info(f"Metrics saved to {paths['metrics_file']}")
