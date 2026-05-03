@@ -41,7 +41,7 @@ NESO_NDFD_RESOURCE_ID = "9847e7bb-986e-49be-8138-717b25933fbb"  # Day-ahead dema
 # --- Data sources (override in .env to switch between API and local CSV) ---
 DEFAULT_DEMAND_FORECAST_SOURCE = os.environ.get(
     "DEFAULT_DEMAND_FORECAST_SOURCE", "NESO_API"
-)  # "ELEXON" | "NESO_API" | "NESO_CSV"
+)  # "ELEXON" | "NESO_API" | "CSV"
 DEFAULT_WIND_FORECAST_SOURCE = os.environ.get(
     "DEFAULT_WIND_FORECAST_SOURCE", "ELEXON"
 )  # "ELEXON" | "CSV"

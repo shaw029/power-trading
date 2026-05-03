@@ -452,7 +452,7 @@ def fetch_demand_forecast(source: str | None = None) -> pd.DataFrame:
     Fetch demand forecast data from specified source.
 
     Args:
-        source: Data source - "ELEXON", "NESO_API", or "NESO_CSV"
+        source: Data source - "ELEXON", "NESO_API", or "CSV"
                If None, uses DEFAULT_DEMAND_FORECAST_SOURCE from config
 
     Returns:
@@ -474,14 +474,14 @@ def fetch_demand_forecast(source: str | None = None) -> pd.DataFrame:
         logger.info(f"Demand forecast: {len(df)} records")
         return df
 
-    elif source == "NESO_CSV":
+    elif source == "CSV":
         logger.info("Fetching demand forecast data (NDFD via NESO CSV)")
         df = fetch_neso_ndfd_from_csv()
         logger.info(f"Demand forecast: {len(df)} records")
         return df
 
     else:
-        raise ValueError(f"Unknown source: {source}. Must be 'ELEXON', 'NESO_API', or 'NESO_CSV'")
+        raise ValueError(f"Unknown source: {source}. Must be 'ELEXON', 'NESO_API', or 'CSV'")
 
 
 def fetch_wind_forecast_from_csv(csv_path=WIND_FORECAST_CSV) -> pd.DataFrame:
