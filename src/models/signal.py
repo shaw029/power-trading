@@ -4,6 +4,31 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 7-day rolling window (48 half-hours × 7) with a 48-h lag
+_PENALTY_WINDOW = 336
+_PENALTY_LAG = 96
+
+
+def compute_penalty_buffer(
+    system_buy_price: np.ndarray | pd.Series,
+    system_sell_price: np.ndarray | pd.Series,
+) -> np.ndarray:
+    """Rolling 7-day mean of (SBP − SSP), lagged 48 h.
+
+    Estimates the expected round-trip imbalance cost for use as a dynamic
+    signal threshold.  Pass the full price series (not just the test window)
+    so the rolling window is correctly warmed up from training history.
+    """
+    buy = pd.Series(np.asarray(system_buy_price, dtype=float))
+    sell = pd.Series(np.asarray(system_sell_price, dtype=float))
+    return (
+        (buy - sell)
+        .shift(_PENALTY_LAG)
+        .rolling(_PENALTY_WINDOW, min_periods=48)
+        .mean()
+        .values  # type: ignore[no-any-return]
+    )
+
 
 def generate_signal(
     predicted_spread: np.ndarray,

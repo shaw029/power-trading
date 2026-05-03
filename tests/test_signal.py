@@ -8,7 +8,64 @@ from src.models.signal import (
     generate_signal,
     build_daily_schedule,
     generate_signal_from_dataframe,
+    compute_penalty_buffer,
+    _PENALTY_LAG,
+    _PENALTY_WINDOW,
 )
+
+# ---------------------------------------------------------------------------
+# compute_penalty_buffer
+# ---------------------------------------------------------------------------
+
+_MIN_WARMUP = _PENALTY_LAG + 48  # first index with a valid (non-NaN) value
+
+
+class TestComputePenaltyBuffer:
+    def _constant_series(self, value: float, n: int = 500):
+        return np.full(n, value), np.zeros(n)  # buy, sell → spread = value
+
+    def test_output_length_matches_input(self):
+        buy, sell = self._constant_series(10.0)
+        result = compute_penalty_buffer(buy, sell)
+        assert len(result) == len(buy)
+
+    def test_first_values_are_nan_before_warmup(self):
+        buy, sell = self._constant_series(5.0)
+        result = compute_penalty_buffer(buy, sell)
+        assert np.all(np.isnan(result[: _MIN_WARMUP - 1]))
+
+    def test_first_valid_value_at_warmup_index(self):
+        buy, sell = self._constant_series(5.0)
+        result = compute_penalty_buffer(buy, sell)
+        assert not np.isnan(result[_MIN_WARMUP - 1])
+
+    def test_constant_spread_converges_to_that_spread(self):
+        # After the full window warms up, rolling mean of constant c == c
+        c = 8.0
+        n = _PENALTY_LAG + _PENALTY_WINDOW + 10
+        buy = np.full(n, c)
+        sell = np.zeros(n)
+        result = compute_penalty_buffer(buy, sell)
+        assert result[-1] == pytest.approx(c)
+
+    def test_zero_spread_gives_zero_penalty(self):
+        buy = sell = np.zeros(500)
+        result = compute_penalty_buffer(buy, sell)
+        valid = result[~np.isnan(result)]
+        assert np.all(valid == pytest.approx(0.0))
+
+    def test_accepts_pandas_series(self):
+        buy = pd.Series(np.full(500, 5.0))
+        sell = pd.Series(np.zeros(500))
+        result = compute_penalty_buffer(buy, sell)
+        assert isinstance(result, np.ndarray)
+        assert len(result) == 500
+
+    def test_returns_numpy_array(self):
+        buy, sell = self._constant_series(3.0)
+        result = compute_penalty_buffer(buy, sell)
+        assert isinstance(result, np.ndarray)
+
 
 # ---------------------------------------------------------------------------
 # generate_signal

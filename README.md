@@ -6,7 +6,7 @@ End-to-end quantitative trading system for the GB electricity market. Predicts t
 
 ---
 
-- Features are pinned to pre-auction vintages (D-1 10:30 cut-off); no same-day actuals leak in
+- Features are pinned to pre-auction vintages (D-1 10:30 cut-off);
 - Signals are gated by a rolling imbalance cost estimate, then capped at top-5 per direction per day
 - Position size scales with equity so drawdowns shrink exposure and gains compound
 

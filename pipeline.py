@@ -19,7 +19,7 @@ from src.data.preprocess import (
 )
 from src.features.build_features import build_features
 from src.models.train import train_model
-from src.models.signal import generate_signal, build_daily_schedule
+from src.models.signal import generate_signal, build_daily_schedule, compute_penalty_buffer
 from src.backtest.engine import run_backtest
 from src.utils.config import (
     ensure_directories, FEATURES_DATASET, MODEL_FILE, PREDICTIONS_FILE,
@@ -166,62 +166,30 @@ def load_model(version: str = CURRENT_VERSION):
     return model
 
 
-def save_outputs(predictions: np.ndarray, signals: np.ndarray, pnl_series: np.ndarray,
-                y_test: pd.Series, test_refs: dict | None = None):
-    """
-    Save predictions, signals, and PnL to disk.
+def save_outputs(predictions_df: pd.DataFrame, signals: np.ndarray, pnl_series: np.ndarray):
+    timestamps = predictions_df["time"].values
 
-    Args:
-        predictions: Model predictions array (predicted spread, £/MWh)
-        signals: Trading signals array
-        pnl_series: Per-period net PnL array (same length as signals)
-        y_test: Actual spread series
-        test_refs: Optional dict with timestamps for the time column
-    """
-    timestamps = (
-        test_refs["timestamps"]
-        if test_refs is not None and test_refs.get("timestamps") is not None
-        else np.arange(len(y_test))
-    )
-
-    pred_df = pd.DataFrame({
-        'time': timestamps,
-        'actual_spread': y_test.values,
-        'predicted_spread': predictions,
-    })
-
-    # Compute auction_time: 11:00 AM Day-1 Europe/London in UTC for each delivery period.
-    # This is the clock time at which the EPEX auction closes and the position is locked in.
-    if test_refs is not None and test_refs.get("timestamps") is not None:
-        _ts = pd.DatetimeIndex(pd.to_datetime(timestamps, utc=True))
-        _london = _ts.tz_convert("Europe/London")
-        _auction_london = _london.normalize() - pd.Timedelta(days=1) + pd.Timedelta(hours=11)
-        auction_times = _auction_london.tz_convert("UTC")
-    else:
-        auction_times = [None] * len(signals)
+    _ts = pd.DatetimeIndex(pd.to_datetime(timestamps, utc=True))
+    _london = _ts.tz_convert("Europe/London")
+    auction_times = (_london.normalize() - pd.Timedelta(days=1) + pd.Timedelta(hours=11)).tz_convert("UTC")
 
     signals_df = pd.DataFrame({
         'auction_time':     auction_times,
         'delivery_time':    timestamps,
-        'predicted_spread': predictions,
+        'predicted_spread': predictions_df["predicted_spread"].values,
         'signal':           signals,
         'direction':        pd.array(signals, dtype=int),
     })
     signals_df['direction'] = signals_df['direction'].map({1: 'BUY', -1: 'SELL', 0: 'NEUTRAL'})
 
-    pnl_df = pd.DataFrame({
-        'time': timestamps,
-        'pnl': pnl_series,
-    })
-
     PREDICTIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    pred_df.to_csv(PREDICTIONS_FILE, index=False)
+    predictions_df[["time", "actual_spread", "predicted_spread"]].to_csv(PREDICTIONS_FILE, index=False)
     logger.info(f"Predictions saved to {PREDICTIONS_FILE}")
 
     signals_df.to_csv(SIGNALS_FILE, index=False)
     logger.info(f"Signals saved to {SIGNALS_FILE}")
 
-    pnl_df.to_csv(PNL_FILE, index=False)
+    pd.DataFrame({'time': timestamps, 'pnl': pnl_series}).to_csv(PNL_FILE, index=False)
     logger.info(f"PnL saved to {PNL_FILE}")
 
 
@@ -292,77 +260,78 @@ def run_full_pipeline(execution_mode: str = "full") -> dict:
 
         # Step 2: Train model (always executed)
         logger.info("Step 2: Training model")
-        model, X_test, y_test, predictions, penalty_buffer, test_refs = train_model(
+        model, predictions_df, X_test = train_model(
             features_path=str(FEATURES_DATASET),
-            model_type="xgboost"
+            model_type="xgboost",
         )
 
         results['model'] = model
+        results['predictions_df'] = predictions_df
         results['X_test'] = X_test
-        results['y_test'] = y_test
-        results['predictions'] = predictions
-        results['penalty_buffer'] = penalty_buffer
-        results['test_refs'] = test_refs
 
-        # Step 3: Generate trading signals + apply Top-5 daily schedule
+        # Step 3: Compute penalty buffer, generate signals, apply Top-5 daily schedule
         logger.info("Step 3: Generating trading signals")
+        penalty_buffer = compute_penalty_buffer(
+            system_buy_price=predictions_df["system_buy_price"].values,
+            system_sell_price=predictions_df["system_sell_price"].values,
+        )
         raw_signals = generate_signal(
-            predicted_spread=predictions,
-            penalty_buffer=penalty_buffer.values,
+            predicted_spread=predictions_df["predicted_spread"].values,
+            penalty_buffer=penalty_buffer,
             threshold=DEFAULT_SIGNAL_THRESHOLD,
         )
         schedule_df, signals = build_daily_schedule(
-            predicted_spread=predictions,
+            predicted_spread=predictions_df["predicted_spread"].values,
             signals=raw_signals,
-            timestamps=test_refs["timestamps"],
+            timestamps=predictions_df["time"].values,
             top_n=5,
         )
 
         results['signals'] = signals
         results['schedule_df'] = schedule_df
 
-        # Step 4: Run backtest (always executed)
+        # Step 4: Run backtest
         logger.info("Step 4: Running backtest")
         pnl_series, trading_metrics = run_backtest(
             signals=signals,
-            da_prices=test_refs["da_prices"],
-            system_sell_price=test_refs["system_sell_price"],
-            system_buy_price=test_refs["system_buy_price"],
-            timestamps=test_refs["timestamps"],
+            da_prices=predictions_df["day_ahead_price"].values,
+            system_sell_price=predictions_df["system_sell_price"].values,
+            system_buy_price=predictions_df["system_buy_price"].values,
+            timestamps=predictions_df["time"].values,
         )
 
         results['pnl_series'] = pnl_series
         results['trading_metrics'] = trading_metrics
 
-        # Step 5: Calculate model metrics (MAPE excluded — invalid for zero-crossing spreads)
+        # Step 5: Calculate model metrics
         logger.info("Step 5: Calculating model metrics")
         from sklearn.metrics import mean_absolute_error, mean_squared_error
-        mae  = mean_absolute_error(y_test, predictions)
-        rmse = np.sqrt(mean_squared_error(y_test, predictions))
+        mae  = mean_absolute_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
+        rmse = np.sqrt(mean_squared_error(predictions_df["actual_spread"], predictions_df["predicted_spread"]))
 
-        ts = test_refs.get("timestamps")
+        ts = predictions_df["time"].values
         model_metrics = {
-            'mae':             mae,
-            'rmse':            rmse,
-            'test_period_start': str(pd.to_datetime(ts[0],  utc=True)) if ts is not None and len(ts) > 0 else None,
-            'test_period_end':   str(pd.to_datetime(ts[-1], utc=True)) if ts is not None and len(ts) > 0 else None,
-            'test_n_periods':    int(len(y_test)),
+            'mae':               mae,
+            'rmse':              rmse,
+            'test_period_start': str(pd.to_datetime(ts[0],  utc=True)),
+            'test_period_end':   str(pd.to_datetime(ts[-1], utc=True)),
+            'test_n_periods':    int(len(predictions_df)),
         }
         results['model_metrics'] = model_metrics
 
-        # Step 6: Save outputs (using config default)
+        # Step 6: Save outputs
         if SAVE_OUTPUTS_DEFAULT:
             logger.info("Step 6: Saving outputs")
             save_model(model, {
-                'model_type': 'xgboost',
+                'model_type':       'xgboost',
                 'signal_threshold': DEFAULT_SIGNAL_THRESHOLD,
-                'n_features': X_test.shape[1],
-                'n_samples': len(X_test),
-                'features': list(X_test.columns),
-                'execution_mode': execution_mode
+                'n_features':       X_test.shape[1],
+                'n_samples':        len(X_test),
+                'features':         list(X_test.columns),
+                'execution_mode':   execution_mode,
             })
 
-            save_outputs(predictions, signals, pnl_series, y_test, test_refs)
+            save_outputs(predictions_df, signals, pnl_series)
             save_metrics(model_metrics, trading_metrics)
 
         # Step 7: Print results

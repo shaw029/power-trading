@@ -25,23 +25,19 @@ _FEATURE_COLS = [
     "dow_cos",
 ]
 
-# Penalty buffer: 7 days × 48 half-hours = 336 periods; 48-h lag = 96 periods
-_PENALTY_WINDOW = 336
-_PENALTY_LAG = 96
-
-
 def train_model(
     features_path: str | None = None,
     model_type: str = "xgboost",
 ) -> tuple:
-    """Train a model to predict target_pnl_long = system_sell_price - day_ahead_price.
+    """Fit a spread-prediction model and return test-period results.
 
     Returns:
-        (model, X_test, y_test, predictions, penalty_buffer_test)
+        (model, predictions_df, X_test)
 
-        y_test           — actual spread (£/MWh) for the test set
-        predictions      — predicted spread (£/MWh)
-        penalty_buffer   — rolling imbalance cost used by generate_signal
+        predictions_df — DataFrame with columns:
+                         time, actual_spread, predicted_spread,
+                         day_ahead_price, system_sell_price, system_buy_price
+        X_test         — test feature matrix (for metadata / feature-importance)
     """
     logger.info("Starting model training — target: system_sell_price − day_ahead_price")
 
@@ -64,19 +60,6 @@ def train_model(
     df["target_pnl_long"] = df["system_sell_price"] - df["day_ahead_price"]
 
     # ------------------------------------------------------------------
-    # Penalty buffer (computed from full series before the train/test split
-    # to ensure the rolling window uses all available history)
-    # ------------------------------------------------------------------
-    if "system_buy_price" in df.columns:
-        imbalance_spread = df["system_buy_price"] - df["system_sell_price"]
-        df["_penalty_buffer"] = (
-            imbalance_spread.shift(_PENALTY_LAG).rolling(_PENALTY_WINDOW, min_periods=48).mean()
-        )
-    else:
-        logger.warning("system_buy_price not found — penalty buffer will be zero")
-        df["_penalty_buffer"] = 0.0
-
-    # ------------------------------------------------------------------
     # Feature selection
     # ------------------------------------------------------------------
     features = [c for c in _FEATURE_COLS if c in df.columns]
@@ -91,7 +74,6 @@ def train_model(
     df_valid = df[valid].reset_index(drop=True)
     X = df_valid[features]
     y = df_valid["target_pnl_long"]
-    penalty = df_valid["_penalty_buffer"]
     logger.info("After NaN drop: %d rows remain (dropped %d)", len(df_valid), (~valid).sum())
 
     # ------------------------------------------------------------------
@@ -100,22 +82,7 @@ def train_model(
     split = int(len(df_valid) * 0.8)
     X_train, X_test = X.iloc[:split].reset_index(drop=True), X.iloc[split:].reset_index(drop=True)
     y_train, y_test = y.iloc[:split].reset_index(drop=True), y.iloc[split:].reset_index(drop=True)
-    penalty_test = penalty.iloc[split:].reset_index(drop=True)
-
-    # Raw price series and timestamps for the test window — needed by the backtest engine.
     _test = df_valid.iloc[split:].reset_index(drop=True)
-    test_refs = {
-        "timestamps": _test["time"].values if "time" in _test.columns else None,
-        "da_prices": (
-            _test["day_ahead_price"].values if "day_ahead_price" in _test.columns else None
-        ),
-        "system_sell_price": _test["system_sell_price"].values,
-        "system_buy_price": (
-            _test["system_buy_price"].values
-            if "system_buy_price" in _test.columns
-            else np.zeros(len(y_test))
-        ),
-    }
 
     logger.info("Train: %d rows | Test: %d rows", len(X_train), len(X_test))
 
@@ -165,4 +132,13 @@ def train_model(
         importances = sorted(zip(features, model.feature_importances_), key=lambda x: -x[1])
         logger.info("Top-5 features: %s", importances[:5])
 
-    return model, X_test, y_test, predictions, penalty_test, test_refs
+    predictions_df = pd.DataFrame({
+        "time": _test["time"] if "time" in _test.columns else pd.RangeIndex(len(y_test)),
+        "actual_spread": y_test.values,
+        "predicted_spread": predictions,
+        "day_ahead_price": _test["day_ahead_price"] if "day_ahead_price" in _test.columns else np.nan,
+        "system_sell_price": _test["system_sell_price"],
+        "system_buy_price": _test["system_buy_price"] if "system_buy_price" in _test.columns else 0.0,
+    })
+
+    return model, predictions_df, X_test
