@@ -263,6 +263,10 @@ def run_full_pipeline(execution_mode: str = "full") -> dict:
         model, predictions_df, X_test = train_model(
             features_path=str(FEATURES_DATASET),
             model_type="xgboost",
+            validation_type="walk_forward",
+            wf_train_days=200,
+            wf_test_days=30,
+            wf_step_days=30,
         )
 
         results['model'] = model
