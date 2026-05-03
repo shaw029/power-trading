@@ -14,8 +14,8 @@ End-to-end quantitative trading system for the GB electricity market. Predicts t
 
 ```bash
 python main.py --config configs/config.yaml                          # full pipeline
-python main.py --config configs/config.yaml --mode features          # rebuild features only
-python main.py --config configs/config.yaml --mode model             # retrain on saved features
+python main.py --config configs/config.yaml --mode features          # features only
+python main.py --config configs/config.yaml --mode model             # train & backtest
 ```
 
 ## Docs

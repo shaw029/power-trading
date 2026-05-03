@@ -134,8 +134,8 @@ power-trading/
 Select the `quantenv` interpreter via **Python: Select Interpreter** (`⌘⇧P`) after cloning.
 
 Launch configs are pre-configured in `.vscode/launch.json` (`⌘⇧D` to open):
-- **Run with Config** — full pipeline using `configs/config.yaml`
-- **Run with Config (features only)** — download + preprocess + build features, then stop. Use after changing data sources or feature engineering.
-- **Run with Config (model only)** — retrain and backtest on already-built features. Fastest for tuning hyperparameters or signal thresholds.
+- **Full Pipeline** — download data, build features, train model, run backtest
+- **Features Only** — rebuild features from existing processed data, then stop. Use after changing data sources or feature engineering.
+- **Train & Backtest** — retrain model and run backtest on already-built features. Fastest for tuning hyperparameters or signal thresholds.
 - **Static Analysis** — runs mypy + flake8 in parallel
 - **Run All Tests** — pytest with verbose output

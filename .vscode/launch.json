@@ -30,7 +30,7 @@
       "presentation": { "hidden": true }
     },
     {
-      "name": "Run with Config",
+      "name": "Full Pipeline",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/main.py",
@@ -43,7 +43,7 @@
       "stopOnEntry": false
     },
     {
-      "name": "Run with Config (features only)",
+      "name": "Features Only",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/main.py",
@@ -56,7 +56,7 @@
       "stopOnEntry": false
     },
     {
-      "name": "Run with Config (model only)",
+      "name": "Train & Backtest",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/main.py",
