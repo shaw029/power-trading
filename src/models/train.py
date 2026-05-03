@@ -26,18 +26,24 @@ _FEATURE_COLS = [
 ]
 
 
-def _fit_model(X_train: pd.DataFrame, y_train: pd.Series, model_type: str = "xgboost"):
+def _fit_model(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    model_type: str = "xgboost",
+    model_params: dict | None = None,
+):
     """Build and fit a model. Returns the fitted estimator."""
+    p = model_params or {}
     if model_type == "xgboost":
         try:
             from xgboost import XGBRegressor
 
             model = XGBRegressor(
-                n_estimators=300,
-                max_depth=5,
-                learning_rate=0.05,
-                subsample=0.8,
-                colsample_bytree=0.8,
+                n_estimators=p.get("n_estimators", 300),
+                max_depth=p.get("max_depth", 5),
+                learning_rate=p.get("learning_rate", 0.05),
+                subsample=p.get("subsample", 0.8),
+                colsample_bytree=p.get("colsample_bytree", 0.8),
                 random_state=42,
                 n_jobs=-1,
                 verbosity=0,
@@ -82,6 +88,7 @@ def train_with_validation(
     target_col: str,
     validation_type: str = "static",
     model_type: str = "xgboost",
+    model_params: dict | None = None,
     wf_train_days: int = 200,
     wf_test_days: int = 30,
     wf_step_days: int = 30,
@@ -126,7 +133,7 @@ def train_with_validation(
             len(train_df), len(train_dates), len(test_df), len(test_dates),
         )
 
-        model = _fit_model(train_df[features], train_df[target_col], model_type)
+        model = _fit_model(train_df[features], train_df[target_col], model_type, model_params)
         predictions = model.predict(test_df[features])
         return (
             _make_predictions_df(test_df, test_df[target_col], predictions),
@@ -149,7 +156,7 @@ def train_with_validation(
             X_test = test_df[features]
             y_test = test_df[target_col]
 
-            model = _fit_model(X_train, y_train, model_type)
+            model = _fit_model(X_train, y_train, model_type, model_params)
             predictions = model.predict(X_test)
 
             fold_mae = mean_absolute_error(y_test, predictions)
@@ -185,6 +192,7 @@ def train_with_validation(
 def train_model(
     features_path: str | None = None,
     model_type: str = "xgboost",
+    model_params: dict | None = None,
     validation_type: str = "static",
     wf_train_days: int = 200,
     wf_test_days: int = 30,
@@ -236,6 +244,7 @@ def train_model(
         target_col="target_pnl_long",
         validation_type=validation_type,
         model_type=model_type,
+        model_params=model_params,
         wf_train_days=wf_train_days,
         wf_test_days=wf_test_days,
         wf_step_days=wf_step_days,

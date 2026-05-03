@@ -24,7 +24,8 @@ from src.backtest.engine import run_backtest
 from src.utils.config import (
     ensure_directories, FEATURES_DATASET, MODEL_FILE, PREDICTIONS_FILE,
     SIGNALS_FILE, PNL_FILE, METRICS_FILE, MODEL_METADATA_FILE, CURRENT_VERSION,
-    PROCESSED_DATA_DIR, RAW_DATA_DIR, DEFAULT_SIGNAL_THRESHOLD, SAVE_OUTPUTS_DEFAULT
+    PROCESSED_DATA_DIR, RAW_DATA_DIR, DEFAULT_SIGNAL_THRESHOLD, SAVE_OUTPUTS_DEFAULT,
+    PROJECT_ROOT, VERSIONED_OUTPUTS_DIR, VERSIONED_MODELS_DIR,
 )
 
 # Set up logging
@@ -33,6 +34,43 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def setup_experiment_paths(config: dict | None = None) -> dict:
+    """Return a dict of Path objects for all experiment outputs.
+
+    When config is provided, paths are rooted at:
+        outputs/{experiment_name}/{version}/
+        models/{experiment_name}/{version}/
+
+    When config is None, falls back to the static versioned paths from config.py.
+    """
+    if config is None:
+        return {
+            "outputs_dir":    VERSIONED_OUTPUTS_DIR,
+            "models_dir":     VERSIONED_MODELS_DIR,
+            "model_file":     MODEL_FILE,
+            "metadata_file":  MODEL_METADATA_FILE,
+            "predictions_file": PREDICTIONS_FILE,
+            "signals_file":   SIGNALS_FILE,
+            "pnl_file":       PNL_FILE,
+            "metrics_file":   METRICS_FILE,
+        }
+
+    name = config["experiment_name"]
+    version = config["version"]
+    outputs_dir = PROJECT_ROOT / "outputs" / name / version
+    models_dir  = PROJECT_ROOT / "models"  / name / version
+    return {
+        "outputs_dir":    outputs_dir,
+        "models_dir":     models_dir,
+        "model_file":     models_dir  / "model.joblib",
+        "metadata_file":  models_dir  / "metadata.json",
+        "predictions_file": outputs_dir / "predictions.csv",
+        "signals_file":   outputs_dir / "signals.csv",
+        "pnl_file":       outputs_dir / "pnl.csv",
+        "metrics_file":   outputs_dir / "metrics.json",
+    }
 
 
 def load_processed_data(version: str = CURRENT_VERSION) -> pd.DataFrame:
@@ -110,34 +148,20 @@ def build_features_pipeline(version: str = CURRENT_VERSION):
         raise
 
 
-def save_model(model, metadata: dict):
-    """
-    Save trained model and metadata.
-
-    Args:
-        model: Trained model object
-        metadata: Dictionary with model metadata
-    """
+def save_model(model, metadata: dict, paths: dict):
     try:
         import joblib
     except ImportError:
         logger.error("joblib not available for model saving")
         return
 
-    # Update metadata with timestamp
     metadata['saved_at'] = datetime.now().isoformat()
-
-    # Save model
-    model_path = MODEL_FILE
-    model_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, model_path)
-    logger.info(f"Model saved to {model_path}")
-
-    # Save metadata
-    metadata_path = MODEL_METADATA_FILE
-    with open(metadata_path, 'w') as f:
+    paths["models_dir"].mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, paths["model_file"])
+    logger.info(f"Model saved to {paths['model_file']}")
+    with open(paths["metadata_file"], 'w') as f:
         json.dump(metadata, f, indent=2, default=str)
-    logger.info(f"Model metadata saved to {metadata_path}")
+    logger.info(f"Model metadata saved to {paths['metadata_file']}")
 
 
 def load_model(version: str = CURRENT_VERSION):
@@ -166,7 +190,7 @@ def load_model(version: str = CURRENT_VERSION):
     return model
 
 
-def save_outputs(predictions_df: pd.DataFrame, signals: np.ndarray, pnl_series: np.ndarray):
+def save_outputs(predictions_df: pd.DataFrame, signals: np.ndarray, pnl_series: np.ndarray, paths: dict):
     timestamps = predictions_df["time"].values
 
     _ts = pd.DatetimeIndex(pd.to_datetime(timestamps, utc=True))
@@ -182,60 +206,59 @@ def save_outputs(predictions_df: pd.DataFrame, signals: np.ndarray, pnl_series: 
     })
     signals_df['direction'] = signals_df['direction'].map({1: 'BUY', -1: 'SELL', 0: 'NEUTRAL'})
 
-    PREDICTIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    predictions_df[["time", "actual_spread", "predicted_spread"]].to_csv(PREDICTIONS_FILE, index=False)
-    logger.info(f"Predictions saved to {PREDICTIONS_FILE}")
+    paths["outputs_dir"].mkdir(parents=True, exist_ok=True)
+    predictions_df[["time", "actual_spread", "predicted_spread"]].to_csv(paths["predictions_file"], index=False)
+    logger.info(f"Predictions saved to {paths['predictions_file']}")
 
-    signals_df.to_csv(SIGNALS_FILE, index=False)
-    logger.info(f"Signals saved to {SIGNALS_FILE}")
+    signals_df.to_csv(paths["signals_file"], index=False)
+    logger.info(f"Signals saved to {paths['signals_file']}")
 
-    pd.DataFrame({'time': timestamps, 'pnl': pnl_series}).to_csv(PNL_FILE, index=False)
-    logger.info(f"PnL saved to {PNL_FILE}")
+    pd.DataFrame({'time': timestamps, 'pnl': pnl_series}).to_csv(paths["pnl_file"], index=False)
+    logger.info(f"PnL saved to {paths['pnl_file']}")
 
 
-def save_metrics(model_metrics: dict, trading_metrics: dict):
-    """
-    Save performance metrics to JSON file.
-
-    Args:
-        model_metrics: Dictionary with model performance metrics
-        trading_metrics: Dictionary with trading performance metrics
-    """
+def save_metrics(model_metrics: dict, trading_metrics: dict, paths: dict):
     metrics = {
         'timestamp': datetime.now().isoformat(),
         'model_performance': model_metrics,
-        'trading_performance': trading_metrics
+        'trading_performance': trading_metrics,
     }
-
-    METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(METRICS_FILE, 'w') as f:
+    paths["outputs_dir"].mkdir(parents=True, exist_ok=True)
+    with open(paths["metrics_file"], 'w') as f:
         json.dump(metrics, f, indent=2, default=str)
+    logger.info(f"Metrics saved to {paths['metrics_file']}")
 
-    logger.info(f"Metrics saved to {METRICS_FILE}")
 
-
-def run_full_pipeline(execution_mode: str = "full") -> dict:
-    """
-    Run the complete electricity trading pipeline from data to backtest results.
+def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) -> dict:
+    """Run the complete electricity trading pipeline from data to backtest results.
 
     Args:
-        execution_mode: Execution mode - 'full', 'features', or 'model'
-            - 'full': Run complete pipeline from data ingestion
-            - 'features': Skip data ingestion, use processed data
-            - 'model': Skip to model training using saved features
-
-    Returns:
-        Dictionary with pipeline results and metrics
+        execution_mode: 'full', 'features', or 'model'
+        config:         Optional experiment config dict loaded from a YAML file.
+                        When provided, drives model hyperparams, validation strategy,
+                        signal thresholds, and output paths.  Falls back to defaults
+                        from config.py when None.
     """
     logger.info(f"Starting pipeline execution in {execution_mode} mode")
-
-    # Ensure directories exist
     ensure_directories()
+
+    # --- settings from config (or defaults) ---
+    signal_threshold = config["signal"]["threshold"] if config else DEFAULT_SIGNAL_THRESHOLD
+    top_n            = config["signal"]["top_n"]       if config else 5
+    model_type       = config["model"]["type"]         if config else "xgboost"
+    model_params     = config["model"]["hyperparameters"] if config else None
+    val_type         = config["validation"]["type"]    if config else "walk_forward"
+    wf_train_days    = config["validation"]["train_days"] if config else 200
+    wf_test_days     = config["validation"]["test_days"]  if config else 30
+    wf_step_days     = config["validation"]["step_days"]  if config else 30
+
+    paths = setup_experiment_paths(config)
 
     results = {}
     results['timestamp'] = datetime.now().isoformat()
     results['execution_mode'] = execution_mode
-    results['signal_threshold'] = DEFAULT_SIGNAL_THRESHOLD
+    results['signal_threshold'] = signal_threshold
+    results['paths'] = paths
 
     try:
         # Step 1: Data preparation (varies by execution mode)
@@ -262,11 +285,12 @@ def run_full_pipeline(execution_mode: str = "full") -> dict:
         logger.info("Step 2: Training model")
         model, predictions_df, X_test = train_model(
             features_path=str(FEATURES_DATASET),
-            model_type="xgboost",
-            validation_type="walk_forward",
-            wf_train_days=200,
-            wf_test_days=30,
-            wf_step_days=30,
+            model_type=model_type,
+            model_params=model_params,
+            validation_type=val_type,
+            wf_train_days=wf_train_days,
+            wf_test_days=wf_test_days,
+            wf_step_days=wf_step_days,
         )
 
         results['model'] = model
@@ -282,13 +306,13 @@ def run_full_pipeline(execution_mode: str = "full") -> dict:
         raw_signals = generate_signal(
             predicted_spread=predictions_df["predicted_spread"].values,
             penalty_buffer=penalty_buffer,
-            threshold=DEFAULT_SIGNAL_THRESHOLD,
+            threshold=signal_threshold,
         )
         schedule_df, signals = build_daily_schedule(
             predicted_spread=predictions_df["predicted_spread"].values,
             signals=raw_signals,
             timestamps=predictions_df["time"].values,
-            top_n=5,
+            top_n=top_n,
         )
 
         results['signals'] = signals
@@ -327,16 +351,16 @@ def run_full_pipeline(execution_mode: str = "full") -> dict:
         if SAVE_OUTPUTS_DEFAULT:
             logger.info("Step 6: Saving outputs")
             save_model(model, {
-                'model_type':       'xgboost',
-                'signal_threshold': DEFAULT_SIGNAL_THRESHOLD,
+                'model_type':       model_type,
+                'signal_threshold': signal_threshold,
                 'n_features':       X_test.shape[1],
                 'n_samples':        len(X_test),
                 'features':         list(X_test.columns),
                 'execution_mode':   execution_mode,
-            })
+            }, paths)
 
-            save_outputs(predictions_df, signals, pnl_series)
-            save_metrics(model_metrics, trading_metrics)
+            save_outputs(predictions_df, signals, pnl_series, paths)
+            save_metrics(model_metrics, trading_metrics, paths)
 
         # Step 7: Print results
         logger.info("Pipeline completed successfully")
@@ -400,12 +424,13 @@ def print_pipeline_results(results: dict):
             print(f"  … ({len(sched) - 10} more rows)")
 
     if SAVE_OUTPUTS_DEFAULT:
+        p = results.get('paths', {})
         print("\nOUTPUTS SAVED:")
-        print(f"  Model:       {MODEL_FILE}")
-        print(f"  Predictions: {PREDICTIONS_FILE}")
-        print(f"  Signals:     {SIGNALS_FILE}")
-        print(f"  PnL:         {PNL_FILE}")
-        print(f"  Metrics:     {METRICS_FILE}")
+        print(f"  Model:       {p.get('model_file',       MODEL_FILE)}")
+        print(f"  Predictions: {p.get('predictions_file', PREDICTIONS_FILE)}")
+        print(f"  Signals:     {p.get('signals_file',     SIGNALS_FILE)}")
+        print(f"  PnL:         {p.get('pnl_file',         PNL_FILE)}")
+        print(f"  Metrics:     {p.get('metrics_file',     METRICS_FILE)}")
 
     print("=" * 60)
 

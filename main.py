@@ -1,33 +1,43 @@
 #!/usr/bin/env python3
 """
-Electricity Trading System - Main Entry Point
-
-This is the single entry point for running the complete electricity trading pipeline.
+Day-Ahead Power Trading — CLI entry point.
 
 Usage:
-    python main.py                    # Run full pipeline
-    python main.py --mode features    # Skip data ingestion, use processed data
-    python main.py --mode model       # Skip to model training using saved features
+    python main.py                              # full pipeline, default settings
+    python main.py --mode features              # rebuild features from processed data
+    python main.py --mode model                 # retrain on saved features
+    python main.py --config configs/strategy_xgb_v2.yaml
 """
 
 import argparse
+import yaml
 from pipeline import run_full_pipeline
 
-def main():
-    parser = argparse.ArgumentParser(description='Electricity Trading System')
-    parser.add_argument('--mode', '-m',
-                       choices=['full', 'features', 'model'],
-                       default='full',
-                       help='Execution mode: full (default), features, or model')
 
+def _load_config(path: str) -> dict:
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Day-Ahead Power Trading Pipeline")
+    parser.add_argument(
+        "--mode", "-m",
+        choices=["full", "features", "model"],
+        default="full",
+        help="Execution mode (default: full)",
+    )
+    parser.add_argument(
+        "--config", "-c",
+        default=None,
+        help="Path to a YAML experiment config (e.g. configs/strategy_xgb_v2.yaml)",
+    )
     args = parser.parse_args()
 
-    print(f"Starting Electricity Trading System in {args.mode} mode...")
+    config = _load_config(args.config) if args.config else None
 
-    # Run the simplified pipeline
-    results = run_full_pipeline(execution_mode=args.mode)
+    run_full_pipeline(execution_mode=args.mode, config=config)
 
-    print("Pipeline completed successfully!")
 
 if __name__ == "__main__":
     main()

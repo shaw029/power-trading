@@ -1,0 +1,25 @@
+experiment_name: DA_Imbalance_XGB
+version: v2
+
+data:
+  start_date: "2018-01-01"
+  end_date: "2019-01-01"
+
+model:
+  type: xgboost
+  hyperparameters:
+    n_estimators: 400
+    max_depth: 4
+    learning_rate: 0.03
+    subsample: 0.8
+    colsample_bytree: 0.7
+
+validation:
+  type: walk_forward
+  train_days: 200
+  test_days: 30
+  step_days: 30
+
+signal:
+  threshold: 5.0
+  top_n: 5
