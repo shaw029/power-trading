@@ -44,12 +44,18 @@ fetch_neso_ndfd().to_csv("data/raw/neso_ndfd.csv", index=False)
 | `demand_actual.csv` | `startTime`, `demand` |
 | `imbalance_price.csv` | `startTime`, `systemBuyPrice`, `systemSellPrice`, `netImbalanceVolume` |
 
-## NESO Demand Forecast Caching
+## Caching
 
-`"NESO_API"` downloads day-by-day and caches raw JSON under `data/raw/NESO_NDFD/`. Subsequent runs skip already-cached days. To force a re-download:
+All API sources download day-by-day and cache raw JSON under `data/raw/<DATASET>/`. Subsequent runs skip already-cached days. To force a re-download, delete the relevant directory:
 
 ```bash
-rm -rf data/raw/NESO_NDFD/
+rm -rf data/raw/NESO_NDFD/          # demand forecast (NESO)
+rm -rf data/raw/WINDFOR/            # wind forecast (Elexon)
+rm -rf data/raw/B1770/              # generation actual (Elexon)
+rm -rf data/raw/FUELHH/             # generation by fuel type (Elexon)
+rm -rf data/raw/ITSDO/              # demand actual (Elexon)
+rm -rf data/raw/MID/                # market index price (Elexon)
+rm -rf data/raw/entsoe_day_ahead_price/  # day-ahead price (ENTSO-E)
 ```
 
 ## Date Range

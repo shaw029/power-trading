@@ -51,7 +51,7 @@ Create the file and fill in your values:
 #   → My Account Settings → Web API Security Token
 ENTSOE_API_KEY=your_key_here
 
-# Elexon BMRS v1 and NESO CKAN are public — no key required.
+# Elexon BMRS and NESO CKAN are open — no key required.
 # ELEXON_API_KEY=
 
 # ── Experiment settings ────────────────────────────────────────────────────
@@ -67,9 +67,7 @@ CURRENT_VERSION=v1
 DEFAULT_SIGNAL_THRESHOLD=5.0
 
 # ── Data sources ───────────────────────────────────────────────────────────
-# Switch any source to "CSV" to load from a local file instead of the API —
-# useful for offline runs or after the initial download.
-# See CONFIG_REFERENCE.md for how to generate the CSV files.
+# Switch any source to "CSV" to load from a local file instead of the API.
 DEFAULT_DEMAND_FORECAST_SOURCE=NESO_API   # ELEXON | NESO_API | CSV
 DEFAULT_WIND_FORECAST_SOURCE=ELEXON       # ELEXON | CSV
 DEFAULT_GENERATION_ACTUAL_SOURCE=ELEXON   # ELEXON | CSV
