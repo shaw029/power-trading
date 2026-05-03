@@ -55,16 +55,9 @@ ENTSOE_API_KEY=your_key_here
 # ELEXON_API_KEY=
 
 # ── Experiment settings ────────────────────────────────────────────────────
-# Date range for all downloads and pipeline runs
+# Date range for all downloads
 START_DATE=2018-01-01
 END_DATE=2019-01-01
-
-# Increment to run a new experiment without overwriting previous results
-# (pipeline writes to models/v2/, outputs/v2/, etc.)
-CURRENT_VERSION=v1
-
-# Minimum predicted edge above the penalty buffer before a signal fires (£/MWh)
-DEFAULT_SIGNAL_THRESHOLD=5.0
 
 # ── Data sources ───────────────────────────────────────────────────────────
 # Switch any source to "CSV" to load from a local file instead of the API.
@@ -78,13 +71,62 @@ DEFAULT_IMBALANCE_PRICE_SOURCE=ELEXON     # ELEXON | CSV
 ```
 
 
+## Experiment Configs
+
+Experiments are driven by YAML files in `configs/`. Pass one with `--config`:
+
+```bash
+python main.py --config configs/config.yaml
+```
+
+The config controls model hyperparameters, walk-forward settings, signal threshold, and where all artifacts are written. Each config must declare a `strategy` and `run_name`; the pipeline writes everything to:
+
+```
+outputs/{strategy}/{run_name}/   # features.parquet, predictions.csv, signals.csv, pnl.csv, metrics.json
+models/{strategy}/{run_name}/    # model.joblib, metadata.json
+```
+
+## Project Structure
+
+```
+power-trading/
+├── configs/                        # YAML experiment configs
+│   └── config.yaml
+├── data/
+│   ├── raw/                        # Per-day cached API responses
+│   │   ├── B1770/                  # Imbalance prices (Elexon)
+│   │   ├── FUELHH/                 # Generation mix (Elexon)
+│   │   ├── WINDFOR/                # Wind forecast (Elexon)
+│   │   ├── ITSDO/                  # Demand actual (Elexon)
+│   │   ├── MID/                    # Market index price (Elexon)
+│   │   ├── NESO_NDFD/              # Demand forecast (NESO)
+│   │   └── entsoe_day_ahead_price/ # Day-ahead price (ENTSO-E)
+│   └── processed/                  # Merged preprocessed data
+├── models/
+│   └── {strategy}/{run_name}/      # model.joblib, metadata.json
+├── outputs/
+│   └── {strategy}/{run_name}/      # features.parquet, predictions.csv,
+│                                   # signals.csv, pnl.csv, metrics.json
+├── src/
+│   ├── data/                       # download.py, preprocess.py
+│   ├── evaluation/                 # splitter.py (walk-forward)
+│   ├── features/                   # build_features.py
+│   ├── models/                     # train.py, signal.py
+│   ├── backtest/                   # engine.py
+│   └── utils/                      # config.py
+├── tests/
+├── pipeline.py                     # End-to-end orchestrator
+├── main.py                         # CLI entry point
+└── requirements.txt
+```
+
 ## VS Code
 
 Select the `quantenv` interpreter via **Python: Select Interpreter** (`⌘⇧P`) after cloning.
 
 Launch configs are pre-configured in `.vscode/launch.json` (`⌘⇧D` to open):
-- **Run Full Pipeline** — downloads data, preprocesses, builds features, trains, generates signals, runs backtest
-- **Features Mode** (`--mode features`) — skips download; rebuilds features from already-processed data. Use after changing feature engineering.
-- **Model Mode** (`--mode model`) — skips download and feature build; retrains and backtests on saved features. Fastest for tuning signal thresholds or model hyperparameters.
+- **Run with Config** — full pipeline using `configs/config.yaml`
+- **Run with Config (features only)** — download + preprocess + build features, then stop. Use after changing data sources or feature engineering.
+- **Run with Config (model only)** — retrain and backtest on already-built features. Fastest for tuning hyperparameters or signal thresholds.
 - **Static Analysis** — runs mypy + flake8 in parallel
 - **Run All Tests** — pytest with verbose output

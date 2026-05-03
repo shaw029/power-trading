@@ -30,6 +30,45 @@
       "presentation": { "hidden": true }
     },
     {
+      "name": "Run with Config",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--config", "configs/config.yaml"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "python": "${command:python.interpreterPath}",
+      "justMyCode": false,
+      "stopOnEntry": false
+    },
+    {
+      "name": "Run with Config (features only)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--mode", "features", "--config", "configs/config.yaml"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "python": "${command:python.interpreterPath}",
+      "justMyCode": false,
+      "stopOnEntry": false
+    },
+    {
+      "name": "Run with Config (model only)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--mode", "model", "--config", "configs/config.yaml"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "python": "${command:python.interpreterPath}",
+      "justMyCode": false,
+      "stopOnEntry": false
+    },
+    {
       "name": "Run All Tests",
       "type": "debugpy",
       "request": "launch",
@@ -37,69 +76,9 @@
       "args": ["tests", "-v"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      },
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
       "python": "${command:python.interpreterPath}",
       "justMyCode": false
-    },
-    {
-      "name": "Run Full Pipeline",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/main.py",
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      },
-      "python": "${command:python.interpreterPath}",
-      "justMyCode": false,
-      "stopOnEntry": false
-    },
-    {
-      "name": "Run Features Mode",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/main.py",
-      "args": ["--mode", "features"],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      },
-      "python": "${command:python.interpreterPath}",
-      "justMyCode": false,
-      "stopOnEntry": false
-    },
-    {
-      "name": "Run Model Mode",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/main.py",
-      "args": ["--mode", "model"],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      },
-      "python": "${command:python.interpreterPath}",
-      "justMyCode": false,
-      "stopOnEntry": false
-    },
-    {
-      "name": "Debug Pipeline",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/main.py",
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      },
-      "python": "${command:python.interpreterPath}",
-      "justMyCode": false,
-      "stopOnEntry": false
     },
     {
       "name": "Python: Current File",
@@ -108,9 +87,7 @@
       "program": "${file}",
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      },
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
       "python": "${command:python.interpreterPath}"
     }
   ]
