@@ -101,12 +101,17 @@ power-trading/
 │   │   ├── MID/                    # Market index price (Elexon)
 │   │   ├── NESO_NDFD/              # Demand forecast (NESO)
 │   │   └── entsoe_day_ahead_price/ # Day-ahead price (ENTSO-E)
-│   └── processed/                  # Merged preprocessed data
+│   └── processed/
+│       └── processed_data.parquet  # All sources merged on a 30-min UTC grid
 ├── models/
 │   └── {strategy}/{run_name}/      # model.joblib, metadata.json
 ├── outputs/
-│   └── {strategy}/{run_name}/      # features.parquet, predictions.csv,
-│                                   # signals.csv, pnl.csv, metrics.json
+│   └── {strategy}/{run_name}/
+│       ├── features.parquet        # Engineered features for this run
+│       ├── predictions.csv         # actual_spread, predicted_spread
+│       ├── signals.csv             # auction_time, signal, direction
+│       ├── pnl.csv                 # Per-period net PnL (£)
+│       └── metrics.json            # Model + trading performance
 ├── src/
 │   ├── data/                       # download.py, preprocess.py
 │   ├── evaluation/                 # splitter.py (walk-forward)
