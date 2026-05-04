@@ -2,18 +2,18 @@
 
 End-to-end quantitative research framework for virtual trading in the GB wholesale electricity market. The system uses machine learning to proxy residual load mispricing against the EPEX Day-Ahead auction price, then schedules high-conviction bids using only pre-auction information.
 
-**2018 validated backtest:** +285.8% return · 3.70 Sharpe · 53.6% win rate · net of £0.50/MWh transaction costs
+**2018 validated backtest:** +285.8% return · 3.70 Sharpe · 53.6% win rate 
 
 ![Equity Curve](notebooks/assets/equity_curve.png)
 
----
 
-- Signal is derived from ML-proxied forecast error in residual load — not naive spread arbitrage
-- Features pinned to the D-1 10:30 pre-auction vintage; no same-day data, no lookahead
+## How It Works
+
+- Signal is derived from ML-proxied forecast error in residual load 
+- Features pinned to the D-1 10:30 pre-auction vintage
 - Walk-forward validation on sliding 200-day windows adapts to seasonal regime shifts
 - Position sizing scales with equity so drawdowns automatically reduce exposure
 
----
 
 ```bash
 python main.py --config configs/config.yaml                   # full pipeline
