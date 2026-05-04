@@ -1,32 +1,40 @@
-# Architecture
+# Quantitative Strategy Whitepaper: Day-Ahead Power Positioning
 
-## Strategy
+## 1. Executive Summary: Virtual Trading & Imbalance Proxying
+This system models the behavior of a **Non-Physical Participant (Virtual Trader)** in the Great Britain (GB) wholesale power market. Lacking physical generation or demand, the strategy seeks to extract Alpha from structural grid forecasting inefficiencies (e.g., wind forecast errors vs. actual delivery).
 
-The GB electricity market has two settlement layers. The **day-ahead auction** (EPEX SPOT GB, closes ~11:00 AM on Day-1) fixes a price `P_DA` for each 30-min period. Parties that deviate from their position settle at the **System Sell Price** (SSP) if long, or **System Buy Price** (SBP) if short.
+**The Objective:** The strategy takes directional exposure in the **EPEX SPOT Day-Ahead (DA) auction** based on expected system imbalance. 
 
-The model predicts `SSP − DA_price` for each period. A positive prediction favours buying at auction and settling long; a negative prediction favours selling at auction and settling short.
+*Crucial Market Distinction:* The strategy does *not* treat the Imbalance mechanism (SSP/SBP) as a primary liquidity venue for arbitrage. Instead, it uses machine learning to proxy expected system imbalance via forecast-driven residual load. **Mispricing is explicitly defined as the deviation between the model-implied fair value (derived from residual load and forecast dynamics) and the observed Day-Ahead auction price.** The strategy takes a DA position when this mispricing is detected, with the intended exit path being the continuous Intraday (ID) market, leaving only residual, unhedged exposure to the Imbalance settlement mechanism.
 
-## Forecast Features
+## 2. Market Regime & Data Justification (2018–2019)
+The current backtest engine is validated on 2018–2019 market data.
 
-Wind and demand forecasts are pivoted into two families:
+* **Stable Baseline for Alpha Validation:** Developing a foundational algorithm during structural market breaks (e.g., the 2020 COVID demand crash or the 2022 European gas crisis) introduces extreme volatility that can generate false-positive returns. Isolating the development phase to a stable regime proves the ML feature engineering possesses a genuine statistical edge independent of macro black swans.
+* **Data Fidelity (Pre-Brexit):** Post-Brexit (Jan 1, 2021), the UK decoupled from the EU Internal Energy Market (IEM), fracturing established data pipelines. Pre-decoupling data guarantees high-fidelity, contiguous inputs.
+* **Regime Limitations (Intellectual Honesty):** It is explicitly noted that 2018–2019 represents a relatively low-renewables penetration regime compared to the current grid. The model's robustness in modern, high-volatility, wind-dominated regimes (post-2021) remains an area for future out-of-sample stress testing and regime segmentation.
 
-- **Rolling snapshots** — the latest published forecast at 1h, 3h, 6h, 12h, 24h before each delivery period.
-- **Auction-day snapshots** — the latest forecast available at fixed clock times (D-2 noon, D-1 midnight, D-1 07:00, D-1 10:30). The 10:30 vintage is the final pre-auction view and carries the most predictive weight.
+## 3. System Boundaries & Signal Logic
+The pipeline implements a directional DA trading desk with strict institutional portfolio constraints:
 
-All cutoff arithmetic runs in UTC after deriving the GB market date in Europe/London so that DST transitions don't create gaps.
+* **Strict Leakage Prevention:** The DA auction closes at 11:00 AM on Day-1. The feature set relies entirely on the D-1 10:30 AM pre-auction forecast vintage. Latency and gate closure constraints are strictly observed. No same-day actuals are included; lagged data uses a strict 48-period (24-hour) offset.
+* **Signal Definition & Volatility Gating:** A position is initiated *only* when the model predicts a forward price deviation exceeding a volatility-adjusted threshold, which is calibrated using historical imbalance spread distributions. This ensures exposure is taken only when conviction outweighs the expected cost of residual imbalance.
+* **Execution Constraints & Risk Budgeting (Top-5):** Signals are capped at the Top 5 highest-conviction periods per direction per day. This constraint approximates real-world liquidity and capital allocation limits, ensuring the strategy concentrates risk in the highest-confidence signals rather than diluting exposure across the full curve.
+* **Position Horizon:** Positions are held over a single settlement interval (half-hourly) unless rebalanced by updated signals, ensuring strict alignment with short-term forecast error resolution dynamics.
 
-## Leakage Prevention
+## 4. Validated Results
 
-The auction closes at 11:00 AM Day-1. No same-day actuals (demand, generation, imbalance volume) appear in the feature set. Lagged actuals use a minimum 48-period (24 h) offset to ensure nothing from the target day leaks in.
+Performance numbers are run-specific and live with the experiment that produced them. See the headline metrics in [README.md](README.md) and the full tear sheet — equity curve, drawdown analysis, and sensitivity sweep — in `notebooks/01_da_positioning_backtest.ipynb`.
 
-## Signal Logic
+## 5. Strategic Development Roadmap
+This repository is a foundational framework. The architecture supports extension into advanced market execution and asset optimization:
 
-Two filters before a trade fires:
+### Phase 2: Intraday (ID) Execution Integration (Priority)
+* **Objective:** Replace the naive "DA-to-Imbalance" settlement assumption with realistic continuous trading exits.
+* **Mechanics:** Ingest order book snapshots and the Market Index Price (MIP) leading up to the 1-hour gate closure.
+* **Enhancement:** Simulate scaling out of DA positions in the ID market, subjecting the strategy to realistic bid/ask spread slippage and liquidity constraints before forced Imbalance settlement.
 
-1. **Penalty buffer** — a 7-day rolling mean of `SBP − SSP`, lagged 48 h, estimates the expected round-trip imbalance cost. The signal threshold is `max(0, penalty_buffer) + 5.0 £/MWh`. This prevents the model acting when the spread edge is smaller than the settlement cost.
-
-2. **Top-5 schedule** — from the periods that pass the confidence filter, only the 5 highest `|predicted_spread|` slots per direction per market day are kept. This reflects the realistic constraint that a non-asset trader submits a small number of targeted bids (max 10 trades/day).
-
-## Backtest Design
-
-The backtest simulates a funded account rather than a fixed notional. Position size is `(current_capital × 2%) / DA_price`, so it scales with equity growth and shrinks after drawdowns. A max-drawdown halt at 80% of starting capital stops the simulation if the strategy loses severely — consistent with how a real desk would manage risk.
+### Phase 3: Physical Asset Dispatch (Battery Storage)
+* **Objective:** Transition the engine to support physical Asset Optimization (BESS).
+* **Mechanics:** Introduce State-of-Charge (SoC) tracking, cycle degradation costs, and megawatt-hour (MWh) capacity constraints.
+* **Alpha Generation:** Optimize the dispatch schedule by charging during low-price periods and discharging during peaks, constrained strictly by the physical limits of the lithium-ion asset.
