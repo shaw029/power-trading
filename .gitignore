@@ -10,8 +10,9 @@ __pycache__/
 /data/
 /artifacts/
 
-# Local config — keep .env and .env.example local, never commit
-.env*
+# Local config — .env is secret, .env.example is committed as a template
+.env
+.env.local
 
 # OS / editor
 .DS_Store
