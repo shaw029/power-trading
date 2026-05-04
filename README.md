@@ -4,6 +4,8 @@ End-to-end quantitative research framework for virtual trading in the GB wholesa
 
 **2018 validated backtest:** +285.8% return · 3.70 Sharpe · 53.6% win rate · net of £0.50/MWh transaction costs
 
+![Equity Curve](notebooks/assets/equity_curve.png)
+
 ---
 
 - Signal is derived from ML-proxied forecast error in residual load — not naive spread arbitrage
