@@ -244,8 +244,9 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
     ensure_directories()
 
     # --- settings from config (or defaults) ---
-    signal_threshold = config["signal"]["threshold"] if config else DEFAULT_SIGNAL_THRESHOLD
-    top_n            = config["signal"]["top_n"]       if config else 5
+    signal_threshold  = config["signal"]["threshold"]                       if config else DEFAULT_SIGNAL_THRESHOLD
+    top_n             = config["signal"]["top_n"]                           if config else 5
+    transaction_cost  = config["signal"].get("transaction_cost", 0.0)       if config else 0.0
     model_type       = config["model"]["type"]         if config else "xgboost"
     model_params     = config["model"]["hyperparameters"] if config else None
     val_type         = config["validation"]["type"]    if config else "walk_forward"
@@ -326,6 +327,7 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
             system_sell_price=predictions_df["system_sell_price"].values,
             system_buy_price=predictions_df["system_buy_price"].values,
             timestamps=predictions_df["time"].values,
+            cost_per_trade=transaction_cost,
         )
 
         results['pnl_series'] = pnl_series
@@ -337,13 +339,18 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
         mae  = mean_absolute_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
         rmse = np.sqrt(mean_squared_error(predictions_df["actual_spread"], predictions_df["predicted_spread"]))
 
+        actual    = predictions_df["actual_spread"].values
+        predicted = predictions_df["predicted_spread"].values
+        directional_accuracy = float(np.mean(np.sign(actual) == np.sign(predicted)))
+
         ts = predictions_df["time"].values
         model_metrics = {
-            'mae':               mae,
-            'rmse':              rmse,
-            'test_period_start': str(pd.to_datetime(ts[0],  utc=True)),
-            'test_period_end':   str(pd.to_datetime(ts[-1], utc=True)),
-            'test_n_periods':    int(len(predictions_df)),
+            'mae':                  mae,
+            'rmse':                 rmse,
+            'directional_accuracy': directional_accuracy,
+            'test_period_start':    str(pd.to_datetime(ts[0],  utc=True)),
+            'test_period_end':      str(pd.to_datetime(ts[-1], utc=True)),
+            'test_n_periods':       int(len(predictions_df)),
         }
         results['model_metrics'] = model_metrics
 
