@@ -23,7 +23,6 @@ python main.py --config configs/config.yaml --mode model      # train & backtest
 
 ## Docs
 
-| | |
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Strategy design, market rationale, signal logic, feature engineering, performance, and development roadmap |
 | [DATA_SOURCES.md](DATA_SOURCES.md) | Seven datasets across three APIs, CSV fallbacks, and per-day caching |

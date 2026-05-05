@@ -36,16 +36,3 @@ All features are constructed from the D-1 10:30 pre-auction forecast vintage. No
 ## 4. Validated Results
 
 Performance numbers are run-specific and live with the experiment that produced them. See the headline metrics in [README.md](README.md) and the full tear sheet — equity curve, drawdown analysis, and sensitivity sweep — in `notebooks/01_da_positioning_backtest.ipynb`.
-
-## 5. Strategic Development Roadmap
-This repository is a foundational framework. The architecture supports extension into advanced market execution and asset optimization:
-
-### Phase 2: Intraday (ID) Execution Integration (Priority)
-* **Objective:** Replace the naive "DA-to-Imbalance" settlement assumption with realistic continuous trading exits.
-* **Mechanics:** Ingest order book snapshots and the Market Index Price (MIP) leading up to the 1-hour gate closure.
-* **Enhancement:** Simulate scaling out of DA positions in the ID market, subjecting the strategy to realistic bid/ask spread slippage and liquidity constraints before forced Imbalance settlement.
-
-### Phase 3: Physical Asset Dispatch (Battery Storage)
-* **Objective:** Transition the engine to support physical Asset Optimization (BESS).
-* **Mechanics:** Introduce State-of-Charge (SoC) tracking, cycle degradation costs, and megawatt-hour (MWh) capacity constraints.
-* **Alpha Generation:** Optimize the dispatch schedule by charging during low-price periods and discharging during peaks, constrained strictly by the physical limits of the lithium-ion asset.
