@@ -22,6 +22,17 @@ The pipeline implements a directional DA trading desk with strict institutional 
 * **Execution Constraints & Risk Budgeting (Top-5):** Signals are capped at the Top 5 highest-conviction periods per direction per day. This constraint approximates real-world liquidity and capital allocation limits, ensuring the strategy concentrates risk in the highest-confidence signals rather than diluting exposure across the full curve.
 * **Position Horizon:** Positions are held over a single settlement interval (half-hourly) unless rebalanced by updated signals, ensuring strict alignment with short-term forecast error resolution dynamics.
 
+### Feature Engineering
+
+All features are constructed from the D-1 10:30 pre-auction forecast vintage. No same-day actuals are used; lagged inputs apply a strict 48-period (24-hour) minimum offset.
+
+| Group | Features | Rationale |
+|---|---|---|
+| **Auction Fundamentals** | `auction_residual_load` | Demand forecast minus wind forecast at the 10:30 vintage — the primary proxy for grid tightness and the core mispricing signal |
+| **Pre-Auction Drift** | `wind_auction_drift` | Wind forecast at 10:30 minus wind forecast at 07:00 — captures how much the grid picture shifted in the hours before auction close, signalling late-breaking supply uncertainty |
+| **Historical Lags** | `day_ahead_price_lag48`, `day_ahead_price_lag96`, `system_sell_price_lag48`, `system_sell_price_lag96` | 24 h and 48 h lookbacks on DA price and imbalance settlement price; the 48-period offset is the minimum lag that avoids any forward leakage at 30-minute resolution |
+| **Temporal** | `hour_sin`, `hour_cos`, `dow_sin`, `dow_cos` | Cyclical sine/cosine encoding of settlement period (0.0–23.5 fractional hour) and day-of-week, computed in the Europe/London calendar to correctly handle BST transitions |
+
 ## 4. Validated Results
 
 Performance numbers are run-specific and live with the experiment that produced them. See the headline metrics in [README.md](README.md) and the full tear sheet — equity curve, drawdown analysis, and sensitivity sweep — in `notebooks/01_da_positioning_backtest.ipynb`.
