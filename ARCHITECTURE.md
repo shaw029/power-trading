@@ -7,12 +7,12 @@ This system models the behavior of a **Non-Physical Participant (Virtual Trader)
 
 *Crucial Market Distinction:* The strategy does *not* treat the Imbalance mechanism (SSP/SBP) as a primary liquidity venue for arbitrage. Instead, it uses machine learning to proxy expected system imbalance via forecast-driven residual load. **Mispricing is explicitly defined as the deviation between the model-implied fair value (derived from residual load and forecast dynamics) and the observed Day-Ahead auction price.** The strategy takes a DA position when this mispricing is detected, with the intended exit path being the continuous Intraday (ID) market, leaving only residual, unhedged exposure to the Imbalance settlement mechanism.
 
-## 2. Market Regime & Data Justification (2018–2019)
-The current backtest engine is validated on 2018–2019 market data.
+## 2. Market Regime & Data Justification (2018)
+The current backtest engine is validated on 2018 market data (January–December).
 
 * **Stable Baseline for Alpha Validation:** Developing a foundational algorithm during structural market breaks (e.g., the 2020 COVID demand crash or the 2022 European gas crisis) introduces extreme volatility that can generate false-positive returns. Isolating the development phase to a stable regime proves the ML feature engineering possesses a genuine statistical edge independent of macro black swans.
 * **Data Fidelity (Pre-Brexit):** Post-Brexit (Jan 1, 2021), the UK decoupled from the EU Internal Energy Market (IEM), fracturing established data pipelines. Pre-decoupling data guarantees high-fidelity, contiguous inputs.
-* **Regime Limitations (Intellectual Honesty):** It is explicitly noted that 2018–2019 represents a relatively low-renewables penetration regime compared to the current grid. The model's robustness in modern, high-volatility, wind-dominated regimes (post-2021) remains an area for future out-of-sample stress testing and regime segmentation.
+* **Regime Limitations (Intellectual Honesty):** It is explicitly noted that 2018 represents a relatively low-renewables penetration regime compared to the current grid. The model's robustness in modern, high-volatility, wind-dominated regimes (post-2021) remains an area for future out-of-sample stress testing and regime segmentation.
 
 ## 3. System Boundaries & Signal Logic
 The pipeline implements a directional DA trading desk with strict institutional portfolio constraints:

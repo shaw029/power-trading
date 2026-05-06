@@ -34,7 +34,7 @@ python main.py --config configs/config.yaml --mode model      # train & backtest
 
 ## Roadmap
 
-- [x] **Phase 1 — DA Positioning Engine (complete):** End-to-end ML pipeline for virtual trading in the GB Day-Ahead market. Walk-forward validated ensemble of XGBoost, Random Forest, and Linear Regression models predicting residual load mispricing, with signal gating, execution constraints, and dynamic position sizing.
+- [x] **Phase 1 — DA Positioning Engine (complete):** End-to-end ML pipeline for virtual trading in the GB Day-Ahead market. Walk-forward validated XGBoost model predicting residual load mispricing, with signal gating, execution constraints, and dynamic position sizing.
 - [ ] **Phase 2 — Intraday Execution:** Replace the DA-to-imbalance settlement assumption with realistic continuous ID market exits. Ingest order book snapshots and MIP data to simulate scaling out of DA positions before gate closure, subjecting the strategy to real bid/ask slippage.
 - [ ] **Phase 3 — Physical Asset Optimisation (BESS):** Extend the engine to support battery storage dispatch. Introduce state-of-charge tracking, cycle degradation costs, and MWh capacity constraints to optimise charge/discharge schedules against the DA and ID price curves.
 
