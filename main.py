@@ -6,7 +6,7 @@ Usage:
     python main.py                              # full pipeline, default settings
     python main.py --mode features              # rebuild features from processed data
     python main.py --mode model                 # retrain on saved features
-    python main.py --config configs/strategy_xgb_v2.yaml
+    python main.py --config configs/config.yaml
 """
 
 import argparse
@@ -30,7 +30,7 @@ def main():
     parser.add_argument(
         "--config", "-c",
         default=None,
-        help="Path to a YAML experiment config (e.g. configs/strategy_xgb_v2.yaml)",
+        help="Path to a YAML experiment config (e.g. configs/config.yaml)",
     )
     args = parser.parse_args()
 

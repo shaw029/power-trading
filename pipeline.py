@@ -3,6 +3,7 @@ import numpy as np
 import logging
 import os
 import json
+import joblib
 from pathlib import Path
 from datetime import datetime
 
@@ -150,12 +151,6 @@ def build_features_pipeline(features_save_path=None):
 
 
 def save_model(model, metadata: dict, paths: dict):
-    try:
-        import joblib
-    except ImportError:
-        logger.error("joblib not available for model saving")
-        return
-
     metadata['saved_at'] = datetime.now().isoformat()
     paths["model_dir"].mkdir(parents=True, exist_ok=True)
     joblib.dump(model, paths["model_file"])
@@ -165,27 +160,12 @@ def save_model(model, metadata: dict, paths: dict):
     logger.info(f"Model metadata saved to {paths['metadata_file']}")
 
 
-def load_model(version: str = CURRENT_VERSION):
-    """
-    Load trained model from disk.
-
-    Args:
-        version: Version string for path resolution
-
-    Returns:
-        Loaded model object or None if not found
-    """
-    try:
-        import joblib
-    except ImportError:
-        logger.error("joblib not available for model loading")
-        return None
-
-    model_path = MODEL_FILE
+def load_model(paths: dict | None = None):
+    """Load trained model from the path specified in paths, or the default static path."""
+    model_path = paths["model_file"] if paths else MODEL_FILE
     if not model_path.exists():
         logger.warning(f"Model file not found: {model_path}")
         return None
-
     model = joblib.load(model_path)
     logger.info(f"Model loaded from {model_path}")
     return model
@@ -442,52 +422,34 @@ def print_pipeline_results(results: dict):
     print("=" * 60)
 
 
-def load_experiment_results(version: str = CURRENT_VERSION) -> dict:
-    """
-    Load saved experiment results for analysis.
-
-    Args:
-        version: Version string to load
-
-    Returns:
-        Dictionary with loaded results
-    """
-    logger.info(f"Loading experiment results for version {version}")
-
-    results = {'version': version}
+def load_experiment_results(config: dict | None = None) -> dict:
+    """Load saved experiment artifacts from the config-driven paths (or static defaults)."""
+    paths = setup_experiment_paths(config)
+    results = {}
 
     try:
-        # Load metrics
-        if METRICS_FILE.exists():
-            with open(METRICS_FILE, 'r') as f:
-                metrics_data = json.load(f)
-            results['metrics'] = metrics_data
+        if paths["metrics_file"].exists():
+            with open(paths["metrics_file"]) as f:
+                results['metrics'] = json.load(f)
 
-        # Load model
-        model = load_model(version)
+        model = load_model(paths)
         if model:
             results['model'] = model
 
-        # Load predictions
-        if PREDICTIONS_FILE.exists():
-            pred_df = pd.read_csv(PREDICTIONS_FILE)
-            results['predictions_df'] = pred_df
+        if paths["predictions_file"].exists():
+            results['predictions_df'] = pd.read_csv(paths["predictions_file"])
 
-        # Load signals
-        if SIGNALS_FILE.exists():
-            signals_df = pd.read_csv(SIGNALS_FILE)
-            results['signals_df'] = signals_df
+        if paths["signals_file"].exists():
+            results['signals_df'] = pd.read_csv(paths["signals_file"])
 
-        # Load PnL
-        if PNL_FILE.exists():
-            pnl_df = pd.read_csv(PNL_FILE)
-            results['pnl_df'] = pnl_df
+        if paths["pnl_file"].exists():
+            results['pnl_df'] = pd.read_csv(paths["pnl_file"])
 
-        logger.info(f"Loaded results for version {version}")
+        logger.info(f"Loaded results from {paths['trading_dir']}")
         return results
 
     except Exception as e:
-        logger.error(f"Failed to load results for version {version}: {str(e)}")
+        logger.error(f"Failed to load results: {str(e)}")
         return {}
 
 
