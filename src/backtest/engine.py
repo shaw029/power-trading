@@ -65,6 +65,16 @@ def run_backtest(
     if not (len(da_prices) == len(sys_sell) == len(sys_buy) == n):
         raise ValueError("All input arrays must have the same length")
 
+    _mid: np.ndarray | None = None
+    _pred: np.ndarray | None = None
+    if mid_prices is not None and predicted_spreads is not None:
+        _mid = np.asarray(mid_prices, dtype=float)
+        _pred = np.asarray(predicted_spreads, dtype=float)
+        if len(_mid) != n or len(_pred) != n:
+            raise ValueError("mid_prices and predicted_spreads must have the same length as signals")
+
+    _SLIPPAGE = 0.50  # £/MWh bid-ask crossing cost
+
     # ------------------------------------------------------------------
     # Account-based position sizing loop
     # ------------------------------------------------------------------
@@ -92,10 +102,51 @@ def run_backtest(
         price_denominator = max(abs(da_prices[i]), 10.0)
         position_mwh = (current_capital * risk_pct) / price_denominator
 
-        if signals[i] == 1:
-            gross = position_mwh * (sys_sell[i] - da_prices[i])
+        if _mid is not None and _pred is not None:
+            # ----------------------------------------------------------
+            # Hybrid execution: passive baseline slice + active choice slice
+            # ----------------------------------------------------------
+            passive_mwh = position_mwh * baseline_hedge_ratio
+            active_mwh = position_mwh * (1.0 - baseline_hedge_ratio)
+            da = da_prices[i]
+            pred_spread = _pred[i]
+
+            if signals[i] == 1:  # LONG — exit by selling
+                mid_adj = _mid[i] - _SLIPPAGE
+                passive_pnl = passive_mwh * (mid_adj - da)
+
+                # Reconstruct absolute fair-value target for the active slice
+                tp_level = da + pred_spread * take_profit_pct
+                loss_per_mwh = da - mid_adj  # positive when mid has fallen
+                if mid_adj >= tp_level or loss_per_mwh >= stop_loss_mwh:
+                    active_exit = mid_adj
+                else:
+                    active_exit = sys_sell[i]
+                active_pnl = active_mwh * (active_exit - da)
+
+            else:  # SHORT — exit by buying
+                mid_adj = _mid[i] + _SLIPPAGE
+                passive_pnl = passive_mwh * (da - mid_adj)
+
+                # Reconstruct absolute fair-value target for the active slice
+                # predicted_spread is negative for short signals (da > intraday expected)
+                tp_level = da + pred_spread * take_profit_pct
+                loss_per_mwh = mid_adj - da  # positive when mid has risen
+                if mid_adj <= tp_level or loss_per_mwh >= stop_loss_mwh:
+                    active_exit = mid_adj
+                else:
+                    active_exit = sys_buy[i]
+                active_pnl = active_mwh * (da - active_exit)
+
+            gross = passive_pnl + active_pnl
         else:
-            gross = position_mwh * (da_prices[i] - sys_buy[i])
+            # ----------------------------------------------------------
+            # Baseline: full position rolls into imbalance cash-out
+            # ----------------------------------------------------------
+            if signals[i] == 1:
+                gross = position_mwh * (sys_sell[i] - da_prices[i])
+            else:
+                gross = position_mwh * (da_prices[i] - sys_buy[i])
 
         net = gross - cost_per_trade * position_mwh
         net_pnl[i] = net
