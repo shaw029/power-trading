@@ -15,6 +15,11 @@ def run_backtest(
     starting_capital: float = 50_000.0,
     risk_pct: float = 0.02,
     max_drawdown_pct: float = 0.20,
+    mid_prices: np.ndarray | None = None,
+    predicted_spreads: np.ndarray | None = None,
+    baseline_hedge_ratio: float = 0.50,
+    take_profit_pct: float = 0.90,
+    stop_loss_mwh: float = 5.00,
 ) -> tuple:
     """Run backtest for a Day-Ahead Auction vs Imbalance settlement strategy.
 
@@ -37,10 +42,15 @@ def run_backtest(
         system_sell_price:  Imbalance SSP (£/MWh).
         system_buy_price:   Imbalance SBP (£/MWh).
         timestamps:         UTC timestamps for daily aggregation (optional).
-        cost_per_trade:     Transaction cost (£/MWh of position).
-        starting_capital:   Initial account equity (£).
-        risk_pct:           Fraction of current equity to commit per trade.
-        max_drawdown_pct:   Halt threshold — fraction of starting capital lost.
+        cost_per_trade:       Transaction cost (£/MWh of position).
+        starting_capital:     Initial account equity (£).
+        risk_pct:             Fraction of current equity to commit per trade.
+        max_drawdown_pct:     Halt threshold — fraction of starting capital lost.
+        mid_prices:           Intraday market index price series (£/MWh).
+        predicted_spreads:    Raw model spread forecasts (£/MWh).
+        baseline_hedge_ratio: Fraction of position hedged at execution (0–1).
+        take_profit_pct:      Take-profit trigger as a fraction of predicted spread.
+        stop_loss_mwh:        Stop-loss threshold in MWh of exposure.
 
     Returns:
         (net_pnl, trading_metrics)

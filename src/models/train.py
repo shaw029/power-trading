@@ -82,6 +82,7 @@ def _make_predictions_df(
         "actual_spread": y_test.values,
         "predicted_spread": predictions,
         "day_ahead_price": test_df["day_ahead_price"] if "day_ahead_price" in test_df.columns else np.nan,
+        "mid_price": test_df["mid_price"] if "mid_price" in test_df.columns else np.nan,
         "system_sell_price": test_df["system_sell_price"],
         "system_buy_price": test_df["system_buy_price"] if "system_buy_price" in test_df.columns else 0.0,
     })

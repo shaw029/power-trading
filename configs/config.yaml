@@ -23,3 +23,8 @@ validation:
 signal:
   threshold: 5.0
   top_n: 5
+
+execution:
+  baseline_hedge_ratio: 0.50
+  take_profit_pct: 0.90
+  stop_loss_mwh: 5.00
