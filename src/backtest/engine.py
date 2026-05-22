@@ -83,6 +83,10 @@ def run_backtest(
     net_pnl = np.zeros(n, dtype=float)
     halted_at = None
 
+    _active_tp_count = 0
+    _active_sl_count = 0
+    _active_imbalance_count = 0
+
     for i in range(n):
         if current_capital <= drawdown_floor:
             halted_at = i
@@ -118,10 +122,17 @@ def run_backtest(
                 # Reconstruct absolute fair-value target for the active slice
                 tp_level = da + pred_spread * take_profit_pct
                 loss_per_mwh = da - mid_adj  # positive when mid has fallen
-                if mid_adj >= tp_level or loss_per_mwh >= stop_loss_mwh:
+                tp_hit = mid_adj >= tp_level
+                sl_hit = loss_per_mwh >= stop_loss_mwh
+                if tp_hit or sl_hit:
                     active_exit = mid_adj
+                    if tp_hit:
+                        _active_tp_count += 1
+                    if sl_hit:
+                        _active_sl_count += 1
                 else:
                     active_exit = sys_sell[i]
+                    _active_imbalance_count += 1
                 active_pnl = active_mwh * (active_exit - da)
 
             else:  # SHORT — exit by buying
@@ -132,10 +143,17 @@ def run_backtest(
                 # predicted_spread is negative for short signals (da > intraday expected)
                 tp_level = da + pred_spread * take_profit_pct
                 loss_per_mwh = mid_adj - da  # positive when mid has risen
-                if mid_adj <= tp_level or loss_per_mwh >= stop_loss_mwh:
+                tp_hit = mid_adj <= tp_level
+                sl_hit = loss_per_mwh >= stop_loss_mwh
+                if tp_hit or sl_hit:
                     active_exit = mid_adj
+                    if tp_hit:
+                        _active_tp_count += 1
+                    if sl_hit:
+                        _active_sl_count += 1
                 else:
                     active_exit = sys_buy[i]
+                    _active_imbalance_count += 1
                 active_pnl = active_mwh * (da - active_exit)
 
             gross = passive_pnl + active_pnl
@@ -260,6 +278,12 @@ def run_backtest(
             "neutral": n_neutral,
         },
         "daily_summary": daily_summary,
+        "execution_breakdown": {
+            "total_active_trades": n_active,
+            "active_tp_triggered": _active_tp_count,
+            "active_sl_triggered": _active_sl_count,
+            "active_rode_to_imbalance": _active_imbalance_count,
+        },
     }
 
     return net_pnl, trading_metrics
