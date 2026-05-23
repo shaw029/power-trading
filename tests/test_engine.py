@@ -47,6 +47,12 @@ class TestRunBacktestBasic:
                 np.array([65.0]),
             )
 
+    @pytest.mark.parametrize("ratio", [-0.1, 1.01, -1.0, 2.0])
+    def test_invalid_baseline_hedge_ratio_raises(self, ratio):
+        sigs, da, ssp, sbp = _flat(5)
+        with pytest.raises(ValueError, match="baseline_hedge_ratio"):
+            run_backtest(sigs, da, ssp, sbp, baseline_hedge_ratio=ratio)
+
     def test_output_pnl_length_equals_input(self):
         sigs, da, ssp, sbp = _flat(20)
         pnl, _ = run_backtest(sigs, da, ssp, sbp)

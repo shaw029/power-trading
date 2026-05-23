@@ -58,6 +58,11 @@ def run_backtest(
         (net_pnl, trading_metrics)
         net_pnl — per-period absolute PnL array (£), length == len(signals)
     """
+    if not 0.0 <= baseline_hedge_ratio <= 1.0:
+        raise ValueError(
+            f"baseline_hedge_ratio must be between 0 and 1, got {baseline_hedge_ratio}"
+        )
+
     signals = np.asarray(signals, dtype=int)
     da_prices = np.asarray(da_prices, dtype=float)
     sys_sell = np.asarray(system_sell_price, dtype=float)
