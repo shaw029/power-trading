@@ -3,7 +3,7 @@
 ## 1. Executive Summary: Virtual Trading & Imbalance Proxying
 This system models the behavior of a **Non-Physical Participant (Virtual Trader)** in the Great Britain (GB) wholesale power market. Lacking physical generation or demand, the strategy seeks to extract Alpha from structural grid forecasting inefficiencies (e.g., wind forecast errors vs. actual delivery).
 
-**The Objective:** The strategy takes directional exposure in the **EPEX SPOT Day-Ahead (DA) auction** based on expected system imbalance. 
+**The Objective:** The strategy takes directional exposure in the **EPEX SPOT Day-Ahead (DA) auction** based on expected system imbalance, then actively manages intraday risk by splitting volume between a passive Market Index Price (MID) hedge and an active Take-Profit/Stop-Loss engine rather than leaving 100 % exposed to Imbalance settlement.
 
 *Crucial Market Distinction:* The strategy does *not* treat the Imbalance mechanism (SSP/SBP) as a primary liquidity venue for arbitrage. Instead, it uses machine learning to proxy expected system imbalance via forecast-driven residual load. **Mispricing is explicitly defined as the deviation between the model-implied fair value (derived from residual load and forecast dynamics) and the observed Day-Ahead auction price.** The strategy takes a DA position when this mispricing is detected, with the intended exit path being the continuous Intraday (ID) market, leaving only residual, unhedged exposure to the Imbalance settlement mechanism.
 

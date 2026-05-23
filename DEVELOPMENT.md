@@ -79,13 +79,32 @@ Experiments are driven by YAML files in `configs/`. Pass one with `--config`:
 python main.py --config configs/config.yaml
 ```
 
-The config controls model hyperparameters, walk-forward settings, signal threshold, and where all artifacts are written. Each config must declare a `strategy` and `run_name`; the pipeline writes everything to:
+The config controls model hyperparameters, walk-forward settings, signal threshold, execution behaviour, and where all artifacts are written. Each config must declare a `strategy` and `run_name`; the pipeline writes everything to:
 
 ```
 artifacts/{strategy}/{run_name}/features/   # features.parquet
 artifacts/{strategy}/{run_name}/model/      # model.joblib, metadata.json
 artifacts/{strategy}/{run_name}/trading/    # predictions.csv, signals.csv, pnl.csv, metrics.json
 ```
+
+### Execution Config
+
+The `execution` block controls how DA positions are managed during the intraday window:
+
+```yaml
+execution:
+  mode: hybrid                # execution strategy (hybrid | imbalance_only)
+  baseline_hedge_ratio: 0.5   # fraction of position hedged passively at MID (0.0–1.0)
+  take_profit_pct: 0.08       # take-profit trigger as fraction of predicted spread
+  stop_loss_mwh: 15.0         # per-period stop-loss cap in £/MWh
+```
+
+| Key | Description |
+|---|---|
+| `mode` | `hybrid` splits volume between a passive MID hedge and an active TP/SL engine; `imbalance_only` settles everything at imbalance (Phase 1 behaviour) |
+| `baseline_hedge_ratio` | Share of each position passively exited at the Market Index Price. Must be between 0 and 1 |
+| `take_profit_pct` | Fraction of predicted spread at which the active slice locks in profit |
+| `stop_loss_mwh` | Maximum adverse move (£/MWh) before the active slice is stopped out |
 
 ## Project Structure
 
