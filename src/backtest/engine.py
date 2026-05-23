@@ -106,7 +106,7 @@ def run_backtest(
         price_denominator = max(abs(da_prices[i]), 10.0)
         position_mwh = (current_capital * risk_pct) / price_denominator
 
-        if _mid is not None and _pred is not None:
+        if _mid is not None and _pred is not None and not (np.isnan(_mid[i]) or np.isnan(_pred[i])):
             # ----------------------------------------------------------
             # Hybrid execution: passive baseline slice + active choice slice
             # ----------------------------------------------------------
