@@ -459,6 +459,45 @@ class TestHybridExecution:
         assert bd["active_sl_triggered"] == 1
         assert bd["active_rode_to_imbalance"] == 1
 
+    # ---- LONG — double hit: both TP and SL true, TP takes precedence ------
+
+    def test_long_double_hit_counts_as_tp(self):
+        # pred_spread=-20 → tp_level=50+(-20)*0.9=32; stop_loss_mwh=5
+        # mid_adj=42.5; tp_hit: 42.5>=32 True; loss=50-42.5=7.5>=5 True
+        # Both fire → counted as TP, not SL
+        _, metrics = self._run(
+            signal=1, mid=43.0, pred_spread=-20.0, stop_loss_mwh=5.0,
+        )
+        assert metrics["execution_breakdown"]["active_tp_triggered"] == 1
+        assert metrics["execution_breakdown"]["active_sl_triggered"] == 0
+
+    def test_long_double_hit_exit_price_is_mid_adj(self):
+        # Exit price is mid_adj regardless of which flag wins
+        # mid_adj=42.5; passive=10*(42.5-50)=-75; active=10*(42.5-50)=-75 → gross=-150
+        pnl, _ = self._run(
+            signal=1, mid=43.0, pred_spread=-20.0, stop_loss_mwh=5.0,
+        )
+        assert pnl[0] == pytest.approx(-150.0)
+
+    # ---- SHORT — double hit: both TP and SL true, TP takes precedence ----
+
+    def test_short_double_hit_counts_as_tp(self):
+        # pred_spread=+20 (atypical) → tp_level=50+20*0.9=68; stop_loss_mwh=5
+        # mid_adj=56.5; tp_hit: 56.5<=68 True; loss=56.5-50=6.5>=5 True
+        # Both fire → counted as TP, not SL
+        _, metrics = self._run(
+            signal=-1, mid=56.0, pred_spread=20.0, stop_loss_mwh=5.0,
+        )
+        assert metrics["execution_breakdown"]["active_tp_triggered"] == 1
+        assert metrics["execution_breakdown"]["active_sl_triggered"] == 0
+
+    def test_short_double_hit_exit_price_is_mid_adj(self):
+        # mid_adj=56.5; passive=10*(50-56.5)=-65; active=10*(50-56.5)=-65 → gross=-130
+        pnl, _ = self._run(
+            signal=-1, mid=56.0, pred_spread=20.0, stop_loss_mwh=5.0,
+        )
+        assert pnl[0] == pytest.approx(-130.0)
+
     # ---- NaN mid → baseline fallback --------------------------------------
 
     def test_nan_mid_price_falls_back_to_baseline(self):

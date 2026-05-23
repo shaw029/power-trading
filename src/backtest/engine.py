@@ -131,6 +131,8 @@ def run_backtest(
                 sl_hit = loss_per_mwh >= stop_loss_mwh
                 if tp_hit or sl_hit:
                     active_exit = mid_adj
+                    # TP takes precedence when both fire (exit price is
+                    # identical; only the classification differs).
                     if tp_hit:
                         _active_tp_count += 1
                     elif sl_hit:
@@ -152,6 +154,8 @@ def run_backtest(
                 sl_hit = loss_per_mwh >= stop_loss_mwh
                 if tp_hit or sl_hit:
                     active_exit = mid_adj
+                    # TP takes precedence when both fire (exit price is
+                    # identical; only the classification differs).
                     if tp_hit:
                         _active_tp_count += 1
                     elif sl_hit:
