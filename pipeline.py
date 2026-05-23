@@ -229,7 +229,7 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
     transaction_cost     = config["signal"].get("transaction_cost", 0.0)              if config else 0.0
     baseline_hedge_ratio = config.get("execution", {}).get("baseline_hedge_ratio", 0.50) if config else 0.50
     take_profit_pct      = config.get("execution", {}).get("take_profit_pct", 0.90)      if config else 0.90
-    stop_loss_mwh        = config.get("execution", {}).get("stop_loss_mwh", 5.00)        if config else 5.00
+    stop_loss_price_delta        = config.get("execution", {}).get("stop_loss_price_delta", 5.00)        if config else 5.00
     slippage             = config.get("execution", {}).get("slippage", 0.50)             if config else 0.50
     model_type       = config["model"]["type"]         if config else "xgboost"
     model_params     = config["model"]["hyperparameters"] if config else None
@@ -316,7 +316,7 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
             predicted_spreads=predictions_df["predicted_spread"].values,
             baseline_hedge_ratio=baseline_hedge_ratio,
             take_profit_pct=take_profit_pct,
-            stop_loss_mwh=stop_loss_mwh,
+            stop_loss_price_delta=stop_loss_price_delta,
             slippage=slippage,
         )
 

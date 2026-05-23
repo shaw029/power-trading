@@ -86,6 +86,21 @@ class TestLongTrade:
         pnl, _ = run_backtest(sigs, da, ssp, sbp, cost_per_trade=0.0)
         assert pnl[0] < 0.0
 
+    def test_slippage_reduces_hybrid_pnl(self):
+        """Slippage widens the bid-ask cost on intraday mid-price exits."""
+        sigs = np.array([1])
+        da = np.array([50.0])
+        ssp = np.array([70.0])
+        sbp = np.array([75.0])
+        common = dict(
+            mid_prices=np.array([65.0]),
+            predicted_spreads=np.array([20.0]),
+            cost_per_trade=0.0,
+        )
+        pnl_no_slip, _ = run_backtest(sigs, da, ssp, sbp, slippage=0.0, **common)
+        pnl_with_slip, _ = run_backtest(sigs, da, ssp, sbp, slippage=2.0, **common)
+        assert pnl_with_slip[0] < pnl_no_slip[0]
+
     def test_transaction_cost_reduces_pnl(self):
         sigs = np.array([1])
         da = np.array([50.0])
@@ -388,13 +403,13 @@ class TestHybridExecution:
     # ---- LONG — stop-loss hit ---------------------------------------------
 
     def test_long_stop_loss_triggered_pnl(self):
-        # mid_adj=42.5; loss_per_mwh=50-42.5=7.5 >= stop_loss_mwh=5 → sl_hit
+        # mid_adj=42.5; loss_per_mwh=50-42.5=7.5 >= stop_loss_price_delta=5 → sl_hit
         # passive=10*(42.5-50)=-75; active=10*(42.5-50)=-75 → gross=-150
-        pnl, _ = self._run(signal=1, mid=43.0, pred_spread=20.0, stop_loss_mwh=5.0)
+        pnl, _ = self._run(signal=1, mid=43.0, pred_spread=20.0, stop_loss_price_delta=5.0)
         assert pnl[0] == pytest.approx(-150.0)
 
     def test_long_stop_loss_increments_sl_counter(self):
-        _, metrics = self._run(signal=1, mid=43.0, pred_spread=20.0, stop_loss_mwh=5.0)
+        _, metrics = self._run(signal=1, mid=43.0, pred_spread=20.0, stop_loss_price_delta=5.0)
         assert metrics["execution_breakdown"]["active_sl_triggered"] == 1
         assert metrics["execution_breakdown"]["active_tp_triggered"] == 0
         assert metrics["execution_breakdown"]["active_rode_to_imbalance"] == 0
@@ -430,13 +445,13 @@ class TestHybridExecution:
     # ---- SHORT — stop-loss hit --------------------------------------------
 
     def test_short_stop_loss_triggered_pnl(self):
-        # mid_adj=57.5; loss_per_mwh=57.5-50=7.5 >= stop_loss_mwh=5 → sl_hit
+        # mid_adj=57.5; loss_per_mwh=57.5-50=7.5 >= stop_loss_price_delta=5 → sl_hit
         # passive=10*(50-57.5)=-75; active=10*(50-57.5)=-75 → gross=-150
-        pnl, _ = self._run(signal=-1, mid=57.0, pred_spread=-15.0, stop_loss_mwh=5.0)
+        pnl, _ = self._run(signal=-1, mid=57.0, pred_spread=-15.0, stop_loss_price_delta=5.0)
         assert pnl[0] == pytest.approx(-150.0)
 
     def test_short_stop_loss_increments_sl_counter(self):
-        _, metrics = self._run(signal=-1, mid=57.0, pred_spread=-15.0, stop_loss_mwh=5.0)
+        _, metrics = self._run(signal=-1, mid=57.0, pred_spread=-15.0, stop_loss_price_delta=5.0)
         assert metrics["execution_breakdown"]["active_sl_triggered"] == 1
         assert metrics["execution_breakdown"]["active_tp_triggered"] == 0
         assert metrics["execution_breakdown"]["active_rode_to_imbalance"] == 0
@@ -458,7 +473,7 @@ class TestHybridExecution:
             cost_per_trade=0.0,
             mid_prices=np.array([75.0, 45.0, 43.0]),
             predicted_spreads=np.array([20.0, -15.0, 20.0]),
-            stop_loss_mwh=5.0,
+            stop_loss_price_delta=5.0,
         )
         bd = metrics["execution_breakdown"]
         assert bd["active_tp_triggered"] == 1
@@ -468,11 +483,11 @@ class TestHybridExecution:
     # ---- LONG — double hit: both TP and SL true, TP takes precedence ------
 
     def test_long_double_hit_counts_as_tp(self):
-        # pred_spread=-20 → tp_level=50+(-20)*0.9=32; stop_loss_mwh=5
+        # pred_spread=-20 → tp_level=50+(-20)*0.9=32; stop_loss_price_delta=5
         # mid_adj=42.5; tp_hit: 42.5>=32 True; loss=50-42.5=7.5>=5 True
         # Both fire → counted as TP, not SL
         _, metrics = self._run(
-            signal=1, mid=43.0, pred_spread=-20.0, stop_loss_mwh=5.0,
+            signal=1, mid=43.0, pred_spread=-20.0, stop_loss_price_delta=5.0,
         )
         assert metrics["execution_breakdown"]["active_tp_triggered"] == 1
         assert metrics["execution_breakdown"]["active_sl_triggered"] == 0
@@ -481,18 +496,18 @@ class TestHybridExecution:
         # Exit price is mid_adj regardless of which flag wins
         # mid_adj=42.5; passive=10*(42.5-50)=-75; active=10*(42.5-50)=-75 → gross=-150
         pnl, _ = self._run(
-            signal=1, mid=43.0, pred_spread=-20.0, stop_loss_mwh=5.0,
+            signal=1, mid=43.0, pred_spread=-20.0, stop_loss_price_delta=5.0,
         )
         assert pnl[0] == pytest.approx(-150.0)
 
     # ---- SHORT — double hit: both TP and SL true, TP takes precedence ----
 
     def test_short_positive_pred_spread_triggers_sl(self):
-        # pred_spread=+20 (atypical) → tp_level=50-20*0.9=32; stop_loss_mwh=5
+        # pred_spread=+20 (atypical) → tp_level=50-20*0.9=32; stop_loss_price_delta=5
         # mid_adj=56.5; tp_hit: 56.5<=32 False; loss=56.5-50=6.5>=5 True
         # Only SL fires — positive pred_spread no longer inflates tp_level above DA
         _, metrics = self._run(
-            signal=-1, mid=56.0, pred_spread=20.0, stop_loss_mwh=5.0,
+            signal=-1, mid=56.0, pred_spread=20.0, stop_loss_price_delta=5.0,
         )
         assert metrics["execution_breakdown"]["active_tp_triggered"] == 0
         assert metrics["execution_breakdown"]["active_sl_triggered"] == 1
@@ -500,7 +515,7 @@ class TestHybridExecution:
     def test_short_positive_pred_spread_sl_exit_uses_mid_adj(self):
         # mid_adj=56.5; passive=10*(50-56.5)=-65; active=10*(50-56.5)=-65 → gross=-130
         pnl, _ = self._run(
-            signal=-1, mid=56.0, pred_spread=20.0, stop_loss_mwh=5.0,
+            signal=-1, mid=56.0, pred_spread=20.0, stop_loss_price_delta=5.0,
         )
         assert pnl[0] == pytest.approx(-130.0)
 

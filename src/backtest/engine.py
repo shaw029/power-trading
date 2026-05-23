@@ -19,7 +19,7 @@ def run_backtest(
     predicted_spreads: np.ndarray | None = None,
     baseline_hedge_ratio: float = 0.50,
     take_profit_pct: float = 0.90,
-    stop_loss_mwh: float = 5.00,
+    stop_loss_price_delta: float = 5.00,
     slippage: float = 0.50,
 ) -> tuple:
     """Run backtest for a Day-Ahead Auction vs Imbalance settlement strategy.
@@ -51,7 +51,7 @@ def run_backtest(
         predicted_spreads:    Raw model spread forecasts (£/MWh).
         baseline_hedge_ratio: Fraction of position hedged at execution (0–1).
         take_profit_pct:      Take-profit trigger as a fraction of predicted spread.
-        stop_loss_mwh:        Stop-loss threshold in MWh of exposure.
+        stop_loss_price_delta:        Stop-loss threshold — maximum adverse price move (£/MWh) before the active slice exits.
         slippage:             Bid-ask crossing cost applied to intraday mid-price exits (£/MWh).
 
     Returns:
@@ -133,7 +133,7 @@ def run_backtest(
                 tp_level = da + pred_spread * take_profit_pct
                 loss_per_mwh = da - mid_adj  # positive when mid has fallen
                 tp_hit = mid_adj >= tp_level
-                sl_hit = loss_per_mwh >= stop_loss_mwh
+                sl_hit = loss_per_mwh >= stop_loss_price_delta
                 if tp_hit or sl_hit:
                     active_exit = mid_adj
                     # TP takes precedence when both fire (exit price is
@@ -155,7 +155,7 @@ def run_backtest(
                 tp_level = da - abs(pred_spread) * take_profit_pct
                 loss_per_mwh = mid_adj - da  # positive when mid has risen
                 tp_hit = mid_adj <= tp_level
-                sl_hit = loss_per_mwh >= stop_loss_mwh
+                sl_hit = loss_per_mwh >= stop_loss_price_delta
                 if tp_hit or sl_hit:
                     active_exit = mid_adj
                     # TP takes precedence when both fire (exit price is
@@ -317,7 +317,7 @@ def run_backtest_from_dataframe(
     max_drawdown_pct: float = 0.20,
     baseline_hedge_ratio: float = 0.50,
     take_profit_pct: float = 0.90,
-    stop_loss_mwh: float = 5.00,
+    stop_loss_price_delta: float = 5.00,
     slippage: float = 0.50,
 ) -> tuple:
     """Convenience wrapper: run backtest from a DataFrame and attach per-period PnL."""
@@ -340,7 +340,7 @@ def run_backtest_from_dataframe(
         predicted_spreads=predicted_spreads,
         baseline_hedge_ratio=baseline_hedge_ratio,
         take_profit_pct=take_profit_pct,
-        stop_loss_mwh=stop_loss_mwh,
+        stop_loss_price_delta=stop_loss_price_delta,
         slippage=slippage,
     )
 

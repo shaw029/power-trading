@@ -96,7 +96,7 @@ execution:
   mode: hybrid                # execution strategy (hybrid | imbalance_only)
   baseline_hedge_ratio: 0.5   # fraction of position hedged passively at MID (0.0–1.0)
   take_profit_pct: 0.08       # take-profit trigger as fraction of predicted spread
-  stop_loss_mwh: 15.0         # per-period stop-loss cap in £/MWh
+  stop_loss_price_delta: 15.0         # per-period stop-loss cap in £/MWh
 ```
 
 | Key | Description |
@@ -104,7 +104,7 @@ execution:
 | `mode` | `hybrid` splits volume between a passive MID hedge and an active TP/SL engine; `imbalance_only` settles everything at imbalance (Phase 1 behaviour) |
 | `baseline_hedge_ratio` | Share of each position passively exited at the Market Index Price. Must be between 0 and 1 |
 | `take_profit_pct` | Fraction of predicted spread at which the active slice locks in profit |
-| `stop_loss_mwh` | Maximum adverse move (£/MWh) before the active slice is stopped out |
+| `stop_loss_price_delta` | Maximum adverse price move (£/MWh) before the active slice is stopped out |
 
 ## Project Structure
 
