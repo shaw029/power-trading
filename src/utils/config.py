@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+import yaml
+
 # ============================================================================
 # PROJECT ROOT  (defined first so .env can be loaded before anything else)
 # ============================================================================
@@ -107,3 +109,45 @@ def ensure_directories():
     """Create base data directories. Artifact dirs are created on-demand by save functions."""
     for directory in [RAW_DATA_DIR, PROCESSED_DATA_DIR]:
         directory.mkdir(parents=True, exist_ok=True)
+
+
+# ============================================================================
+# YAML CONFIG LOADING & VALIDATION
+# ============================================================================
+
+_VALID_STRATEGY_TYPES = ("virtual", "bess")
+
+_BESS_DEFAULTS = {
+    "capacity_mwh": 100.0,
+    "power_mw": 50.0,
+    "round_trip_efficiency": 0.88,
+    "degradation_cost_per_mwh": 8.50,
+    "initial_soc_pct": 0.50,
+}
+
+
+def load_config(path: str | Path) -> dict:
+    """Load and validate a YAML experiment config."""
+    with open(path) as f:
+        config = yaml.safe_load(f)
+
+    return validate_config(config)
+
+
+def validate_config(config: dict) -> dict:
+    """Validate config dict, applying defaults for optional sections."""
+    config.setdefault("strategy_type", "virtual")
+
+    if config["strategy_type"] not in _VALID_STRATEGY_TYPES:
+        raise ValueError(
+            f"Invalid strategy_type '{config['strategy_type']}'. "
+            f"Must be one of {list(_VALID_STRATEGY_TYPES)}."
+        )
+
+    if config["strategy_type"] == "bess":
+        bess = config.get("bess", {})
+        for key, default in _BESS_DEFAULTS.items():
+            bess.setdefault(key, default)
+        config["bess"] = bess
+
+    return config

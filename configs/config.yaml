@@ -1,4 +1,5 @@
 strategy: "da_imbalance"
+strategy_type: "virtual"
 run_name: "xgb_wf_v1"
 
 data:
@@ -29,3 +30,10 @@ execution:
   take_profit_pct: 0.90
   stop_loss_price_delta: 5.00
   slippage: 0.50
+
+bess:
+  capacity_mwh: 100.0
+  power_mw: 50.0
+  round_trip_efficiency: 0.88
+  degradation_cost_per_mwh: 8.50
+  initial_soc_pct: 0.50
