@@ -103,6 +103,9 @@ def run_backtest(
         if signals[i] == 0:
             continue
 
+        if np.isnan(da_prices[i]) or np.isnan(sys_sell[i]) or np.isnan(sys_buy[i]):
+            continue
+
         # Use abs(da_price) floored at £10 so negative or near-zero prices
         # (which occurred in GB in 2018/2019) don't invert or inflate position size.
         price_denominator = max(abs(da_prices[i]), 10.0)

@@ -520,3 +520,75 @@ class TestHybridExecution:
             predicted_spreads=np.array([20.0]),
         )
         assert pnl_hybrid[0] != pytest.approx(pnl_base[0])
+
+
+# ---------------------------------------------------------------------------
+# NaN in da_prices / system_sell_price / system_buy_price
+# ---------------------------------------------------------------------------
+
+
+class TestNaNPriceInputs:
+    """NaN in core price arrays must not corrupt current_capital."""
+
+    _CAP = 50_000.0
+    _RISK = 0.02
+
+    def test_nan_da_price_skips_period_zero_pnl(self):
+        pnl, _ = run_backtest(
+            np.array([1]),
+            np.array([np.nan]),
+            np.array([70.0]),
+            np.array([75.0]),
+            starting_capital=self._CAP,
+            risk_pct=self._RISK,
+            cost_per_trade=0.0,
+        )
+        assert np.isfinite(pnl[0])
+        assert pnl[0] == pytest.approx(0.0)
+
+    def test_nan_system_sell_price_skips_period_zero_pnl(self):
+        pnl, _ = run_backtest(
+            np.array([1]),
+            np.array([50.0]),
+            np.array([np.nan]),
+            np.array([75.0]),
+            starting_capital=self._CAP,
+            risk_pct=self._RISK,
+            cost_per_trade=0.0,
+        )
+        assert np.isfinite(pnl[0])
+        assert pnl[0] == pytest.approx(0.0)
+
+    def test_nan_system_buy_price_skips_period_zero_pnl(self):
+        pnl, _ = run_backtest(
+            np.array([-1]),
+            np.array([50.0]),
+            np.array([45.0]),
+            np.array([np.nan]),
+            starting_capital=self._CAP,
+            risk_pct=self._RISK,
+            cost_per_trade=0.0,
+        )
+        assert np.isfinite(pnl[0])
+        assert pnl[0] == pytest.approx(0.0)
+
+    def test_nan_period_does_not_corrupt_capital_for_subsequent_trade(self):
+        # Period 0: NaN da_price → skipped; capital stays at 50_000
+        # Period 1: valid long with DA=50, SSP=70 → normal PnL
+        sigs = np.array([1, 1])
+        da = np.array([np.nan, 50.0])
+        ssp = np.array([70.0, 70.0])
+        sbp = np.array([75.0, 75.0])
+        pnl, metrics = run_backtest(
+            sigs, da, ssp, sbp,
+            starting_capital=self._CAP,
+            risk_pct=self._RISK,
+            cost_per_trade=0.0,
+        )
+        assert np.isfinite(pnl[0])
+        assert pnl[0] == pytest.approx(0.0)
+        # Period 1 should trade at full starting capital (not NaN-tainted)
+        expected_position = self._CAP * self._RISK / 50.0
+        expected_pnl1 = expected_position * (70.0 - 50.0)
+        assert pnl[1] == pytest.approx(expected_pnl1, rel=1e-6)
+        assert np.isfinite(metrics["final_capital"])
