@@ -9,3 +9,5 @@ PyYAML
 python-dateutil
 debugpy
 pytest
+streamlit
+plotly
