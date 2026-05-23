@@ -301,14 +301,22 @@ def run_backtest_from_dataframe(
     sell_price_col: str = "system_sell_price",
     buy_price_col: str = "system_buy_price",
     time_col: str = "time",
+    mid_price_col: str | None = None,
+    predicted_spread_col: str | None = None,
     cost_per_trade: float = 0.1,
     starting_capital: float = 50_000.0,
     risk_pct: float = 0.02,
     max_drawdown_pct: float = 0.20,
+    baseline_hedge_ratio: float = 0.50,
+    take_profit_pct: float = 0.90,
+    stop_loss_mwh: float = 5.00,
+    slippage: float = 0.50,
 ) -> tuple:
     """Convenience wrapper: run backtest from a DataFrame and attach per-period PnL."""
     df = df.copy().sort_values(time_col).reset_index(drop=True)
     timestamps = df[time_col].values if time_col in df.columns else None
+    mid_prices = df[mid_price_col].values if mid_price_col and mid_price_col in df.columns else None
+    predicted_spreads = df[predicted_spread_col].values if predicted_spread_col and predicted_spread_col in df.columns else None
 
     net_pnl, metrics = run_backtest(
         signals=df[signal_col].values,
@@ -320,6 +328,12 @@ def run_backtest_from_dataframe(
         starting_capital=starting_capital,
         risk_pct=risk_pct,
         max_drawdown_pct=max_drawdown_pct,
+        mid_prices=mid_prices,
+        predicted_spreads=predicted_spreads,
+        baseline_hedge_ratio=baseline_hedge_ratio,
+        take_profit_pct=take_profit_pct,
+        stop_loss_mwh=stop_loss_mwh,
+        slippage=slippage,
     )
 
     df["pnl"] = net_pnl
