@@ -20,19 +20,30 @@ Per-call override (ignores the `.env` default): `fetch_wind_forecast("CSV")`
 
 ## Using CSV Sources (offline / fast re-runs)
 
-**Step 1** — generate CSVs once via API:
+**Quick start** — download all raw data in one go (or run `python bootstrap_data.py` for a 3-day sample):
 
 ```python
+from src.data.download import (
+    fetch_demand_forecast,
+    fetch_wind_forecast,
+    fetch_generation_actual,
+    fetch_day_ahead_price,
+    fetch_market_index_price,
+    fetch_demand_actual,
+    fetch_imbalance_price,
+    fetch_neso_ndfd,
+)
+
+fetch_neso_ndfd().to_csv("data/raw/neso_ndfd.csv", index=False)
 fetch_wind_forecast("ELEXON").to_csv("data/raw/wind_forecast.csv", index=False)
 fetch_generation_actual("ELEXON").to_csv("data/raw/generation_actual.csv", index=False)
 fetch_day_ahead_price("ENTSOE").to_csv("data/raw/day_ahead_price.csv", index=False)
 fetch_market_index_price("ELEXON").to_csv("data/raw/market_index_price.csv", index=False)
 fetch_demand_actual("ELEXON").to_csv("data/raw/demand_actual.csv", index=False)
 fetch_imbalance_price("ELEXON").to_csv("data/raw/imbalance_price.csv", index=False)
-fetch_neso_ndfd().to_csv("data/raw/neso_ndfd.csv", index=False)
 ```
 
-**Step 2** — set `"CSV"` in `.env` for the relevant sources.
+Once the CSVs exist, set `"CSV"` in `.env` for the relevant sources.
 
 ### Required CSV columns
 
