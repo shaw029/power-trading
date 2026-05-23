@@ -247,90 +247,80 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
     logger.info(f"BESS metrics saved to {trading_dir / 'metrics.json'}")
 
 
-def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) -> dict:
-    """Run the complete electricity trading pipeline from data to backtest results.
+def _run_bess_pipeline(config: dict) -> dict:
+    from src.bess.bess_asset import BESSAsset
+    from src.bess.da_optimizer import optimize_da_schedule
+    from src.bess.intraday_manager import run_intraday_session
 
-    Args:
-        execution_mode: 'full', 'features', or 'model'
-        config:         Optional experiment config dict loaded from a YAML file.
-                        When provided, drives model hyperparams, validation strategy,
-                        signal thresholds, and output paths.  Falls back to defaults
-                        from config.py when None.
-    """
-    logger.info(f"Starting pipeline execution in {execution_mode} mode")
-    ensure_directories()
+    bess_cfg = config["bess"]
+    bess_paths_config = {**config, "strategy": "bess"}
+    paths = setup_experiment_paths(bess_paths_config)
 
-    if config and config.get("strategy_type") == "bess":
-        from src.bess.bess_asset import BESSAsset
-        from src.bess.da_optimizer import optimize_da_schedule
-        from src.bess.intraday_manager import run_intraday_session
+    results = {
+        "timestamp": datetime.now().isoformat(),
+        "mode": "bess",
+        "paths": paths,
+    }
 
-        paths = setup_experiment_paths(config)
-        results = {
-            "timestamp": datetime.now().isoformat(),
-            "execution_mode": execution_mode,
-            "paths": paths,
-        }
+    logger.info("BESS pipeline: loading and processing price data")
+    da_processed = process_day_ahead_price(fetch_day_ahead_price())
+    mid_processed = process_market_index_price(fetch_market_index_price())
+    imb_processed = process_imbalance_price(fetch_imbalance_price())
 
-        logger.info("BESS strategy: loading and processing price data")
-        da_processed = process_day_ahead_price(fetch_day_ahead_price())
-        mid_processed = process_market_index_price(fetch_market_index_price())
-        imb_processed = process_imbalance_price(fetch_imbalance_price())
+    prices = (
+        da_processed.resample("1h").mean()
+        .join(mid_processed.resample("1h").mean())
+        .join(imb_processed[["system_buy_price"]].resample("1h").mean())
+        .dropna()
+    )
 
-        prices = (
-            da_processed.resample("1h").mean()
-            .join(mid_processed.resample("1h").mean())
-            .join(imb_processed[["system_buy_price"]].resample("1h").mean())
-            .dropna()
+    asset = BESSAsset(
+        capacity_mwh=bess_cfg["capacity_mwh"],
+        power_mw=bess_cfg["power_mw"],
+        round_trip_efficiency=bess_cfg["round_trip_efficiency"],
+        degradation_cost_per_mwh=bess_cfg["degradation_cost_per_mwh"],
+        initial_soc_pct=bess_cfg["initial_soc_pct"],
+    )
+
+    daily_results = []
+    for date, day_df in prices.groupby(prices.index.date):
+        if len(day_df) != 24:
+            continue
+        asset.reset()
+        da_prices = day_df["day_ahead_price"].tolist()
+        schedule = optimize_da_schedule(da_prices, asset)
+        result = run_intraday_session(
+            da_schedule=schedule,
+            da_prices=da_prices,
+            mid_prices=day_df["mid_price"].tolist(),
+            imbalance_prices=day_df["system_buy_price"].tolist(),
+            asset=asset,
+            config=bess_cfg,
         )
+        daily_results.append({
+            "date": date,
+            "da_revenue": result["da_revenue"],
+            "intraday_pnl": result["intraday_pnl"],
+            "imbalance_pnl": result["imbalance_pnl"],
+            "degradation_cost": result["total_degradation_cost"],
+            "net_pnl": result["net_pnl"],
+        })
 
-        bess_cfg = config["bess"]
-        asset = BESSAsset(
-            capacity_mwh=bess_cfg["capacity_mwh"],
-            power_mw=bess_cfg["power_mw"],
-            round_trip_efficiency=bess_cfg["round_trip_efficiency"],
-            degradation_cost_per_mwh=bess_cfg["degradation_cost_per_mwh"],
-            initial_soc_pct=bess_cfg["initial_soc_pct"],
-        )
+    results_df = pd.DataFrame(daily_results)
+    save_bess_outputs(results_df, config, paths)
+    results["results_df"] = results_df
 
-        daily_results = []
-        for date, day_df in prices.groupby(prices.index.date):
-            if len(day_df) != 24:
-                continue
-            asset.reset()
-            da_prices = day_df["day_ahead_price"].tolist()
-            schedule = optimize_da_schedule(da_prices, asset)
-            result = run_intraday_session(
-                da_schedule=schedule,
-                da_prices=da_prices,
-                mid_prices=day_df["mid_price"].tolist(),
-                imbalance_prices=day_df["system_buy_price"].tolist(),
-                asset=asset,
-                config=bess_cfg,
-            )
-            daily_results.append({
-                "date": date,
-                "da_revenue": result["da_revenue"],
-                "intraday_pnl": result["intraday_pnl"],
-                "imbalance_pnl": result["imbalance_pnl"],
-                "degradation_cost": result["total_degradation_cost"],
-                "net_pnl": result["net_pnl"],
-            })
+    logger.info("BESS pipeline completed successfully")
+    return results
 
-        results_df = pd.DataFrame(daily_results)
-        save_bess_outputs(results_df, config, paths)
-        results["results_df"] = results_df
 
-        logger.info("BESS pipeline completed successfully")
-        return results
-
-    # --- settings from config (or defaults) ---
+def _run_virtual_pipeline(config: dict | None = None) -> dict:
     signal_threshold     = config["signal"]["threshold"]                              if config else DEFAULT_SIGNAL_THRESHOLD
     top_n                = config["signal"]["top_n"]                                  if config else 5
     transaction_cost     = config["signal"].get("transaction_cost", 0.0)              if config else 0.0
     baseline_hedge_ratio = config.get("execution", {}).get("baseline_hedge_ratio", 0.50) if config else 0.50
     take_profit_pct      = config.get("execution", {}).get("take_profit_pct", 0.90)      if config else 0.90
-    stop_loss_price_delta        = config.get("execution", {}).get("stop_loss_price_delta", 5.00)        if config else 5.00
+    stop_loss_price_delta = config.get("execution", {}).get("stop_loss_price_delta", 5.00) if config else 5.00
     slippage             = config.get("execution", {}).get("slippage", 0.50)             if config else 0.50
     model_type       = config["model"]["type"]         if config else "xgboost"
     model_params     = config["model"]["hyperparameters"] if config else None
@@ -341,34 +331,18 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
 
     paths = setup_experiment_paths(config)
 
-    results = {}
-    results['timestamp'] = datetime.now().isoformat()
-    results['execution_mode'] = execution_mode
-    results['signal_threshold'] = signal_threshold
-    results['paths'] = paths
+    results = {
+        "timestamp": datetime.now().isoformat(),
+        "mode": "virtual",
+        "signal_threshold": signal_threshold,
+        "paths": paths,
+    }
 
     try:
-        # Step 1: Data preparation (varies by execution mode)
-        if execution_mode == "full":
-            logger.info("Full mode: Building features from raw data")
-            build_features_pipeline(features_save_path=paths["features_file"])
+        logger.info("Virtual pipeline: building features from raw data")
+        build_features_pipeline(features_save_path=paths["features_file"])
 
-        elif execution_mode == "features":
-            logger.info("Features mode: Using existing processed data")
-            processed_data = load_processed_data()
-            if processed_data is None:
-                raise FileNotFoundError("Processed data not found. Run in 'full' mode first.")
-            build_features(processed_data, save_path=paths["features_file"])
-
-        elif execution_mode == "model":
-            logger.info("Model mode: Using existing features")
-            # Features should exist from previous runs
-
-        else:
-            raise ValueError(f"Invalid execution_mode: {execution_mode}. Must be 'full', 'features', or 'model'")
-
-        # Step 2: Train model (always executed)
-        logger.info("Step 2: Training model")
+        logger.info("Training model")
         model, predictions_df, X_test = train_model(
             features_path=str(paths["features_file"]),
             model_type=model_type,
@@ -383,8 +357,7 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
         results['predictions_df'] = predictions_df
         results['X_test'] = X_test
 
-        # Step 3: Compute penalty buffer, generate signals, apply Top-5 daily schedule
-        logger.info("Step 3: Generating trading signals")
+        logger.info("Generating trading signals")
         penalty_buffer = compute_penalty_buffer(
             system_buy_price=predictions_df["system_buy_price"].values,
             system_sell_price=predictions_df["system_sell_price"].values,
@@ -404,8 +377,7 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
         results['signals'] = signals
         results['schedule_df'] = schedule_df
 
-        # Step 4: Run backtest
-        logger.info("Step 4: Running backtest")
+        logger.info("Running backtest")
         pnl_series, trading_metrics = run_backtest(
             signals=signals,
             da_prices=predictions_df["day_ahead_price"].values,
@@ -424,8 +396,7 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
         results['pnl_series'] = pnl_series
         results['trading_metrics'] = trading_metrics
 
-        # Step 5: Calculate model metrics
-        logger.info("Step 5: Calculating model metrics")
+        logger.info("Calculating model metrics")
         from sklearn.metrics import mean_absolute_error, mean_squared_error
         mae  = mean_absolute_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
         rmse = np.sqrt(mean_squared_error(predictions_df["actual_spread"], predictions_df["predicted_spread"]))
@@ -445,35 +416,55 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
         }
         results['model_metrics'] = model_metrics
 
-        # Step 6: Save outputs
         if SAVE_OUTPUTS_DEFAULT:
-            logger.info("Step 6: Saving outputs")
+            logger.info("Saving outputs")
             save_model(model, {
                 'model_type':       model_type,
                 'signal_threshold': signal_threshold,
                 'n_features':       X_test.shape[1],
                 'n_samples':        len(X_test),
                 'features':         list(X_test.columns),
-                'execution_mode':   execution_mode,
+                'mode':             'virtual',
             }, paths)
 
             save_outputs(predictions_df, signals, pnl_series, paths)
             save_metrics(model_metrics, trading_metrics, paths)
 
-        # Step 7: Print results
-        logger.info("Pipeline completed successfully")
+        logger.info("Virtual pipeline completed successfully")
         print_pipeline_results(results)
 
         return results
 
     except Exception as e:
-        logger.error(f"Pipeline failed with error: {str(e)}")
+        logger.error(f"Virtual pipeline failed: {str(e)}")
         raise
+
+
+def run_full_pipeline(mode: str = "virtual", config: dict | None = None) -> dict:
+    """Run the trading pipeline.
+
+    Args:
+        mode:   'virtual' (ML spread-trading), 'bess' (battery storage), or 'all'.
+        config: Experiment config dict loaded from YAML.
+    """
+    logger.info(f"Starting pipeline in '{mode}' mode")
+    ensure_directories()
+
+    if mode == "virtual":
+        return _run_virtual_pipeline(config)
+    elif mode == "bess":
+        return _run_bess_pipeline(config)
+    elif mode == "all":
+        virtual_results = _run_virtual_pipeline(config)
+        bess_results = _run_bess_pipeline(config)
+        return {"virtual": virtual_results, "bess": bess_results}
+    else:
+        raise ValueError(f"Invalid mode: {mode}. Must be 'virtual', 'bess', or 'all'.")
 
 
 def print_pipeline_results(results: dict):
     print("\n" + "=" * 60)
-    print(f"ELECTRICITY TRADING PIPELINE RESULTS  (mode: {results['execution_mode']})")
+    print(f"ELECTRICITY TRADING PIPELINE RESULTS  (mode: {results['mode']})")
     print("=" * 60)
 
     mm = results['model_metrics']
@@ -565,6 +556,4 @@ def load_experiment_results(config: dict | None = None) -> dict:
 
 
 if __name__ == "__main__":
-    # Run the pipeline when script is executed directly
     results = run_full_pipeline()
-    print(f"\nPipeline completed for version {results.get('version', 'unknown')}. Results keys: {list(results.keys())}")

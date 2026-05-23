@@ -3,9 +3,10 @@
 Day-Ahead Power Trading — CLI entry point.
 
 Usage:
-    python main.py                              # full pipeline, default settings
-    python main.py --mode features              # rebuild features from processed data
-    python main.py --mode model                 # retrain on saved features
+    python main.py                              # default mode from config
+    python main.py --mode virtual               # ML spread-trading pipeline
+    python main.py --mode bess                  # battery storage pipeline
+    python main.py --mode all                   # run both sequentially
     python main.py --config configs/config.yaml
 """
 
@@ -23,20 +24,21 @@ def main():
     parser = argparse.ArgumentParser(description="Day-Ahead Power Trading Pipeline")
     parser.add_argument(
         "--mode", "-m",
-        choices=["full", "features", "model"],
-        default="full",
-        help="Execution mode (default: full)",
+        choices=["virtual", "bess", "all"],
+        default=None,
+        help="Strategy mode (default: from config.yaml strategy_type)",
     )
     parser.add_argument(
         "--config", "-c",
-        default=None,
-        help="Path to a YAML experiment config (e.g. configs/config.yaml)",
+        default="configs/config.yaml",
+        help="Path to a YAML experiment config (default: configs/config.yaml)",
     )
     args = parser.parse_args()
 
-    config = _load_config(args.config) if args.config else None
+    config = _load_config(args.config)
+    mode = args.mode or config.get("strategy_type", "virtual")
 
-    run_full_pipeline(execution_mode=args.mode, config=config)
+    run_full_pipeline(mode=mode, config=config)
 
 
 if __name__ == "__main__":
