@@ -216,12 +216,15 @@ def run_backtest(
     mean_pnl = float(np.mean(active_pnl)) if len(active_pnl) > 0 else 0.0
     std_pnl = float(np.std(active_pnl)) if len(active_pnl) > 0 else 0.0
 
-    # Sharpe — daily if available (natural unit for a once-per-day auction decision)
+    # Sharpe — daily if available (natural unit for a once-per-day auction decision).
+    # Power markets trade every calendar day, so annualise with sqrt(365) not sqrt(252).
+    # Fallback uses all half-hourly periods (including zeros) so mean/std reflect the
+    # full return distribution before scaling by sqrt(48 * 365).
     sharpe_ratio = 0.0
     if daily_pnl is not None and float(daily_pnl.std()) > 0:
-        sharpe_ratio = float(daily_pnl.mean() / daily_pnl.std() * np.sqrt(252))
-    elif std_pnl > 0:
-        sharpe_ratio = float(mean_pnl / std_pnl * np.sqrt(48 * 365))
+        sharpe_ratio = float(daily_pnl.mean() / daily_pnl.std() * np.sqrt(365))
+    elif len(net_pnl) > 1 and float(np.std(net_pnl)) > 0:
+        sharpe_ratio = float(np.mean(net_pnl) / np.std(net_pnl) * np.sqrt(48 * 365))
 
     # Drawdown on cumulative £ PnL
     cum_pnl = np.cumsum(net_pnl)

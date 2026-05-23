@@ -9,8 +9,11 @@ from src.models.signal import (
     build_daily_schedule,
     generate_signal_from_dataframe,
     compute_penalty_buffer,
+    compute_volatility_threshold,
     _PENALTY_LAG,
     _PENALTY_WINDOW,
+    _VOL_LAG,
+    _VOL_WINDOW,
 )
 
 # ---------------------------------------------------------------------------
@@ -65,6 +68,68 @@ class TestComputePenaltyBuffer:
         buy, sell = self._constant_series(3.0)
         result = compute_penalty_buffer(buy, sell)
         assert isinstance(result, np.ndarray)
+
+
+# ---------------------------------------------------------------------------
+# compute_volatility_threshold
+# ---------------------------------------------------------------------------
+
+_VOL_MIN_WARMUP = _VOL_LAG + 48
+
+
+class TestComputeVolatilityThreshold:
+    def _constant_spread(self, value: float, n: int = 500):
+        return np.full(n, value), np.zeros(n)
+
+    def test_output_length_matches_input(self):
+        buy, sell = self._constant_spread(10.0)
+        result = compute_volatility_threshold(buy, sell)
+        assert len(result) == len(buy)
+
+    def test_returns_numpy_array(self):
+        buy, sell = self._constant_spread(5.0)
+        assert isinstance(compute_volatility_threshold(buy, sell), np.ndarray)
+
+    def test_first_values_nan_before_warmup(self):
+        buy, sell = self._constant_spread(5.0)
+        result = compute_volatility_threshold(buy, sell)
+        assert np.all(np.isnan(result[: _VOL_MIN_WARMUP - 1]))
+
+    def test_first_valid_value_at_warmup_index(self):
+        buy, sell = self._constant_spread(5.0)
+        result = compute_volatility_threshold(buy, sell)
+        assert not np.isnan(result[_VOL_MIN_WARMUP - 1])
+
+    def test_constant_spread_gives_zero_std(self):
+        # std of a constant series is 0
+        n = _VOL_LAG + _VOL_WINDOW + 10
+        buy = np.full(n, 10.0)
+        sell = np.zeros(n)
+        result = compute_volatility_threshold(buy, sell)
+        assert result[-1] == pytest.approx(0.0)
+
+    def test_varying_spread_gives_positive_std(self):
+        rng = np.random.default_rng(42)
+        n = _VOL_LAG + _VOL_WINDOW + 10
+        buy = rng.normal(10.0, 3.0, n)
+        sell = np.zeros(n)
+        result = compute_volatility_threshold(buy, sell)
+        assert result[-1] > 0.0
+
+    def test_accepts_pandas_series(self):
+        n = 500
+        buy = pd.Series(np.full(n, 5.0))
+        sell = pd.Series(np.zeros(n))
+        result = compute_volatility_threshold(buy, sell)
+        assert isinstance(result, np.ndarray)
+        assert len(result) == n
+
+    def test_custom_window_and_lag(self):
+        n = 300
+        buy = np.full(n, 5.0)
+        sell = np.zeros(n)
+        result = compute_volatility_threshold(buy, sell, window=100, lag=50)
+        assert len(result) == n
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +234,48 @@ class TestGenerateSignal:
         result = generate_signal(spread, penalty)
         assert list(result) == [1, -1, 0, 0, 1]
 
+    # --- volatility-adjusted gate ---
+
+    def test_vol_threshold_widens_gate_suppresses_signal(self):
+        # Without vol: spread=6 > threshold=5 → BUY
+        # With vol=8, multiplier=1.0: gate=max(5, 8)=8; 6 < 8 → NEUTRAL
+        spread = np.array([6.0])
+        penalty = np.array([0.0])
+        assert generate_signal(spread, penalty, threshold=5.0)[0] == 1
+        vol = np.array([8.0])
+        assert generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)[0] == 0
+
+    def test_vol_threshold_floor_is_static_threshold(self):
+        # vol=2, multiplier=1.0 → vol_gate=2 < threshold=5 → floor kicks in → gate=5
+        # spread=6 > 5 → BUY (same as no-vol case)
+        spread = np.array([6.0])
+        penalty = np.array([0.0])
+        vol = np.array([2.0])
+        result = generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)
+        assert result[0] == 1
+
+    def test_vol_multiplier_scales_gate(self):
+        # vol=4, multiplier=2.0 → vol_gate=8 > threshold=5 → gate=8
+        # spread=7 < 8 → NEUTRAL; spread=9 > 8 → BUY
+        penalty = np.array([0.0, 0.0])
+        vol = np.array([4.0, 4.0])
+        spread = np.array([7.0, 9.0])
+        result = generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=2.0)
+        assert result[0] == 0
+        assert result[1] == 1
+
+    def test_vol_nan_treated_as_zero_falls_back_to_floor(self):
+        # NaN vol → 0 after nan_to_num → vol_gate=max(5, 0)=5 → same as static threshold
+        spread = np.array([6.0])
+        penalty = np.array([0.0])
+        vol = np.array([np.nan])
+        result = generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)
+        assert result[0] == 1
+
+    def test_vol_threshold_length_mismatch_raises(self):
+        with pytest.raises(ValueError, match="length"):
+            generate_signal(np.array([1.0, 2.0]), np.array([0.0, 0.0]), vol_threshold=np.array([1.0]))
+
 
 # ---------------------------------------------------------------------------
 # build_daily_schedule
@@ -203,16 +310,38 @@ class TestBuildDailySchedule:
         # Each 30min × 20 spans ~10h; all on the same calendar day
         assert (filtered == 1).sum() <= 3
 
-    def test_top_n_selects_highest_abs_spread(self):
+    def test_top_n_selects_highest_abs_spread_long(self):
         ts = pd.date_range("2018-01-10", periods=4, freq="30min", tz="UTC")
         spread = np.array([10.0, 8.0, 6.0, 4.0])
         sigs = np.array([1, 1, 1, 1])
         _, filtered = build_daily_schedule(spread, sigs, ts, top_n=2)
-        # Periods 0 and 1 have highest spread — they should be retained
-        retained_indices = np.where(filtered == 1)[0]
-        assert 0 in retained_indices
-        assert 1 in retained_indices
-        assert 2 not in retained_indices
+        retained = np.where(filtered == 1)[0]
+        assert 0 in retained
+        assert 1 in retained
+        assert 2 not in retained
+
+    def test_top_n_selects_highest_abs_spread_short(self):
+        # SHORT conviction = largest |predicted_spread|; -10 and -8 beat -6 and -4
+        ts = pd.date_range("2018-01-10", periods=4, freq="30min", tz="UTC")
+        spread = np.array([-4.0, -6.0, -8.0, -10.0])
+        sigs = np.array([-1, -1, -1, -1])
+        _, filtered = build_daily_schedule(spread, sigs, ts, top_n=2)
+        retained = np.where(filtered == -1)[0]
+        assert 3 in retained   # -10.0 → highest conviction
+        assert 2 in retained   # -8.0 → second
+        assert 1 not in retained
+        assert 0 not in retained
+
+    def test_top_n_does_not_cross_directions(self):
+        # A strong SHORT should not displace a weak LONG and vice versa
+        ts = pd.date_range("2018-01-10", periods=4, freq="30min", tz="UTC")
+        spread = np.array([20.0, -20.0, 5.1, -5.1])
+        sigs = np.array([1, -1, 1, -1])
+        _, filtered = build_daily_schedule(spread, sigs, ts, top_n=1)
+        assert filtered[0] == 1    # top LONG: spread=20
+        assert filtered[1] == -1   # top SHORT: spread=-20
+        assert filtered[2] == 0    # weaker LONG dropped
+        assert filtered[3] == 0    # weaker SHORT dropped
 
     def test_schedule_df_has_required_columns(self):
         ts = pd.date_range("2018-01-10", periods=4, freq="30min", tz="UTC")
@@ -297,3 +426,38 @@ class TestGenerateSignalFromDataframe:
         result_high = generate_signal_from_dataframe(df, threshold=7.0)
         assert result_default["signal"].iloc[0] == 1
         assert result_high["signal"].iloc[0] == 0
+
+    def test_top_n_none_returns_all_gated_signals(self):
+        # Without top_n, all signals that pass the gate are kept
+        ts = pd.date_range("2018-01-10", periods=6, freq="30min", tz="UTC")
+        df = pd.DataFrame({
+            "time": ts,
+            "predicted_spread": [10.0, 9.0, 8.0, 7.0, 6.0, 1.0],
+            "penalty_buffer": np.zeros(6),
+        })
+        result = generate_signal_from_dataframe(df, threshold=5.0, top_n=None)
+        assert (result["signal"] == 1).sum() == 5  # all five > 5.0 are kept
+
+    def test_top_n_with_timestamps_applies_conviction_ranking(self):
+        # 4 LONG signals on the same day; top_n=2 → only the 2 highest |spread| survive
+        ts = pd.date_range("2018-01-10", periods=4, freq="30min", tz="UTC")
+        df = pd.DataFrame({
+            "time": ts,
+            "predicted_spread": [10.0, 9.0, 8.0, 7.0],
+            "penalty_buffer": np.zeros(4),
+        })
+        result = generate_signal_from_dataframe(df, threshold=5.0, top_n=2)
+        signals = list(result["signal"])
+        assert signals[0] == 1   # highest conviction retained
+        assert signals[1] == 1   # second highest retained
+        assert signals[2] == 0   # dropped
+        assert signals[3] == 0   # dropped
+
+    def test_top_n_without_timestamps_skips_ranking(self):
+        # No timestamp column → top_n is ignored, all gated signals returned
+        df = pd.DataFrame({
+            "predicted_spread": [10.0, 9.0, 8.0, 7.0],
+            "penalty_buffer": np.zeros(4),
+        })
+        result = generate_signal_from_dataframe(df, threshold=5.0, top_n=1)
+        assert (result["signal"] == 1).sum() == 4  # all pass gate, no ranking applied

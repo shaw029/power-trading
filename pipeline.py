@@ -20,7 +20,7 @@ from src.data.preprocess import (
 )
 from src.features.build_features import build_features
 from src.models.train import train_model
-from src.models.signal import generate_signal, build_daily_schedule, compute_penalty_buffer
+from src.models.signal import generate_signal, build_daily_schedule, compute_penalty_buffer, compute_volatility_threshold
 from src.backtest.engine import run_backtest
 from src.utils.config import (
     ensure_directories, FEATURES_DATASET, MODEL_FILE, PREDICTIONS_FILE,
@@ -253,8 +253,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     from src.bess.intraday_manager import run_intraday_session
 
     bess_cfg = config["bess"]
-    bess_paths_config = {**config, "strategy": "bess"}
-    paths = setup_experiment_paths(bess_paths_config)
+    paths = setup_experiment_paths(config)
 
     results = {
         "timestamp": datetime.now().isoformat(),
@@ -317,6 +316,8 @@ def _run_bess_pipeline(config: dict) -> dict:
 def _run_virtual_pipeline(config: dict | None = None) -> dict:
     signal_threshold     = config["signal"]["threshold"]                              if config else DEFAULT_SIGNAL_THRESHOLD
     top_n                = config["signal"]["top_n"]                                  if config else 5
+    vol_multiplier       = config["signal"].get("vol_multiplier", 1.0)                if config else 1.0
+    vol_window           = config["signal"].get("vol_window", 336)                    if config else 336
     transaction_cost     = config["signal"].get("transaction_cost", 0.0)              if config else 0.0
     baseline_hedge_ratio = config.get("execution", {}).get("baseline_hedge_ratio", 0.50) if config else 0.50
     take_profit_pct      = config.get("execution", {}).get("take_profit_pct", 0.90)      if config else 0.90
@@ -362,10 +363,17 @@ def _run_virtual_pipeline(config: dict | None = None) -> dict:
             system_buy_price=predictions_df["system_buy_price"].values,
             system_sell_price=predictions_df["system_sell_price"].values,
         )
+        vol_threshold = compute_volatility_threshold(
+            system_buy_price=predictions_df["system_buy_price"].values,
+            system_sell_price=predictions_df["system_sell_price"].values,
+            window=vol_window,
+        )
         raw_signals = generate_signal(
             predicted_spread=predictions_df["predicted_spread"].values,
             penalty_buffer=penalty_buffer,
             threshold=signal_threshold,
+            vol_threshold=vol_threshold,
+            vol_multiplier=vol_multiplier,
         )
         schedule_df, signals = build_daily_schedule(
             predicted_spread=predictions_df["predicted_spread"].values,
@@ -440,26 +448,28 @@ def _run_virtual_pipeline(config: dict | None = None) -> dict:
         raise
 
 
-def run_full_pipeline(mode: str = "virtual", config: dict | None = None) -> dict:
+def run_full_pipeline(mode: str | None = None, config: dict | None = None) -> dict:
     """Run the trading pipeline.
 
     Args:
         mode:   'virtual' (ML spread-trading), 'bess' (battery storage), or 'all'.
+                Defaults to config['strategy_type'] when omitted, then 'virtual'.
         config: Experiment config dict loaded from YAML.
     """
-    logger.info(f"Starting pipeline in '{mode}' mode")
+    effective_mode = mode or (config or {}).get("strategy_type", "virtual")
+    logger.info(f"Starting pipeline in '{effective_mode}' mode")
     ensure_directories()
 
-    if mode == "virtual":
+    if effective_mode == "virtual":
         return _run_virtual_pipeline(config)
-    elif mode == "bess":
+    elif effective_mode == "bess":
         return _run_bess_pipeline(config)
-    elif mode == "all":
+    elif effective_mode == "all":
         virtual_results = _run_virtual_pipeline(config)
         bess_results = _run_bess_pipeline(config)
         return {"virtual": virtual_results, "bess": bess_results}
     else:
-        raise ValueError(f"Invalid mode: {mode}. Must be 'virtual', 'bess', or 'all'.")
+        raise ValueError(f"Invalid mode: {effective_mode!r}. Must be 'virtual', 'bess', or 'all'.")
 
 
 def print_pipeline_results(results: dict):

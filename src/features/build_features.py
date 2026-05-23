@@ -44,10 +44,19 @@ def build_features(df: pd.DataFrame, save_path: Path | str | None = None) -> pd.
     # -------------------------------------------------------------------------
     # Historical Lags (48 periods = 24 h, 96 periods = 48 h at 30-min resolution)
     # -------------------------------------------------------------------------
-    for col in ["day_ahead_price", "system_sell_price"]:
+    for col in ["day_ahead_price", "system_sell_price", "system_buy_price"]:
         if col in df.columns:
             df[f"{col}_lag48"] = df[col].shift(48)
             df[f"{col}_lag96"] = df[col].shift(96)
+
+    # Imbalance spread (SBP − SSP): the cost of being caught short/long in
+    # settlement.  Lagged separately because the spread dynamics differ from
+    # either leg alone — it is also the quantity the signal gate is calibrated
+    # against, so the model should see its own history.
+    if "system_buy_price" in df.columns and "system_sell_price" in df.columns:
+        spread = df["system_buy_price"] - df["system_sell_price"]
+        df["imbalance_spread_lag48"] = spread.shift(48)
+        df["imbalance_spread_lag96"] = spread.shift(96)
 
     # -------------------------------------------------------------------------
     # Temporal Features — Europe/London for GB market calendar alignment.
