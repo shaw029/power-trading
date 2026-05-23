@@ -128,7 +128,7 @@ def run_backtest(
                     active_exit = mid_adj
                     if tp_hit:
                         _active_tp_count += 1
-                    if sl_hit:
+                    elif sl_hit:
                         _active_sl_count += 1
                 else:
                     active_exit = sys_sell[i]
@@ -149,7 +149,7 @@ def run_backtest(
                     active_exit = mid_adj
                     if tp_hit:
                         _active_tp_count += 1
-                    if sl_hit:
+                    elif sl_hit:
                         _active_sl_count += 1
                 else:
                     active_exit = sys_buy[i]
