@@ -481,17 +481,17 @@ class TestHybridExecution:
 
     # ---- SHORT — double hit: both TP and SL true, TP takes precedence ----
 
-    def test_short_double_hit_counts_as_tp(self):
-        # pred_spread=+20 (atypical) → tp_level=50+20*0.9=68; stop_loss_mwh=5
-        # mid_adj=56.5; tp_hit: 56.5<=68 True; loss=56.5-50=6.5>=5 True
-        # Both fire → counted as TP, not SL
+    def test_short_positive_pred_spread_triggers_sl(self):
+        # pred_spread=+20 (atypical) → tp_level=50-20*0.9=32; stop_loss_mwh=5
+        # mid_adj=56.5; tp_hit: 56.5<=32 False; loss=56.5-50=6.5>=5 True
+        # Only SL fires — positive pred_spread no longer inflates tp_level above DA
         _, metrics = self._run(
             signal=-1, mid=56.0, pred_spread=20.0, stop_loss_mwh=5.0,
         )
-        assert metrics["execution_breakdown"]["active_tp_triggered"] == 1
-        assert metrics["execution_breakdown"]["active_sl_triggered"] == 0
+        assert metrics["execution_breakdown"]["active_tp_triggered"] == 0
+        assert metrics["execution_breakdown"]["active_sl_triggered"] == 1
 
-    def test_short_double_hit_exit_price_is_mid_adj(self):
+    def test_short_positive_pred_spread_sl_exit_uses_mid_adj(self):
         # mid_adj=56.5; passive=10*(50-56.5)=-65; active=10*(50-56.5)=-65 → gross=-130
         pnl, _ = self._run(
             signal=-1, mid=56.0, pred_spread=20.0, stop_loss_mwh=5.0,

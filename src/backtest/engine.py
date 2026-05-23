@@ -147,8 +147,7 @@ def run_backtest(
                 passive_pnl = passive_mwh * (da - mid_adj)
 
                 # Reconstruct absolute fair-value target for the active slice
-                # predicted_spread is negative for short signals (da > intraday expected)
-                tp_level = da + pred_spread * take_profit_pct
+                tp_level = da - abs(pred_spread) * take_profit_pct
                 loss_per_mwh = mid_adj - da  # positive when mid has risen
                 tp_hit = mid_adj <= tp_level
                 sl_hit = loss_per_mwh >= stop_loss_mwh
