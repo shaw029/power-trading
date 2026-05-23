@@ -210,6 +210,43 @@ def save_metrics(model_metrics: dict, trading_metrics: dict, paths: dict):
     logger.info(f"Metrics saved to {paths['metrics_file']}")
 
 
+def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
+    trading_dir = paths["trading_dir"]
+    trading_dir.mkdir(parents=True, exist_ok=True)
+
+    results_df.to_csv(trading_dir / "pnl.csv", index=False)
+    logger.info(f"BESS PnL saved to {trading_dir / 'pnl.csv'}")
+
+    net = results_df["net_pnl"]
+    avg_daily = float(net.mean())
+    std_daily = float(net.std(ddof=1)) if len(net) > 1 else 0.0
+    sharpe = (avg_daily / std_daily) * np.sqrt(365) if std_daily > 0 else 0.0
+
+    cumulative = net.cumsum()
+    max_drawdown = float((cumulative - cumulative.cummax()).min())
+
+    bess_cfg = config["bess"]
+    total_degradation = float(results_df["degradation_cost"].sum())
+    throughput = total_degradation / bess_cfg["degradation_cost_per_mwh"] if bess_cfg["degradation_cost_per_mwh"] > 0 else 0.0
+    total_cycles = throughput / (2 * bess_cfg["capacity_mwh"])
+
+    metrics = {
+        "total_da_revenue": float(results_df["da_revenue"].sum()),
+        "total_intraday_pnl": float(results_df["intraday_pnl"].sum()),
+        "total_imbalance_pnl": float(results_df["imbalance_pnl"].sum()),
+        "total_degradation_cost": total_degradation,
+        "total_net_pnl": float(net.sum()),
+        "total_cycles": float(total_cycles),
+        "avg_daily_net_pnl": avg_daily,
+        "sharpe_ratio": float(sharpe),
+        "max_drawdown": max_drawdown,
+    }
+
+    with open(trading_dir / "metrics.json", "w") as f:
+        json.dump(metrics, f, indent=2)
+    logger.info(f"BESS metrics saved to {trading_dir / 'metrics.json'}")
+
+
 def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) -> dict:
     """Run the complete electricity trading pipeline from data to backtest results.
 
@@ -222,6 +259,70 @@ def run_full_pipeline(execution_mode: str = "full", config: dict | None = None) 
     """
     logger.info(f"Starting pipeline execution in {execution_mode} mode")
     ensure_directories()
+
+    if config and config.get("strategy_type") == "bess":
+        from src.bess.bess_asset import BESSAsset
+        from src.bess.da_optimizer import optimize_da_schedule
+        from src.bess.intraday_manager import run_intraday_session
+
+        paths = setup_experiment_paths(config)
+        results = {
+            "timestamp": datetime.now().isoformat(),
+            "execution_mode": execution_mode,
+            "paths": paths,
+        }
+
+        logger.info("BESS strategy: loading and processing price data")
+        da_processed = process_day_ahead_price(fetch_day_ahead_price())
+        mid_processed = process_market_index_price(fetch_market_index_price())
+        imb_processed = process_imbalance_price(fetch_imbalance_price())
+
+        prices = (
+            da_processed.resample("1h").mean()
+            .join(mid_processed.resample("1h").mean())
+            .join(imb_processed[["system_buy_price"]].resample("1h").mean())
+            .dropna()
+        )
+
+        bess_cfg = config["bess"]
+        asset = BESSAsset(
+            capacity_mwh=bess_cfg["capacity_mwh"],
+            power_mw=bess_cfg["power_mw"],
+            round_trip_efficiency=bess_cfg["round_trip_efficiency"],
+            degradation_cost_per_mwh=bess_cfg["degradation_cost_per_mwh"],
+            initial_soc_pct=bess_cfg["initial_soc_pct"],
+        )
+
+        daily_results = []
+        for date, day_df in prices.groupby(prices.index.date):
+            if len(day_df) != 24:
+                continue
+            asset.reset()
+            da_prices = day_df["day_ahead_price"].tolist()
+            schedule = optimize_da_schedule(da_prices, asset)
+            result = run_intraday_session(
+                da_schedule=schedule,
+                da_prices=da_prices,
+                mid_prices=day_df["mid_price"].tolist(),
+                imbalance_prices=day_df["system_buy_price"].tolist(),
+                asset=asset,
+                config=bess_cfg,
+            )
+            daily_results.append({
+                "date": date,
+                "da_revenue": result["da_revenue"],
+                "intraday_pnl": result["intraday_pnl"],
+                "imbalance_pnl": result["imbalance_pnl"],
+                "degradation_cost": result["total_degradation_cost"],
+                "net_pnl": result["net_pnl"],
+            })
+
+        results_df = pd.DataFrame(daily_results)
+        save_bess_outputs(results_df, config, paths)
+        results["results_df"] = results_df
+
+        logger.info("BESS pipeline completed successfully")
+        return results
 
     # --- settings from config (or defaults) ---
     signal_threshold     = config["signal"]["threshold"]                              if config else DEFAULT_SIGNAL_THRESHOLD
