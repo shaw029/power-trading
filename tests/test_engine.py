@@ -322,3 +322,201 @@ class TestRunBacktestFromDataframe:
         _, metrics = run_backtest_from_dataframe(self._make_df())
         assert "total_pnl" in metrics
         assert "sharpe_ratio" in metrics
+
+
+# ---------------------------------------------------------------------------
+# Hybrid passive/active exit logic (mid_prices + predicted_spreads provided)
+# ---------------------------------------------------------------------------
+
+
+class TestHybridExecution:
+    """Cover all six hybrid exit branches and supporting behaviour."""
+
+    _CAP = 50_000.0
+    _RISK = 0.02
+    _DA = 50.0
+    # position = 50_000 * 0.02 / 50 = 20 MWh; at default hedge_ratio=0.50 → passive=active=10 MWh
+
+    def _run(self, signal, mid, pred_spread, ssp=70.0, sbp=40.0, **kw):
+        return run_backtest(
+            np.array([signal]),
+            np.array([self._DA]),
+            np.array([ssp]),
+            np.array([sbp]),
+            starting_capital=self._CAP,
+            risk_pct=self._RISK,
+            cost_per_trade=0.0,
+            mid_prices=np.array([mid]),
+            predicted_spreads=np.array([pred_spread]),
+            **kw,
+        )
+
+    # ---- LONG — imbalance fallback (no TP, no SL) -------------------------
+
+    def test_long_imbalance_fallback_pnl(self):
+        # mid_adj=59.5; tp_level=50+20*0.9=68 → tp_hit=False; loss=-9.5 → sl_hit=False
+        # active_exit=ssp=70; passive=10*(59.5-50)=95; active=10*(70-50)=200 → gross=295
+        pnl, _ = self._run(signal=1, mid=60.0, pred_spread=20.0, ssp=70.0)
+        assert pnl[0] == pytest.approx(295.0)
+
+    def test_long_imbalance_increments_imbalance_counter(self):
+        _, metrics = self._run(signal=1, mid=60.0, pred_spread=20.0)
+        assert metrics["execution_breakdown"]["active_rode_to_imbalance"] == 1
+        assert metrics["execution_breakdown"]["active_tp_triggered"] == 0
+        assert metrics["execution_breakdown"]["active_sl_triggered"] == 0
+
+    # ---- LONG — take-profit hit -------------------------------------------
+
+    def test_long_take_profit_triggered_pnl(self):
+        # mid_adj=74.5 >= tp_level=68 → tp_hit; active_exit=74.5
+        # passive=10*(74.5-50)=245; active=10*(74.5-50)=245 → gross=490
+        pnl, _ = self._run(signal=1, mid=75.0, pred_spread=20.0)
+        assert pnl[0] == pytest.approx(490.0)
+
+    def test_long_take_profit_increments_tp_counter(self):
+        _, metrics = self._run(signal=1, mid=75.0, pred_spread=20.0)
+        assert metrics["execution_breakdown"]["active_tp_triggered"] == 1
+        assert metrics["execution_breakdown"]["active_sl_triggered"] == 0
+        assert metrics["execution_breakdown"]["active_rode_to_imbalance"] == 0
+
+    # ---- LONG — stop-loss hit ---------------------------------------------
+
+    def test_long_stop_loss_triggered_pnl(self):
+        # mid_adj=42.5; loss_per_mwh=50-42.5=7.5 >= stop_loss_mwh=5 → sl_hit
+        # passive=10*(42.5-50)=-75; active=10*(42.5-50)=-75 → gross=-150
+        pnl, _ = self._run(signal=1, mid=43.0, pred_spread=20.0, stop_loss_mwh=5.0)
+        assert pnl[0] == pytest.approx(-150.0)
+
+    def test_long_stop_loss_increments_sl_counter(self):
+        _, metrics = self._run(signal=1, mid=43.0, pred_spread=20.0, stop_loss_mwh=5.0)
+        assert metrics["execution_breakdown"]["active_sl_triggered"] == 1
+        assert metrics["execution_breakdown"]["active_tp_triggered"] == 0
+        assert metrics["execution_breakdown"]["active_rode_to_imbalance"] == 0
+
+    # ---- SHORT — imbalance fallback (no TP, no SL) ------------------------
+
+    def test_short_imbalance_fallback_pnl(self):
+        # mid_adj=45.5; tp_level=50+(-15)*0.9=36.5 → tp_hit=False; loss=-4.5 → sl_hit=False
+        # active_exit=sbp=40; passive=10*(50-45.5)=45; active=10*(50-40)=100 → gross=145
+        pnl, _ = self._run(signal=-1, mid=45.0, pred_spread=-15.0, sbp=40.0)
+        assert pnl[0] == pytest.approx(145.0)
+
+    def test_short_imbalance_increments_imbalance_counter(self):
+        _, metrics = self._run(signal=-1, mid=45.0, pred_spread=-15.0)
+        assert metrics["execution_breakdown"]["active_rode_to_imbalance"] == 1
+        assert metrics["execution_breakdown"]["active_tp_triggered"] == 0
+        assert metrics["execution_breakdown"]["active_sl_triggered"] == 0
+
+    # ---- SHORT — take-profit hit ------------------------------------------
+
+    def test_short_take_profit_triggered_pnl(self):
+        # mid_adj=33.5 <= tp_level=36.5 → tp_hit; active_exit=33.5
+        # passive=10*(50-33.5)=165; active=10*(50-33.5)=165 → gross=330
+        pnl, _ = self._run(signal=-1, mid=33.0, pred_spread=-15.0)
+        assert pnl[0] == pytest.approx(330.0)
+
+    def test_short_take_profit_increments_tp_counter(self):
+        _, metrics = self._run(signal=-1, mid=33.0, pred_spread=-15.0)
+        assert metrics["execution_breakdown"]["active_tp_triggered"] == 1
+        assert metrics["execution_breakdown"]["active_sl_triggered"] == 0
+        assert metrics["execution_breakdown"]["active_rode_to_imbalance"] == 0
+
+    # ---- SHORT — stop-loss hit --------------------------------------------
+
+    def test_short_stop_loss_triggered_pnl(self):
+        # mid_adj=57.5; loss_per_mwh=57.5-50=7.5 >= stop_loss_mwh=5 → sl_hit
+        # passive=10*(50-57.5)=-75; active=10*(50-57.5)=-75 → gross=-150
+        pnl, _ = self._run(signal=-1, mid=57.0, pred_spread=-15.0, stop_loss_mwh=5.0)
+        assert pnl[0] == pytest.approx(-150.0)
+
+    def test_short_stop_loss_increments_sl_counter(self):
+        _, metrics = self._run(signal=-1, mid=57.0, pred_spread=-15.0, stop_loss_mwh=5.0)
+        assert metrics["execution_breakdown"]["active_sl_triggered"] == 1
+        assert metrics["execution_breakdown"]["active_tp_triggered"] == 0
+        assert metrics["execution_breakdown"]["active_rode_to_imbalance"] == 0
+
+    # ---- Multi-period breakdown counter accumulation ----------------------
+
+    def test_execution_breakdown_accumulates_across_periods(self):
+        # Period 0: long TP hit (mid=75, pred=20)
+        # Period 1: short imbalance (mid=45, pred=-15)
+        # Period 2: long SL hit  (mid=43, pred=20)
+        sigs = np.array([1, -1, 1])
+        da = np.array([self._DA] * 3)
+        ssp = np.array([70.0] * 3)
+        sbp = np.array([40.0] * 3)
+        _, metrics = run_backtest(
+            sigs, da, ssp, sbp,
+            starting_capital=self._CAP,
+            risk_pct=self._RISK,
+            cost_per_trade=0.0,
+            mid_prices=np.array([75.0, 45.0, 43.0]),
+            predicted_spreads=np.array([20.0, -15.0, 20.0]),
+            stop_loss_mwh=5.0,
+        )
+        bd = metrics["execution_breakdown"]
+        assert bd["active_tp_triggered"] == 1
+        assert bd["active_sl_triggered"] == 1
+        assert bd["active_rode_to_imbalance"] == 1
+
+    # ---- NaN mid → baseline fallback --------------------------------------
+
+    def test_nan_mid_price_falls_back_to_baseline(self):
+        # NaN mid → hybrid branch skipped → active exit uses SSP directly
+        sigs = np.array([1])
+        da = np.array([self._DA])
+        ssp = np.array([70.0])
+        sbp = np.array([75.0])
+        pnl_base, _ = run_backtest(sigs, da, ssp, sbp, cost_per_trade=0.0)
+        pnl_nan, _ = run_backtest(
+            sigs, da, ssp, sbp,
+            cost_per_trade=0.0,
+            mid_prices=np.array([np.nan]),
+            predicted_spreads=np.array([20.0]),
+        )
+        assert pnl_nan[0] == pytest.approx(pnl_base[0])
+
+    def test_nan_predicted_spread_falls_back_to_baseline(self):
+        sigs = np.array([1])
+        da = np.array([self._DA])
+        ssp = np.array([70.0])
+        sbp = np.array([75.0])
+        pnl_base, _ = run_backtest(sigs, da, ssp, sbp, cost_per_trade=0.0)
+        pnl_nan, _ = run_backtest(
+            sigs, da, ssp, sbp,
+            cost_per_trade=0.0,
+            mid_prices=np.array([60.0]),
+            predicted_spreads=np.array([np.nan]),
+        )
+        assert pnl_nan[0] == pytest.approx(pnl_base[0])
+
+    # ---- Mid/pred array length validation ---------------------------------
+
+    def test_mid_prices_wrong_length_raises(self):
+        sigs = np.array([1, 1])
+        da = np.array([self._DA] * 2)
+        ssp = np.array([70.0] * 2)
+        sbp = np.array([75.0] * 2)
+        with pytest.raises(ValueError, match="same length"):
+            run_backtest(
+                sigs, da, ssp, sbp,
+                mid_prices=np.array([60.0]),
+                predicted_spreads=np.array([20.0, 20.0]),
+            )
+
+    # ---- Hybrid produces different outcome than pure baseline -------------
+
+    def test_hybrid_differs_from_baseline_when_tp_hit(self):
+        # TP at mid=75 exits active slice at 74.5, not at ssp=60 → different total
+        sigs = np.array([1])
+        da = np.array([self._DA])
+        ssp = np.array([60.0])
+        sbp = np.array([65.0])
+        pnl_base, _ = run_backtest(sigs, da, ssp, sbp, cost_per_trade=0.0)
+        pnl_hybrid, _ = run_backtest(
+            sigs, da, ssp, sbp,
+            cost_per_trade=0.0,
+            mid_prices=np.array([75.0]),
+            predicted_spreads=np.array([20.0]),
+        )
+        assert pnl_hybrid[0] != pytest.approx(pnl_base[0])
