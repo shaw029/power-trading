@@ -87,7 +87,18 @@ artifacts/{strategy}/{run_name}/model/      # model.joblib, metadata.json
 artifacts/{strategy}/{run_name}/trading/    # predictions.csv, signals.csv, pnl.csv, metrics.json
 ```
 
-### Execution Config
+### Strategy Type
+
+The top-level `strategy_type` key selects which pipeline branch to run:
+
+```yaml
+strategy_type: "virtual"   # "virtual" (default) | "bess"
+```
+
+- **`virtual`** — ML-driven DA positioning with hybrid intraday execution (Phases 1 & 2).
+- **`bess`** — Physical battery dispatch: LP Day-Ahead scheduling, rules-based intraday rebalancing, and imbalance settlement (Phase 3).
+
+### Execution Config (Virtual)
 
 The `execution` block controls how DA positions are managed during the intraday window:
 
@@ -105,6 +116,27 @@ execution:
 | `baseline_hedge_ratio` | Share of each position passively exited at the Market Index Price. Must be between 0 and 1 |
 | `take_profit_pct` | Fraction of predicted spread at which the active slice locks in profit |
 | `stop_loss_price_delta` | Maximum adverse price move (£/MWh) before the active slice is stopped out |
+
+### BESS Config
+
+The `bess` block defines battery asset parameters (used when `strategy_type: "bess"`):
+
+```yaml
+bess:
+  capacity_mwh: 100.0              # total energy storage capacity (MWh)
+  power_mw: 50.0                   # max charge/discharge rate (MW)
+  round_trip_efficiency: 0.88      # fraction retained through a full cycle
+  degradation_cost_per_mwh: 8.50   # £/MWh throughput cost for battery wear
+  initial_soc_pct: 0.50            # starting state-of-charge (0.0–1.0)
+```
+
+| Key | Description |
+|---|---|
+| `capacity_mwh` | Total energy the battery can store |
+| `power_mw` | Maximum instantaneous power for charge or discharge |
+| `round_trip_efficiency` | Energy retained after a charge-discharge cycle (0.0–1.0) |
+| `degradation_cost_per_mwh` | Cost per MWh of throughput, representing battery wear |
+| `initial_soc_pct` | State of charge at the start of each day, as a fraction of capacity |
 
 ## Project Structure
 
@@ -141,6 +173,10 @@ power-trading/
 │   ├── features/                   # build_features.py
 │   ├── models/                     # train.py, signal.py
 │   ├── backtest/                   # engine.py
+│   ├── bess/                       # BESS strategy modules
+│   │   ├── bess_asset.py           # BESSAsset state-machine dataclass
+│   │   ├── da_optimizer.py         # LP Day-Ahead schedule (PuLP/HiGHS)
+│   │   └── intraday_manager.py     # Rules-based intraday rebalancing
 │   └── utils/                      # config.py
 ├── tests/
 ├── pipeline.py                     # End-to-end orchestrator

@@ -33,6 +33,47 @@ All features are constructed from the D-1 10:30 pre-auction forecast vintage. No
 | **Historical Lags** | `day_ahead_price_lag48`, `day_ahead_price_lag96`, `system_sell_price_lag48`, `system_sell_price_lag96` | 24 h and 48 h lookbacks on DA price and imbalance settlement price; the 48-period offset is the minimum lag that avoids any forward leakage at 30-minute resolution |
 | **Temporal** | `hour_sin`, `hour_cos`, `dow_sin`, `dow_cos` | Cyclical sine/cosine encoding of settlement period (0.0–23.5 fractional hour) and day-of-week, computed in the Europe/London calendar to correctly handle BST transitions |
 
-## 4. Validated Results
+## 5. Phase 3: Physical Asset (BESS) Optimisation
+
+Phase 3 extends the framework beyond virtual trading to physical asset dispatch. A Battery Energy Storage System (BESS) is modelled as a state machine with capacity, power, round-trip efficiency, and cycle degradation constraints.
+
+### Commercial Rationale
+
+The BESS strategy decomposes the trading day into three settlement layers, each targeting a different liquidity venue:
+
+1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal 24-hour charge/discharge schedule against the DA price curve, maximising `Σ (discharge_h − charge_h) × DA_price_h` subject to SOC, power, and efficiency constraints. This produces the committed DA revenue.
+
+2. **Intraday (Rules-Based Rebalancing):** During the delivery window, a rules engine adjusts the DA schedule in real time against Market Index Prices:
+   - **Rule 1 — DA Dispatch Execution:** Execute the committed schedule; any shortfall from SOC constraints settles at the imbalance price.
+   - **Rule 2 — SOC Drift Rebalance:** If actual SOC drifts more than 5% from the DA-implied trajectory, buy/sell at MID to realign.
+   - **Rule 3 — Spread Improvement:** If spare capacity exists and MID exceeds DA + degradation cost (or the inverse for charging), take the incremental trade.
+
+3. **Imbalance Settlement (Ex-Post):** Any volume that could not be physically delivered or absorbed — because SOC hit a bound — is settled at the system imbalance price (SSP/SBP), appearing as a residual cost or credit.
+
+### Asset Model (`BESSAsset`)
+
+The `BESSAsset` dataclass tracks internal state across the trading day:
+
+| Parameter | Description |
+|---|---|
+| `capacity_mwh` | Total energy storage capacity |
+| `power_mw` | Maximum charge/discharge rate |
+| `round_trip_efficiency` | Fraction of energy retained through a charge-discharge cycle |
+| `degradation_cost_per_mwh` | £/MWh throughput cost representing battery wear |
+| `initial_soc_pct` | Starting state-of-charge as a fraction of capacity |
+
+The asset enforces physical feasibility: `charge()` and `discharge()` raise if power or SOC limits are violated, and `can_charge()`/`can_discharge()` allow the intraday manager to test feasibility before acting.
+
+### PnL Decomposition
+
+Net PnL for each day is decomposed into four components:
+
+```
+net_pnl = da_revenue + intraday_pnl + imbalance_pnl − degradation_cost
+```
+
+This decomposition lets the analyst attribute value to each settlement layer independently — see `notebooks/03_bess_dispatch_analysis.ipynb` for the full waterfall.
+
+## 6. Validated Results
 
 Performance numbers are run-specific and live with the experiment that produced them. See the headline metrics in [README.md](README.md) and the full tear sheet — equity curve, drawdown analysis, and sensitivity sweep — in `notebooks/01_da_positioning_backtest.ipynb`.
