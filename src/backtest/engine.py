@@ -20,6 +20,7 @@ def run_backtest(
     baseline_hedge_ratio: float = 0.50,
     take_profit_pct: float = 0.90,
     stop_loss_mwh: float = 5.00,
+    slippage: float = 0.50,
 ) -> tuple:
     """Run backtest for a Day-Ahead Auction vs Imbalance settlement strategy.
 
@@ -51,6 +52,7 @@ def run_backtest(
         baseline_hedge_ratio: Fraction of position hedged at execution (0–1).
         take_profit_pct:      Take-profit trigger as a fraction of predicted spread.
         stop_loss_mwh:        Stop-loss threshold in MWh of exposure.
+        slippage:             Bid-ask crossing cost applied to intraday mid-price exits (£/MWh).
 
     Returns:
         (net_pnl, trading_metrics)
@@ -73,7 +75,7 @@ def run_backtest(
         if len(_mid) != n or len(_pred) != n:
             raise ValueError("mid_prices and predicted_spreads must have the same length as signals")
 
-    _SLIPPAGE = 0.50  # £/MWh bid-ask crossing cost
+    _SLIPPAGE = slippage
 
     # ------------------------------------------------------------------
     # Account-based position sizing loop

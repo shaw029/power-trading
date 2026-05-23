@@ -28,3 +28,4 @@ execution:
   baseline_hedge_ratio: 0.50
   take_profit_pct: 0.90
   stop_loss_mwh: 5.00
+  slippage: 0.50
