@@ -17,7 +17,7 @@ from pipeline import run_full_pipeline
 
 def _load_config(path: str) -> dict:
     with open(path) as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f) or {}
 
 
 def main():

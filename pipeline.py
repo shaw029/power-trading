@@ -1,10 +1,8 @@
 import pandas as pd
 import numpy as np
 import logging
-import os
 import json
 import joblib
-from pathlib import Path
 from datetime import datetime
 
 # Import our custom modules
@@ -20,12 +18,14 @@ from src.data.preprocess import (
 )
 from src.features.build_features import build_features
 from src.models.train import train_model
-from src.models.signal import generate_signal, build_daily_schedule, compute_penalty_buffer, compute_volatility_threshold
+from src.models.signal import (
+    generate_signal, build_daily_schedule, compute_penalty_buffer, compute_volatility_threshold,
+)
 from src.backtest.engine import run_backtest
 from src.utils.config import (
     ensure_directories, FEATURES_DATASET, MODEL_FILE, PREDICTIONS_FILE,
     SIGNALS_FILE, PNL_FILE, METRICS_FILE, MODEL_METADATA_FILE, CURRENT_VERSION,
-    PROCESSED_DATA_DIR, RAW_DATA_DIR, DEFAULT_SIGNAL_THRESHOLD, SAVE_OUTPUTS_DEFAULT,
+    PROCESSED_DATA_DIR, DEFAULT_SIGNAL_THRESHOLD, SAVE_OUTPUTS_DEFAULT,
     PROJECT_ROOT, VERSIONED_FEATURES_DIR, VERSIONED_MODELS_DIR, VERSIONED_TRADING_DIR,
 )
 
@@ -227,7 +227,8 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
 
     bess_cfg = config["bess"]
     total_degradation = float(results_df["degradation_cost"].sum())
-    throughput = total_degradation / bess_cfg["degradation_cost_per_mwh"] if bess_cfg["degradation_cost_per_mwh"] > 0 else 0.0
+    deg_cost = bess_cfg["degradation_cost_per_mwh"]
+    throughput = total_degradation / deg_cost if deg_cost > 0 else 0.0
     total_cycles = throughput / (2 * bess_cfg["capacity_mwh"])
 
     metrics = {
@@ -325,7 +326,7 @@ def _run_bess_pipeline(config: dict) -> dict:
 
 
 def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = False) -> dict:
-    signal_threshold     = config["signal"]["threshold"]                              if config else DEFAULT_SIGNAL_THRESHOLD
+    signal_threshold = config["signal"]["threshold"] if config else DEFAULT_SIGNAL_THRESHOLD
     top_n                = config["signal"]["top_n"]                                  if config else 5
     vol_multiplier       = config["signal"].get("vol_multiplier", 1.0)                if config else 1.0
     vol_window           = config["signal"].get("vol_window", 336)                    if config else 336
@@ -482,10 +483,10 @@ def run_full_pipeline(mode: str | None = None, config: dict | None = None, skip_
     if effective_mode == "virtual":
         return _run_virtual_pipeline(config, skip_features=skip_features)
     elif effective_mode == "bess":
-        return _run_bess_pipeline(config)
+        return _run_bess_pipeline(config)  # type: ignore[arg-type]
     elif effective_mode == "all":
         virtual_results = _run_virtual_pipeline(config, skip_features=skip_features)
-        bess_results = _run_bess_pipeline(config)
+        bess_results = _run_bess_pipeline(config)  # type: ignore[arg-type]
         return {"virtual": virtual_results, "bess": bess_results}
     else:
         raise ValueError(f"Invalid mode: {effective_mode!r}. Must be 'virtual', 'bess', or 'all'.")

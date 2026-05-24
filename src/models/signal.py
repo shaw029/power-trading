@@ -25,12 +25,12 @@ def compute_penalty_buffer(
     """
     buy = pd.Series(np.asarray(system_buy_price, dtype=float))
     sell = pd.Series(np.asarray(system_sell_price, dtype=float))
-    return (
+    return (  # type: ignore[no-any-return]
         (buy - sell)
         .shift(_PENALTY_LAG)
         .rolling(_PENALTY_WINDOW, min_periods=48)
         .mean()
-        .values  # type: ignore[no-any-return]
+        .values
     )
 
 
@@ -60,12 +60,12 @@ def compute_volatility_threshold(
     """
     buy = pd.Series(np.asarray(system_buy_price, dtype=float))
     sell = pd.Series(np.asarray(system_sell_price, dtype=float))
-    return (
+    return (  # type: ignore[no-any-return]
         (buy - sell)
         .shift(lag)
         .rolling(window, min_periods=48)
         .std()
-        .values  # type: ignore[no-any-return]
+        .values
     )
 
 

@@ -51,7 +51,7 @@ def run_backtest(
         predicted_spreads:    Raw model spread forecasts (£/MWh).
         baseline_hedge_ratio: Fraction of position hedged at execution (0–1).
         take_profit_pct:      Take-profit trigger as a fraction of predicted spread.
-        stop_loss_price_delta:        Stop-loss threshold — maximum adverse price move (£/MWh) before the active slice exits.
+        stop_loss_price_delta: Stop-loss threshold — max adverse price move (£/MWh) before the active slice exits.
         slippage:             Bid-ask crossing cost applied to intraday mid-price exits (£/MWh).
 
     Returns:
@@ -214,7 +214,6 @@ def run_backtest(
     total_pnl = float(np.sum(net_pnl))
     n_active = int((signals != 0).sum())
     mean_pnl = float(np.mean(active_pnl)) if len(active_pnl) > 0 else 0.0
-    std_pnl = float(np.std(active_pnl)) if len(active_pnl) > 0 else 0.0
 
     # Sharpe — daily if available (natural unit for a once-per-day auction decision).
     # Power markets trade every calendar day, so annualise with sqrt(365) not sqrt(252).
@@ -327,7 +326,11 @@ def run_backtest_from_dataframe(
     df = df.copy().sort_values(time_col).reset_index(drop=True)
     timestamps = df[time_col].values if time_col in df.columns else None
     mid_prices = df[mid_price_col].values if mid_price_col and mid_price_col in df.columns else None
-    predicted_spreads = df[predicted_spread_col].values if predicted_spread_col and predicted_spread_col in df.columns else None
+    predicted_spreads = (
+        df[predicted_spread_col].values
+        if predicted_spread_col and predicted_spread_col in df.columns
+        else None
+    )
 
     net_pnl, metrics = run_backtest(
         signals=df[signal_col].values,

@@ -10,23 +10,25 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from src.bess.bess_asset import BESSAsset
-from src.bess.da_optimizer import optimize_da_schedule
-from src.bess.intraday_manager import run_intraday_session
-from src.bess.price_forecast import naive_da_forecast
+from src.bess.bess_asset import BESSAsset  # noqa: E402
+from src.bess.da_optimizer import optimize_da_schedule  # noqa: E402
+from src.bess.intraday_manager import run_intraday_session  # noqa: E402
+from src.bess.price_forecast import naive_da_forecast  # noqa: E402
 
 st.set_page_config(page_title="Power Trading Dashboard", layout="wide")
 
 PROCESSED_DATA = Path(os.environ.get("PT_PROCESSED_DATA", "data/processed/processed_data.parquet"))
 VIRTUAL_PNL = Path(os.environ.get("PT_VIRTUAL_PNL", "artifacts/da_imbalance/xgb_wf_v1/trading/pnl.csv"))
 VIRTUAL_SIGNALS = Path(os.environ.get("PT_VIRTUAL_SIGNALS", "artifacts/da_imbalance/xgb_wf_v1/trading/signals.csv"))
-VIRTUAL_PREDICTIONS = Path(os.environ.get("PT_VIRTUAL_PREDICTIONS", "artifacts/da_imbalance/xgb_wf_v1/trading/predictions.csv"))
+VIRTUAL_PREDICTIONS = Path(
+    os.environ.get("PT_VIRTUAL_PREDICTIONS", "artifacts/da_imbalance/xgb_wf_v1/trading/predictions.csv")
+)
 CONFIG_PATH = Path(__file__).resolve().parent / "configs" / "config.yaml"
 
 
 def _load_config() -> dict:
     with open(CONFIG_PATH) as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f) or {}
 
 
 # ── Data loading (cached) ────────────────────────────────────────────────────
@@ -66,9 +68,9 @@ def run_bess_simulation(
     capacity_mwh: float,
     power_mw: float,
     degradation_cost: float,
+    lookback_days: int,
     round_trip_efficiency: float = 0.88,
     initial_soc_pct: float = 0.50,
-    lookback_days: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     period = pd.Period(month_str, freq="M")
     start = period.start_time.tz_localize("UTC")
@@ -212,7 +214,7 @@ def chart_rebalancing(dispatch_df: pd.DataFrame, da_sched_df: pd.DataFrame, samp
             actual_mw.append(-row["mw"])
         else:
             actual_mw.append(0.0)
-    actual_mw = np.array(actual_mw)
+    actual_mw_arr = np.array(actual_mw)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -220,7 +222,7 @@ def chart_rebalancing(dispatch_df: pd.DataFrame, da_sched_df: pd.DataFrame, samp
         line=dict(color="#1f77b4", width=2, shape="hvh"),
     ))
     fig.add_trace(go.Scatter(
-        x=hours, y=actual_mw, name="Final Dispatch",
+        x=hours, y=actual_mw_arr, name="Final Dispatch",
         line=dict(color="#e74c3c", width=2, dash="dash", shape="hvh"),
     ))
     fig.update_layout(
