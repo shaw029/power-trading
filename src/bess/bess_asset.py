@@ -1,4 +1,7 @@
+import math
 from dataclasses import dataclass, field
+
+_SOC_TOL = 1e-9
 
 
 @dataclass
@@ -32,12 +35,14 @@ class BESSAsset:
         gross_mwh = mw * duration_h
         stored_mwh = gross_mwh * self.round_trip_efficiency
         new_soc = self._soc_mwh + stored_mwh
-        if new_soc > self.capacity_mwh:
+        if new_soc > self.capacity_mwh and not math.isclose(
+            new_soc, self.capacity_mwh, abs_tol=_SOC_TOL
+        ):
             raise ValueError(
                 f"Charge would exceed capacity: "
                 f"{new_soc:.4f} MWh > {self.capacity_mwh} MWh"
             )
-        self._soc_mwh = new_soc
+        self._soc_mwh = min(new_soc, self.capacity_mwh)
         self._degradation_cost += gross_mwh * self.degradation_cost_per_mwh
 
     def discharge(self, mw: float, duration_h: float) -> None:
@@ -47,25 +52,29 @@ class BESSAsset:
             )
         released_mwh = mw * duration_h
         new_soc = self._soc_mwh - released_mwh
-        if new_soc < 0:
+        if new_soc < 0 and not math.isclose(new_soc, 0.0, abs_tol=_SOC_TOL):
             raise ValueError(
                 f"Discharge would deplete SOC: "
                 f"{new_soc:.4f} MWh < 0 MWh"
             )
-        self._soc_mwh = new_soc
+        self._soc_mwh = max(new_soc, 0.0)
         self._degradation_cost += released_mwh * self.degradation_cost_per_mwh
 
     def can_charge(self, mw: float, duration_h: float) -> bool:
         if mw > self.power_mw:
             return False
         stored_mwh = mw * duration_h * self.round_trip_efficiency
-        return self._soc_mwh + stored_mwh <= self.capacity_mwh
+        new_soc = self._soc_mwh + stored_mwh
+        return new_soc <= self.capacity_mwh or math.isclose(
+            new_soc, self.capacity_mwh, abs_tol=_SOC_TOL
+        )
 
     def can_discharge(self, mw: float, duration_h: float) -> bool:
         if mw > self.power_mw:
             return False
         released_mwh = mw * duration_h
-        return self._soc_mwh - released_mwh >= 0
+        new_soc = self._soc_mwh - released_mwh
+        return new_soc >= 0 or math.isclose(new_soc, 0.0, abs_tol=_SOC_TOL)
 
     def reset(self) -> None:
         self._soc_mwh = self.initial_soc_pct * self.capacity_mwh
