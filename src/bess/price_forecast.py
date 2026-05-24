@@ -9,5 +9,7 @@ def naive_da_forecast(price_history: list[list[float]], lookback: int = 7, n_hou
             forecast.append(sum(values) / len(values))
         else:
             last_day = price_history[-1]
+            if not last_day:
+                raise ValueError("Cannot forecast: price history contains empty days")
             forecast.append(sum(last_day) / len(last_day))
     return forecast
