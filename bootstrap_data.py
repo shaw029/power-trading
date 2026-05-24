@@ -21,6 +21,7 @@ from src.data.download import (  # noqa: E402
     fetch_market_index_price,
     fetch_demand_actual,
     fetch_imbalance_price,
+    fetch_neso_ndfd,
 )
 
 ensure_directories()
@@ -33,6 +34,7 @@ FETCHERS = [
     ("market_index_price", fetch_market_index_price),
     ("demand_actual", fetch_demand_actual),
     ("imbalance_price", fetch_imbalance_price),
+    ("neso_ndfd", fetch_neso_ndfd),
 ]
 
 if __name__ == "__main__":
