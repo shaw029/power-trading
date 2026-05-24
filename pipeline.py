@@ -312,6 +312,8 @@ def _run_bess_pipeline(config: dict) -> dict:
             "net_pnl": result["net_pnl"],
         })
         price_history.append(da_prices)
+        if len(price_history) > 14:
+            price_history.pop(0)
 
     results_df = pd.DataFrame(daily_results)
     save_bess_outputs(results_df, config, paths)
