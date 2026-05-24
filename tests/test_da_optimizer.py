@@ -86,3 +86,20 @@ class TestDAOptimizer:
 
         revenue = sum(schedule[h] * prices[h] for h in range(24))
         assert revenue > 0, "Optimizer should generate positive revenue"
+
+    def test_terminal_soc_equals_initial(self, battery: BESSAsset) -> None:
+        prices = [15.0, 85.0, 20.0, 90.0, 10.0, 80.0] * 4
+        schedule = optimize_da_schedule(prices, battery)
+
+        total_activity = sum(abs(mw) for mw in schedule)
+        assert total_activity > 1.0, "Volatile prices should trigger trading"
+
+        soc = battery.capacity_mwh * battery.initial_soc_pct
+        for dispatch in schedule:
+            if dispatch > 0:
+                soc -= dispatch
+            else:
+                soc += (-dispatch) * battery.round_trip_efficiency
+
+        initial_soc = battery.capacity_mwh * battery.initial_soc_pct
+        assert soc == pytest.approx(initial_soc, abs=1e-3)
