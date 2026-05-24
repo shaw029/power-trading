@@ -8,5 +8,6 @@ def naive_da_forecast(price_history: list[list[float]], lookback: int = 7, n_hou
         if values:
             forecast.append(sum(values) / len(values))
         else:
-            forecast.append(forecast[-1] if forecast else 0.0)
+            last_day = price_history[-1]
+            forecast.append(sum(last_day) / len(last_day))
     return forecast
