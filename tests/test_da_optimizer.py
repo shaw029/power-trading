@@ -70,18 +70,29 @@ class TestDAOptimizer:
         assert total_activity < 1e-6, "No trade expected with flat prices and empty battery"
 
     def test_degradation_cost_prevents_unprofitable_trade(self) -> None:
-        asset = BESSAsset(
+        prices = [40.0] * 12 + [45.0] * 12
+
+        asset_no_deg = BESSAsset(
+            capacity_mwh=100.0,
+            power_mw=50.0,
+            round_trip_efficiency=0.9,
+            degradation_cost_per_mwh=0.0,
+            initial_soc_pct=0.5,
+        )
+        schedule_no_deg = optimize_da_schedule(prices, asset_no_deg)
+        activity_no_deg = sum(abs(mw) for mw in schedule_no_deg)
+        assert activity_no_deg > 1e-6, "Trade expected when spread covers efficiency loss"
+
+        asset_with_deg = BESSAsset(
             capacity_mwh=100.0,
             power_mw=50.0,
             round_trip_efficiency=0.9,
             degradation_cost_per_mwh=2.0,
             initial_soc_pct=0.5,
         )
-        prices = [40.0] * 12 + [41.0] * 12
-        schedule = optimize_da_schedule(prices, asset)
-
-        total_activity = sum(abs(mw) for mw in schedule)
-        assert total_activity < 1e-6, "No trade expected when spread < degradation cost"
+        schedule_with_deg = optimize_da_schedule(prices, asset_with_deg)
+        activity_with_deg = sum(abs(mw) for mw in schedule_with_deg)
+        assert activity_with_deg < 1e-6, "No trade expected when degradation cost eliminates profit"
 
     def test_revenue_is_positive(self, battery: BESSAsset) -> None:
         prices = [10.0] * 12 + [90.0] * 12
