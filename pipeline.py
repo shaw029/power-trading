@@ -284,6 +284,7 @@ def _run_bess_pipeline(config: dict) -> dict:
 
     daily_results = []
     price_history: list[list[float]] = []
+    lookback = bess_cfg.get("price_history_lookback_days", 14)
     for date, day_df in prices.groupby(prices.index.date):
         n_hours = len(day_df)
         if n_hours not in (23, 24, 25):
@@ -312,7 +313,7 @@ def _run_bess_pipeline(config: dict) -> dict:
             "net_pnl": result["net_pnl"],
         })
         price_history.append(da_prices)
-        if len(price_history) >= 14:
+        if len(price_history) >= lookback:
             price_history.pop(0)
 
     results_df = pd.DataFrame(daily_results)
