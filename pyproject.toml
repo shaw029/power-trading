@@ -23,6 +23,7 @@ module = [
     "xgboost",
     "joblib",
     "pulp",
+    "highspy",
     "dotenv",
     "requests",
     "yaml",

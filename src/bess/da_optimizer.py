@@ -34,9 +34,19 @@ def optimize_da_schedule(
         prob += soc[h + 1] == soc[h] - discharge[h] + charge[h] * asset.round_trip_efficiency
 
     try:
-        prob.solve(pulp.HiGHS(msg=0))
+        import highspy  # noqa: F401
+        solver = pulp.HiGHS(msg=0)
+    except ImportError:
+        solver = pulp.PULP_CBC_CMD(msg=0)
+
+    try:
+        status = prob.solve(solver)
     except pulp.PulpSolverError:
         logger.warning("DA solver failed; returning zero-dispatch fallback schedule")
+        return [0.0] * n_hours
+
+    if pulp.LpStatus[status] != "Optimal":
+        logger.warning("DA solver non-optimal (%s); returning zero-dispatch fallback", pulp.LpStatus[status])
         return [0.0] * n_hours
 
     return [discharge[h].varValue - charge[h].varValue for h in hours]

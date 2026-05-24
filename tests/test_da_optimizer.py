@@ -119,7 +119,7 @@ class TestDAOptimizer:
 
     def test_solver_failure_returns_zero_dispatch(self, battery: BESSAsset) -> None:
         prices = [40.0] * 24
-        with patch.object(pulp.HiGHS, "actualSolve", side_effect=pulp.PulpSolverError("solver crashed")):
+        with patch("pulp.LpProblem.solve", side_effect=pulp.PulpSolverError("solver crashed")):
             schedule = optimize_da_schedule(prices, battery)
 
         assert schedule == [0.0] * 24
