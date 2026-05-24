@@ -28,6 +28,7 @@ def run_intraday_session(
     n_periods = len(da_schedule)
     duration_h = 1.0
     degradation_cost = config["degradation_cost_per_mwh"]
+    soc_drift_tolerance = config.get("soc_drift_tolerance", 0.05)
 
     implied_soc = _compute_implied_soc(
         da_schedule, asset._soc_mwh, asset.round_trip_efficiency, asset.capacity_mwh
@@ -84,7 +85,7 @@ def run_intraday_session(
         implied_pct = implied_soc[h + 1] / asset.capacity_mwh
         drift = actual_pct - implied_pct
 
-        if abs(drift) > 0.05:
+        if abs(drift) > soc_drift_tolerance:
             drift_mwh = abs(drift) * asset.capacity_mwh
             if drift > 0:
                 rebal_mw = min(drift_mwh / duration_h, asset.power_mw)
