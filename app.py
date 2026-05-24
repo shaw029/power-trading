@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -20,6 +21,12 @@ PROCESSED_DATA = Path(os.environ.get("PT_PROCESSED_DATA", "data/processed/proces
 VIRTUAL_PNL = Path(os.environ.get("PT_VIRTUAL_PNL", "artifacts/da_imbalance/xgb_wf_v1/trading/pnl.csv"))
 VIRTUAL_SIGNALS = Path(os.environ.get("PT_VIRTUAL_SIGNALS", "artifacts/da_imbalance/xgb_wf_v1/trading/signals.csv"))
 VIRTUAL_PREDICTIONS = Path(os.environ.get("PT_VIRTUAL_PREDICTIONS", "artifacts/da_imbalance/xgb_wf_v1/trading/predictions.csv"))
+CONFIG_PATH = Path(__file__).resolve().parent / "configs" / "config.yaml"
+
+
+def _load_config() -> dict:
+    with open(CONFIG_PATH) as f:
+        return yaml.safe_load(f)
 
 
 # ── Data loading (cached) ────────────────────────────────────────────────────
@@ -61,8 +68,10 @@ def run_bess_simulation(
     degradation_cost: float,
     round_trip_efficiency: float = 0.88,
     initial_soc_pct: float = 0.50,
-    lookback_days: int = 14,
+    lookback_days: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if lookback_days is None:
+        lookback_days = _load_config()["bess"]["price_history_lookback_days"]
     period = pd.Period(month_str, freq="M")
     start = period.start_time.tz_localize("UTC")
     end = period.end_time.tz_localize("UTC")
@@ -361,11 +370,14 @@ def render_bess(prices: pd.DataFrame):
     initial_soc = st.sidebar.slider("Initial SOC (%)", 0, 100, 50, step=5)
 
     if st.sidebar.button("Run Simulation", type="primary"):
+        cfg = _load_config()
+        lookback = cfg["bess"]["price_history_lookback_days"]
         with st.spinner("Running BESS simulation..."):
             results_df, dispatch_df, da_sched_df = run_bess_simulation(
                 prices, selected_month, capacity, power, degradation,
                 round_trip_efficiency=rte,
                 initial_soc_pct=initial_soc / 100.0,
+                lookback_days=lookback,
             )
 
         if results_df.empty:

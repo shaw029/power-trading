@@ -86,6 +86,7 @@ class TestBESSPipelineIntegration:
                 "round_trip_efficiency": 0.88,
                 "degradation_cost_per_mwh": 8.50,
                 "initial_soc_pct": 0.50,
+                "price_history_lookback_days": 14,
             },
         }
 
@@ -129,6 +130,7 @@ class TestBESSPipelineIntegration:
                 "round_trip_efficiency": 0.88,
                 "degradation_cost_per_mwh": 8.50,
                 "initial_soc_pct": 0.50,
+                "price_history_lookback_days": 14,
             },
         }
         return run_full_pipeline(config=config)
