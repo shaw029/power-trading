@@ -1,7 +1,29 @@
 import pytest
 
 from src.bess.bess_asset import BESSAsset
-from src.bess.intraday_manager import run_intraday_session
+from src.bess.intraday_manager import _compute_implied_soc, run_intraday_session
+
+
+class TestComputeImpliedSocClamping:
+    def test_soc_clamped_above_capacity(self):
+        soc = _compute_implied_soc(
+            da_schedule=[-200.0, -200.0],
+            initial_soc_mwh=80.0,
+            round_trip_efficiency=0.9,
+            capacity_mwh=100.0,
+        )
+        assert all(s <= 100.0 for s in soc)
+        assert soc[-1] == pytest.approx(100.0)
+
+    def test_soc_clamped_below_zero(self):
+        soc = _compute_implied_soc(
+            da_schedule=[200.0, 200.0],
+            initial_soc_mwh=20.0,
+            round_trip_efficiency=0.9,
+            capacity_mwh=100.0,
+        )
+        assert all(s >= 0.0 for s in soc)
+        assert soc[-1] == pytest.approx(0.0)
 
 
 class TestNoRebalance:
