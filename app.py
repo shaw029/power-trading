@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from src.bess.bess_asset import BESSAsset
 from src.bess.da_optimizer import optimize_da_schedule
 from src.bess.intraday_manager import run_intraday_session
+from src.bess.price_forecast import naive_da_forecast
 
 st.set_page_config(page_title="Power Trading Dashboard", layout="wide")
 
@@ -76,6 +77,7 @@ def run_bess_simulation(
     daily_results = []
     all_dispatch_logs = []
     all_da_schedules = []
+    price_history: list[list[float]] = []
 
     for date, day_df in hourly.groupby(hourly.index.date):
         if len(day_df) != 24:
@@ -83,7 +85,11 @@ def run_bess_simulation(
 
         asset = BESSAsset(**bess_cfg)
         da_prices = day_df["day_ahead_price"].tolist()
-        schedule = optimize_da_schedule(da_prices, asset)
+        if not price_history:
+            price_history.append(da_prices)
+            continue
+        forecast = naive_da_forecast(price_history)
+        schedule = optimize_da_schedule(forecast, asset)
 
         asset.reset()
         result = run_intraday_session(
@@ -117,6 +123,7 @@ def run_bess_simulation(
                 "timestamp": day_df.index[h],
                 "da_mw": mw,
             })
+        price_history.append(da_prices)
 
     results_df = pd.DataFrame(daily_results)
     dispatch_df = pd.DataFrame(all_dispatch_logs)
@@ -148,8 +155,8 @@ def chart_price_dispatch(prices_hourly: pd.DataFrame, da_sched_df: pd.DataFrame,
     fig.update_layout(
         title=f"Price & Dispatch Overlay — {sample_date}",
         xaxis=dict(title="Hour of Day", dtick=1),
-        yaxis=dict(title="DA Price (£/MWh)", side="left", titlefont_color="#1f77b4"),
-        yaxis2=dict(title="Dispatch (MW)", side="right", overlaying="y", titlefont_color="#555"),
+        yaxis=dict(title="DA Price (£/MWh)", side="left", title_font=dict(color="#1f77b4")),
+        yaxis2=dict(title="Dispatch (MW)", side="right", overlaying="y", title_font=dict(color="#555")),
         legend=dict(x=0, y=1.12, orientation="h"),
         template="plotly_white",
         height=400,

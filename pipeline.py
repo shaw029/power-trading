@@ -251,6 +251,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     from src.bess.bess_asset import BESSAsset
     from src.bess.da_optimizer import optimize_da_schedule
     from src.bess.intraday_manager import run_intraday_session
+    from src.bess.price_forecast import naive_da_forecast
 
     bess_cfg = config["bess"]
     paths = setup_experiment_paths(config)
@@ -282,12 +283,17 @@ def _run_bess_pipeline(config: dict) -> dict:
     )
 
     daily_results = []
+    price_history: list[list[float]] = []
     for date, day_df in prices.groupby(prices.index.date):
         if len(day_df) != 24:
             continue
         asset.reset()
         da_prices = day_df["day_ahead_price"].tolist()
-        schedule = optimize_da_schedule(da_prices, asset)
+        if not price_history:
+            price_history.append(da_prices)
+            continue
+        forecast = naive_da_forecast(price_history)
+        schedule = optimize_da_schedule(forecast, asset)
         result = run_intraday_session(
             da_schedule=schedule,
             da_prices=da_prices,
@@ -304,6 +310,7 @@ def _run_bess_pipeline(config: dict) -> dict:
             "degradation_cost": result["total_degradation_cost"],
             "net_pnl": result["net_pnl"],
         })
+        price_history.append(da_prices)
 
     results_df = pd.DataFrame(daily_results)
     save_bess_outputs(results_df, config, paths)

@@ -43,7 +43,7 @@ EXPECTED_METRIC_KEYS = {
 
 class TestBESSPipelineIntegration:
     def test_bess_branch_writes_outputs(self, tmp_path, monkeypatch):
-        da, mid, imb = _synthetic_prices(3)
+        da, mid, imb = _synthetic_prices(4)
 
         monkeypatch.setattr("pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
         monkeypatch.setattr("pipeline.fetch_market_index_price", lambda *a, **kw: None)
