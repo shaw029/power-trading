@@ -33,12 +33,18 @@ def main():
         default="configs/config.yaml",
         help="Path to a YAML experiment config (default: configs/config.yaml)",
     )
+    parser.add_argument(
+        "--skip-features",
+        action="store_true",
+        default=False,
+        help="Skip feature building and retrain on existing features",
+    )
     args = parser.parse_args()
 
     config = _load_config(args.config)
     mode = args.mode or config.get("strategy_type", "virtual")
 
-    run_full_pipeline(mode=mode, config=config)
+    run_full_pipeline(mode=mode, config=config, skip_features=args.skip_features)
 
 
 if __name__ == "__main__":

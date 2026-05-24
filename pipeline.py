@@ -321,7 +321,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     return results
 
 
-def _run_virtual_pipeline(config: dict | None = None) -> dict:
+def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = False) -> dict:
     signal_threshold     = config["signal"]["threshold"]                              if config else DEFAULT_SIGNAL_THRESHOLD
     top_n                = config["signal"]["top_n"]                                  if config else 5
     vol_multiplier       = config["signal"].get("vol_multiplier", 1.0)                if config else 1.0
@@ -348,8 +348,15 @@ def _run_virtual_pipeline(config: dict | None = None) -> dict:
     }
 
     try:
-        logger.info("Virtual pipeline: building features from raw data")
-        build_features_pipeline(features_save_path=paths["features_file"])
+        if skip_features:
+            if not paths["features_file"].exists():
+                raise FileNotFoundError(
+                    f"--skip-features requires an existing features file: {paths['features_file']}"
+                )
+            logger.info("Skipping feature build, retraining on existing features")
+        else:
+            logger.info("Virtual pipeline: building features from raw data")
+            build_features_pipeline(features_save_path=paths["features_file"])
 
         logger.info("Training model")
         model, predictions_df, X_test = train_model(
@@ -456,24 +463,25 @@ def _run_virtual_pipeline(config: dict | None = None) -> dict:
         raise
 
 
-def run_full_pipeline(mode: str | None = None, config: dict | None = None) -> dict:
+def run_full_pipeline(mode: str | None = None, config: dict | None = None, skip_features: bool = False) -> dict:
     """Run the trading pipeline.
 
     Args:
         mode:   'virtual' (ML spread-trading), 'bess' (battery storage), or 'all'.
                 Defaults to config['strategy_type'] when omitted, then 'virtual'.
         config: Experiment config dict loaded from YAML.
+        skip_features: If True, skip feature building and retrain on existing features.
     """
     effective_mode = mode or (config or {}).get("strategy_type", "virtual")
     logger.info(f"Starting pipeline in '{effective_mode}' mode")
     ensure_directories()
 
     if effective_mode == "virtual":
-        return _run_virtual_pipeline(config)
+        return _run_virtual_pipeline(config, skip_features=skip_features)
     elif effective_mode == "bess":
         return _run_bess_pipeline(config)
     elif effective_mode == "all":
-        virtual_results = _run_virtual_pipeline(config)
+        virtual_results = _run_virtual_pipeline(config, skip_features=skip_features)
         bess_results = _run_bess_pipeline(config)
         return {"virtual": virtual_results, "bess": bess_results}
     else:
