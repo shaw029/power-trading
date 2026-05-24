@@ -285,14 +285,15 @@ def _run_bess_pipeline(config: dict) -> dict:
     daily_results = []
     price_history: list[list[float]] = []
     for date, day_df in prices.groupby(prices.index.date):
-        if len(day_df) != 24:
+        n_hours = len(day_df)
+        if n_hours not in (23, 24, 25):
             continue
         asset.reset()
         da_prices = day_df["day_ahead_price"].tolist()
         if not price_history:
             price_history.append(da_prices)
             continue
-        forecast = naive_da_forecast(price_history)
+        forecast = naive_da_forecast(price_history, n_hours=n_hours)
         schedule = optimize_da_schedule(forecast, asset)
         result = run_intraday_session(
             da_schedule=schedule,

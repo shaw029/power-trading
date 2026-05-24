@@ -7,13 +7,14 @@ def optimize_da_schedule(
     da_prices: list[float],
     asset: BESSAsset,
 ) -> list[float]:
-    hours = range(24)
+    n_hours = len(da_prices)
+    hours = range(n_hours)
 
     prob = pulp.LpProblem("DA_BESS_Schedule", pulp.LpMaximize)
 
     charge = [pulp.LpVariable(f"charge_{h}", lowBound=0, upBound=asset.power_mw) for h in hours]
     discharge = [pulp.LpVariable(f"discharge_{h}", lowBound=0, upBound=asset.power_mw) for h in hours]
-    soc = [pulp.LpVariable(f"soc_{h}", lowBound=0, upBound=asset.capacity_mwh) for h in range(25)]
+    soc = [pulp.LpVariable(f"soc_{h}", lowBound=0, upBound=asset.capacity_mwh) for h in range(n_hours + 1)]
 
     prob += pulp.lpSum(
         (discharge[h] - charge[h]) * da_prices[h] for h in hours
