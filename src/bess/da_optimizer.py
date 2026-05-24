@@ -1,6 +1,10 @@
+import logging
+
 import pulp
 
 from src.bess.bess_asset import BESSAsset
+
+logger = logging.getLogger(__name__)
 
 
 def optimize_da_schedule(
@@ -29,6 +33,10 @@ def optimize_da_schedule(
     for h in hours:
         prob += soc[h + 1] == soc[h] - discharge[h] + charge[h] * asset.round_trip_efficiency
 
-    prob.solve(pulp.HiGHS(msg=0))
+    try:
+        prob.solve(pulp.HiGHS(msg=0))
+    except Exception:
+        logger.warning("DA solver failed; returning zero-dispatch fallback schedule")
+        return [0.0] * n_hours
 
     return [discharge[h].varValue - charge[h].varValue for h in hours]
