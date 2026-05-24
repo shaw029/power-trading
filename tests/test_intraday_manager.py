@@ -55,23 +55,57 @@ class TestNoRebalance:
 class TestSOCDrift:
     def test_drift_triggers_charge_rebalance(self):
         asset = BESSAsset(
-            capacity_mwh=100, power_mw=50, round_trip_efficiency=0.9,
-            degradation_cost_per_mwh=1.0, initial_soc_pct=0.7,
+            capacity_mwh=100, power_mw=20, round_trip_efficiency=0.9,
+            degradation_cost_per_mwh=1.0, initial_soc_pct=0.5,
         )
         result = run_intraday_session(
-            da_schedule=[-50.0, 30.0, 0.0],
-            da_prices=[40.0, 60.0, 50.0],
-            mid_prices=[41.0, 59.0, 50.0],
-            imbalance_prices=[42.0, 58.0, 50.0],
+            da_schedule=[-30.0],
+            da_prices=[40.0],
+            mid_prices=[42.0],
+            imbalance_prices=[38.0],
             asset=asset,
             config={"degradation_cost_per_mwh": 5.0},
         )
 
-        # Period 0: charge 50 MW but headroom=30 → max 33.33 MW. Shortfall=16.67.
-        # Period 1: discharge 30. Implied SOC=85, actual=70. Drift=-15%.
-        #   SOC rebalance charges 15 MW at MID 59.
-        assert result["intraday_pnl"] == pytest.approx(-15.0 * 59.0)
-        assert result["imbalance_pnl"] == pytest.approx(700.0)
+        # Charge 30 MW but power_mw=20 → max 20 MW. Shortfall=10.
+        # Implied SOC=77%, actual=68%. Drift=-9% > default 5% tolerance.
+        # Rebalance charges 9 MW at MID 42.
+        assert result["intraday_pnl"] == pytest.approx(-9.0 * 42.0)
+        assert result["imbalance_pnl"] == pytest.approx(10.0 * 38.0)
+
+    def test_large_drift_tolerance_suppresses_rebalance(self):
+        asset = BESSAsset(
+            capacity_mwh=100, power_mw=20, round_trip_efficiency=0.9,
+            degradation_cost_per_mwh=1.0, initial_soc_pct=0.5,
+        )
+        result = run_intraday_session(
+            da_schedule=[-30.0],
+            da_prices=[40.0],
+            mid_prices=[42.0],
+            imbalance_prices=[38.0],
+            asset=asset,
+            config={"degradation_cost_per_mwh": 5.0, "soc_drift_tolerance": 0.5},
+        )
+
+        # Same 9% drift, but tolerance=0.5 suppresses rebalance.
+        assert result["intraday_pnl"] == pytest.approx(0.0)
+
+    def test_small_drift_tolerance_triggers_rebalance(self):
+        asset = BESSAsset(
+            capacity_mwh=100, power_mw=20, round_trip_efficiency=0.9,
+            degradation_cost_per_mwh=1.0, initial_soc_pct=0.5,
+        )
+        result = run_intraday_session(
+            da_schedule=[-30.0],
+            da_prices=[40.0],
+            mid_prices=[42.0],
+            imbalance_prices=[38.0],
+            asset=asset,
+            config={"degradation_cost_per_mwh": 5.0, "soc_drift_tolerance": 0.01},
+        )
+
+        # Same 9% drift, tolerance=0.01 triggers rebalance: charge 9 MW at MID 42.
+        assert result["intraday_pnl"] == pytest.approx(-9.0 * 42.0)
 
 
 class TestSpreadImprovement:
