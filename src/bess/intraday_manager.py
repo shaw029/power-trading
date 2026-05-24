@@ -5,13 +5,15 @@ def _compute_implied_soc(
     da_schedule: list[float],
     initial_soc_mwh: float,
     round_trip_efficiency: float,
+    capacity_mwh: float,
 ) -> list[float]:
     soc = [initial_soc_mwh]
     for mw in da_schedule:
         if mw >= 0:
-            soc.append(soc[-1] - mw)
+            next_soc = soc[-1] - mw
         else:
-            soc.append(soc[-1] + abs(mw) * round_trip_efficiency)
+            next_soc = soc[-1] + abs(mw) * round_trip_efficiency
+        soc.append(max(0.0, min(next_soc, capacity_mwh)))
     return soc
 
 
@@ -28,7 +30,7 @@ def run_intraday_session(
     degradation_cost = config["degradation_cost_per_mwh"]
 
     implied_soc = _compute_implied_soc(
-        da_schedule, asset._soc_mwh, asset.round_trip_efficiency
+        da_schedule, asset._soc_mwh, asset.round_trip_efficiency, asset.capacity_mwh
     )
 
     da_revenue = 0.0
