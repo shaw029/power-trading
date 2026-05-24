@@ -26,6 +26,14 @@ class TestNaiveDaForecast:
         forecast = naive_da_forecast(history)
         assert len(forecast) == 24
 
+    def test_handles_missing_hour_in_history(self) -> None:
+        days = [[10.0 * (d + 1) + h for h in range(24)] for d in range(3)]
+        forecast = naive_da_forecast(days, n_hours=25)
+        assert len(forecast) == 25
+        last_day = days[-1]
+        expected_fallback = sum(last_day) / len(last_day)
+        assert abs(forecast[24] - expected_fallback) < 1e-9
+
     def test_empty_history_raises(self) -> None:
         with pytest.raises(ValueError):
             naive_da_forecast([])
