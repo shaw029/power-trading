@@ -11,3 +11,4 @@ debugpy
 pytest
 streamlit
 plotly
+pulp
