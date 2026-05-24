@@ -67,6 +67,17 @@ class TestLimitEnforcement:
         battery.charge(mw=50, duration_h=0.5)
         assert battery._soc_mwh == pytest.approx(50.0 + 22.5)
 
+    def test_float_tolerance_near_full_and_empty(self, battery: BESSAsset) -> None:
+        battery._soc_mwh = battery.capacity_mwh - 4e-11
+        battery.charge(mw=1e-10, duration_h=1.0)
+        assert battery._soc_mwh == battery.capacity_mwh
+
+        battery.reset()
+
+        battery._soc_mwh = 4e-11
+        battery.discharge(mw=1e-10, duration_h=1.0)
+        assert battery._soc_mwh == 0.0
+
 
 class TestDegradation:
     def test_charge_accumulates_degradation(self, battery: BESSAsset) -> None:
