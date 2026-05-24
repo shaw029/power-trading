@@ -87,6 +87,22 @@ class TestDAOptimizer:
         revenue = sum(schedule[h] * prices[h] for h in range(24))
         assert revenue > 0, "Optimizer should generate positive revenue"
 
+    def test_terminal_soc_is_not_less_than_initial(self, battery: BESSAsset) -> None:
+        prices = [10.0] * 12 + [90.0] * 12
+        schedule = optimize_da_schedule(prices, battery)
+
+        soc = battery.capacity_mwh * battery.initial_soc_pct
+        for dispatch in schedule:
+            if dispatch > 0:
+                soc -= dispatch
+            else:
+                soc += (-dispatch) * battery.round_trip_efficiency
+
+        initial_soc = battery.capacity_mwh * battery.initial_soc_pct
+        assert soc >= initial_soc - 1e-6, (
+            f"Final SOC {soc:.4f} must not be less than initial SOC {initial_soc:.4f}"
+        )
+
     def test_terminal_soc_equals_initial(self, battery: BESSAsset) -> None:
         prices = [15.0, 85.0, 20.0, 90.0, 10.0, 80.0] * 4
         schedule = optimize_da_schedule(prices, battery)
