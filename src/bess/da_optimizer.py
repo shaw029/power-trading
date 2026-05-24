@@ -24,7 +24,7 @@ def optimize_da_schedule(
 
     initial_soc = asset.capacity_mwh * asset.initial_soc_pct
     prob += soc[0] == initial_soc
-    prob += soc[n_hours] == initial_soc
+    prob += soc[n_hours] >= initial_soc
 
     for h in hours:
         prob += soc[h + 1] == soc[h] - discharge[h] + charge[h] * asset.round_trip_efficiency
