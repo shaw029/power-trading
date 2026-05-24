@@ -30,4 +30,4 @@ jobs:
         run: pytest -q
 
       - name: Notebook smoke test
-        run: jupyter nbconvert --to notebook --execute --inplace notebooks/01_da_positioning_backtest.ipynb
+        run: jupyter nbconvert --to notebook --execute --output /tmp/nb_smoke_out.ipynb notebooks/01_da_positioning_backtest.ipynb

@@ -68,10 +68,8 @@ def run_bess_simulation(
     degradation_cost: float,
     round_trip_efficiency: float = 0.88,
     initial_soc_pct: float = 0.50,
-    lookback_days: int | None = None,
+    lookback_days: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    if lookback_days is None:
-        lookback_days = _load_config()["bess"]["price_history_lookback_days"]
     period = pd.Period(month_str, freq="M")
     start = period.start_time.tz_localize("UTC")
     end = period.end_time.tz_localize("UTC")
