@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -15,10 +16,10 @@ from src.bess.price_forecast import naive_da_forecast
 
 st.set_page_config(page_title="Power Trading Dashboard", layout="wide")
 
-PROCESSED_DATA = Path("data/processed/processed_data.parquet")
-VIRTUAL_PNL = Path("artifacts/da_imbalance/xgb_wf_v1/trading/pnl.csv")
-VIRTUAL_SIGNALS = Path("artifacts/da_imbalance/xgb_wf_v1/trading/signals.csv")
-VIRTUAL_PREDICTIONS = Path("artifacts/da_imbalance/xgb_wf_v1/trading/predictions.csv")
+PROCESSED_DATA = Path(os.environ.get("PT_PROCESSED_DATA", "data/processed/processed_data.parquet"))
+VIRTUAL_PNL = Path(os.environ.get("PT_VIRTUAL_PNL", "artifacts/da_imbalance/xgb_wf_v1/trading/pnl.csv"))
+VIRTUAL_SIGNALS = Path(os.environ.get("PT_VIRTUAL_SIGNALS", "artifacts/da_imbalance/xgb_wf_v1/trading/signals.csv"))
+VIRTUAL_PREDICTIONS = Path(os.environ.get("PT_VIRTUAL_PREDICTIONS", "artifacts/da_imbalance/xgb_wf_v1/trading/predictions.csv"))
 
 
 # ── Data loading (cached) ────────────────────────────────────────────────────
@@ -58,6 +59,8 @@ def run_bess_simulation(
     capacity_mwh: float,
     power_mw: float,
     degradation_cost: float,
+    round_trip_efficiency: float = 0.88,
+    initial_soc_pct: float = 0.50,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     period = pd.Period(month_str, freq="M")
     start = period.start_time.tz_localize("UTC")
@@ -69,9 +72,9 @@ def run_bess_simulation(
     bess_cfg = {
         "capacity_mwh": capacity_mwh,
         "power_mw": power_mw,
-        "round_trip_efficiency": 0.88,
+        "round_trip_efficiency": round_trip_efficiency,
         "degradation_cost_per_mwh": degradation_cost,
-        "initial_soc_pct": 0.50,
+        "initial_soc_pct": initial_soc_pct,
     }
 
     daily_results = []
@@ -351,11 +354,15 @@ def render_bess(prices: pd.DataFrame):
     capacity = st.sidebar.slider("Battery Capacity (MWh)", 20, 500, 100, step=10)
     power = st.sidebar.slider("Max Power (MW)", 10, 200, 50, step=5)
     degradation = st.sidebar.slider("Degradation Cost (£/MWh)", 0.0, 30.0, 8.50, step=0.50)
+    rte = st.sidebar.slider("Round-Trip Efficiency", 0.70, 1.00, 0.88, step=0.01)
+    initial_soc = st.sidebar.slider("Initial SOC (%)", 0, 100, 50, step=5)
 
     if st.sidebar.button("Run Simulation", type="primary"):
         with st.spinner("Running BESS simulation..."):
             results_df, dispatch_df, da_sched_df = run_bess_simulation(
                 prices, selected_month, capacity, power, degradation,
+                round_trip_efficiency=rte,
+                initial_soc_pct=initial_soc / 100.0,
             )
 
         if results_df.empty:
@@ -394,6 +401,9 @@ def render_bess(prices: pd.DataFrame):
     daily_spread = valid_hourly.groupby(valid_hourly.index.date)["day_ahead_price"].apply(
         lambda x: x.max() - x.min()
     )
+    if daily_spread.empty:
+        st.warning("No valid price data for the selected month.")
+        return
     sample_date = daily_spread.idxmax()
 
     col1, col2 = st.columns(2)
