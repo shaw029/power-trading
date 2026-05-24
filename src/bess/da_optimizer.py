@@ -35,7 +35,7 @@ def optimize_da_schedule(
 
     try:
         prob.solve(pulp.HiGHS(msg=0))
-    except Exception:
+    except pulp.PulpSolverError:
         logger.warning("DA solver failed; returning zero-dispatch fallback schedule")
         return [0.0] * n_hours
 

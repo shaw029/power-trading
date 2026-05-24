@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+import pulp
 import pytest
 
 from src.bess.bess_asset import BESSAsset
@@ -102,6 +105,13 @@ class TestDAOptimizer:
         assert soc >= initial_soc - 1e-6, (
             f"Final SOC {soc:.4f} must not be less than initial SOC {initial_soc:.4f}"
         )
+
+    def test_solver_failure_returns_zero_dispatch(self, battery: BESSAsset) -> None:
+        prices = [40.0] * 24
+        with patch.object(pulp.HiGHS, "actualSolve", side_effect=pulp.PulpSolverError("solver crashed")):
+            schedule = optimize_da_schedule(prices, battery)
+
+        assert schedule == [0.0] * 24
 
     def test_terminal_soc_equals_initial(self, battery: BESSAsset) -> None:
         prices = [15.0, 85.0, 20.0, 90.0, 10.0, 80.0] * 4
