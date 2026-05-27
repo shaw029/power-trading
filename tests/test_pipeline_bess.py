@@ -50,6 +50,70 @@ def _synthetic_dst_prices(start_date, end_date):
     return da, mid, imb
 
 
+def _synthetic_features(price_df):
+    """Build synthetic features matching a price DataFrame's index."""
+    idx = price_df.index
+    utc_idx = idx.tz_convert("UTC") if idx.tz is not None and str(idx.tz) != "UTC" else idx
+    rng = np.random.default_rng(99)
+    n = len(idx)
+    hour = idx.hour + idx.minute / 60
+    dow = idx.dayofweek
+
+    return pd.DataFrame({
+        "time": utc_idx,
+        "day_ahead_price": price_df["day_ahead_price"].values,
+        "wind_fc_da_d1_10h30": rng.uniform(5000, 15000, n),
+        "demand_fc_da_d1_10h30": rng.uniform(25000, 45000, n),
+        "auction_residual_load": rng.uniform(15000, 35000, n),
+        "wind_auction_drift": rng.normal(0, 500, n),
+        "day_ahead_price_lag48": np.full(n, 40.0),
+        "day_ahead_price_lag96": np.full(n, 40.0),
+        "system_sell_price_lag48": np.full(n, 35.0),
+        "system_sell_price_lag96": np.full(n, 35.0),
+        "hour_sin": np.sin(2 * np.pi * hour / 24),
+        "hour_cos": np.cos(2 * np.pi * hour / 24),
+        "dow_sin": np.sin(2 * np.pi * dow / 7),
+        "dow_cos": np.cos(2 * np.pi * dow / 7),
+        "system_sell_price": 35 + rng.normal(0, 5, n),
+        "system_buy_price": 50 + rng.normal(0, 5, n),
+        "mid_price": 42 + rng.normal(0, 3, n),
+    })
+
+
+class _ConstantModel:
+    def predict(self, X):
+        return np.full(len(X), 40.0)
+
+
+def _setup_bess_mocks(da, tmp_path, monkeypatch):
+    """Pre-create features file and mock DA model training for BESS tests."""
+    features_df = _synthetic_features(da)
+
+    features_dir = tmp_path / "artifacts" / "bess_test" / "integration_run" / "features"
+    features_dir.mkdir(parents=True)
+    features_df.to_parquet(features_dir / "features.parquet", index=False)
+
+    times = pd.to_datetime(features_df["time"], utc=True)
+    london_dates = sorted(times.dt.tz_convert("Europe/London").dt.date.unique())
+    oos_dates = set(london_dates[1:])
+    oos_mask = times.dt.tz_convert("Europe/London").dt.date.isin(oos_dates)
+    oos_rows = features_df[oos_mask]
+
+    def mock_train(*args, **kwargs):
+        return (
+            _ConstantModel(),
+            pd.DataFrame({
+                "time": oos_rows["time"].values,
+                "actual_da_price": oos_rows["day_ahead_price"].values,
+                "predicted_da_price": np.full(len(oos_rows), 40.0),
+            }),
+            pd.DataFrame({"dummy": [0]}),
+        )
+
+    monkeypatch.setattr("src.models.train.train_da_price_model", mock_train)
+    monkeypatch.setattr("pipeline.save_model", lambda *a, **kw: None)
+
+
 EXPECTED_METRIC_KEYS = {
     "total_da_revenue",
     "total_intraday_pnl",
@@ -74,6 +138,7 @@ class TestBESSPipelineIntegration:
         monkeypatch.setattr("pipeline.process_market_index_price", lambda _: mid)
         monkeypatch.setattr("pipeline.process_imbalance_price", lambda _: imb)
         monkeypatch.setattr("pipeline.PROJECT_ROOT", tmp_path)
+        _setup_bess_mocks(da, tmp_path, monkeypatch)
 
         config = {
             "strategy": "bess_test",
@@ -85,7 +150,6 @@ class TestBESSPipelineIntegration:
                 "round_trip_efficiency": 0.88,
                 "degradation_cost_per_mwh": 8.50,
                 "initial_soc_pct": 0.50,
-                "price_history_lookback_days": 14,
             },
         }
 
@@ -118,6 +182,7 @@ class TestBESSPipelineIntegration:
         monkeypatch.setattr("pipeline.process_market_index_price", lambda _: mid)
         monkeypatch.setattr("pipeline.process_imbalance_price", lambda _: imb)
         monkeypatch.setattr("pipeline.PROJECT_ROOT", tmp_path)
+        _setup_bess_mocks(da, tmp_path, monkeypatch)
 
         config = {
             "strategy": "bess_test",
@@ -129,7 +194,6 @@ class TestBESSPipelineIntegration:
                 "round_trip_efficiency": 0.88,
                 "degradation_cost_per_mwh": 8.50,
                 "initial_soc_pct": 0.50,
-                "price_history_lookback_days": 14,
             },
         }
         return run_full_pipeline(config=config)

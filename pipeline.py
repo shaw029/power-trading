@@ -252,7 +252,8 @@ def _run_bess_pipeline(config: dict) -> dict:
     from src.bess.bess_asset import BESSAsset
     from src.bess.da_optimizer import optimize_da_schedule
     from src.bess.intraday_manager import run_intraday_session
-    from src.bess.price_forecast import naive_da_forecast
+    from src.bess.price_forecast import ml_da_forecast
+    from src.models.train import train_da_price_model, _FEATURE_COLS
 
     bess_cfg = config["bess"]
     paths = setup_experiment_paths(config)
@@ -263,6 +264,45 @@ def _run_bess_pipeline(config: dict) -> dict:
         "paths": paths,
     }
 
+    # Step 1: Build features if needed
+    if not paths["features_file"].exists():
+        logger.info("BESS pipeline: building features from raw data")
+        build_features_pipeline(features_save_path=paths["features_file"])
+    else:
+        logger.info("BESS pipeline: reusing existing features at %s", paths["features_file"])
+
+    # Step 2: Train DA price model
+    logger.info("BESS pipeline: training DA price model")
+    model_cfg = config.get("model", {})
+    val_cfg = config.get("validation", {})
+    da_model, da_predictions_df, X_test = train_da_price_model(
+        features_path=str(paths["features_file"]),
+        model_type=model_cfg.get("type", "xgboost"),
+        model_params=model_cfg.get("hyperparameters"),
+        validation_type=val_cfg.get("type", "walk_forward"),
+        wf_train_days=val_cfg.get("train_days", 200),
+        wf_test_days=val_cfg.get("test_days", 30),
+        wf_step_days=val_cfg.get("step_days", 30),
+    )
+
+    save_model(da_model, {
+        "model_type": model_cfg.get("type", "xgboost"),
+        "target": "day_ahead_price",
+        "n_features": X_test.shape[1],
+        "features": list(X_test.columns),
+        "mode": "bess",
+    }, paths)
+
+    # Step 3: Determine out-of-sample dates and load features for forecasting
+    oos_times = pd.to_datetime(da_predictions_df["time"], utc=True)
+    oos_dates = set(oos_times.dt.tz_convert("Europe/London").dt.date)
+
+    features_df = pd.read_parquet(paths["features_file"])
+    features_df["time"] = pd.to_datetime(features_df["time"], utc=True)
+    features_df["_london_date"] = features_df["time"].dt.tz_convert("Europe/London").dt.date
+    feature_cols = [c for c in _FEATURE_COLS if c in features_df.columns]
+
+    # Step 4: Load price data for BESS simulation
     logger.info("BESS pipeline: loading and processing price data")
     da_processed = process_day_ahead_price(fetch_day_ahead_price())
     mid_processed = process_market_index_price(fetch_market_index_price())
@@ -283,19 +323,35 @@ def _run_bess_pipeline(config: dict) -> dict:
         initial_soc_pct=bess_cfg["initial_soc_pct"],
     )
 
+    # Step 5: Daily BESS simulation using ML forecasts
     daily_results = []
-    price_history: list[list[float]] = []
-    lookback = bess_cfg["price_history_lookback_days"]
     for date, day_df in prices.groupby(prices.index.date):
         n_hours = len(day_df)
         if n_hours not in (23, 24, 25):
             continue
+        if date not in oos_dates:
+            continue
+
+        day_features = features_df[features_df["_london_date"] == date].sort_values("time")
+        X_day = day_features[feature_cols].dropna()
+        if X_day.empty:
+            continue
+
+        raw_forecast = ml_da_forecast(da_model, X_day)
+
+        # Aggregate half-hourly predictions to hourly if needed
+        if len(raw_forecast) >= 2 * n_hours:
+            forecast = [
+                (raw_forecast[i] + raw_forecast[i + 1]) / 2
+                for i in range(0, 2 * n_hours, 2)
+            ]
+        elif len(raw_forecast) >= n_hours:
+            forecast = raw_forecast[:n_hours]
+        else:
+            continue
+
         asset.reset()
         da_prices = day_df["day_ahead_price"].tolist()
-        if not price_history:
-            price_history.append(da_prices)
-            continue
-        forecast = naive_da_forecast(price_history, n_hours=n_hours)
         schedule = optimize_da_schedule(da_price_forecast=forecast, asset=asset)
         result = run_intraday_session(
             da_schedule=schedule,
@@ -313,9 +369,6 @@ def _run_bess_pipeline(config: dict) -> dict:
             "degradation_cost": result["total_degradation_cost"],
             "net_pnl": result["net_pnl"],
         })
-        price_history.append(da_prices)
-        if len(price_history) > lookback:
-            price_history.pop(0)
 
     results_df = pd.DataFrame(daily_results)
     save_bess_outputs(results_df, config, paths)

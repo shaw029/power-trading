@@ -13,7 +13,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from src.bess.bess_asset import BESSAsset  # noqa: E402
 from src.bess.da_optimizer import optimize_da_schedule  # noqa: E402
 from src.bess.intraday_manager import run_intraday_session  # noqa: E402
-from src.bess.price_forecast import naive_da_forecast  # noqa: E402
+
+
+def _naive_da_forecast(price_history, lookback=7, n_hours=24):
+    window = price_history[-lookback:]
+    forecast = []
+    for h in range(n_hours):
+        values = [day[h] for day in window if h < len(day)]
+        if values:
+            forecast.append(sum(values) / len(values))
+        else:
+            forecast.append(sum(price_history[-1]) / len(price_history[-1]))
+    return forecast
 
 st.set_page_config(page_title="Power Trading Dashboard", layout="wide")
 
@@ -101,7 +112,7 @@ def run_bess_simulation(
         if not price_history:
             price_history.append(da_prices)
             continue
-        forecast = naive_da_forecast(price_history)
+        forecast = _naive_da_forecast(price_history)
         schedule = optimize_da_schedule(forecast, asset)
 
         asset.reset()

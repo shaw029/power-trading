@@ -76,16 +76,18 @@ def _make_predictions_df(
     test_df: pd.DataFrame,
     y_test: pd.Series,
     predictions: np.ndarray,
+    actual_col: str = "actual_spread",
+    predicted_col: str = "predicted_spread",
 ) -> pd.DataFrame:
-    return pd.DataFrame({
+    result = {
         "time": test_df["time"] if "time" in test_df.columns else pd.RangeIndex(len(y_test)),
-        "actual_spread": y_test.values,
-        "predicted_spread": predictions,
-        "day_ahead_price": test_df["day_ahead_price"] if "day_ahead_price" in test_df.columns else np.nan,
-        "mid_price": test_df["mid_price"].ffill() if "mid_price" in test_df.columns else np.nan,
-        "system_sell_price": test_df["system_sell_price"],
-        "system_buy_price": test_df["system_buy_price"] if "system_buy_price" in test_df.columns else 0.0,
-    })
+        actual_col: y_test.values,
+        predicted_col: predictions,
+    }
+    for col in ("day_ahead_price", "mid_price", "system_sell_price", "system_buy_price"):
+        if col in test_df.columns:
+            result[col] = test_df[col].ffill().values if col == "mid_price" else test_df[col].values
+    return pd.DataFrame(result)
 
 
 def train_with_validation(
@@ -98,6 +100,8 @@ def train_with_validation(
     wf_train_days: int = 200,
     wf_test_days: int = 30,
     wf_step_days: int = 30,
+    actual_col: str = "actual_spread",
+    predicted_col: str = "predicted_spread",
 ) -> tuple:
     """Split df, fit model(s), and return out-of-sample predictions.
 
@@ -142,7 +146,7 @@ def train_with_validation(
         model = _fit_model(train_df[features], train_df[target_col], model_type, model_params)
         predictions = model.predict(test_df[features])
         return (
-            _make_predictions_df(test_df, test_df[target_col], predictions),
+            _make_predictions_df(test_df, test_df[target_col], predictions, actual_col, predicted_col),
             model,
             test_df[features],
         )
@@ -171,7 +175,7 @@ def train_with_validation(
                 fold_idx + 1, len(train_df), len(test_df), fold_mae,
             )
 
-            folds.append(_make_predictions_df(test_df, y_test, predictions))
+            folds.append(_make_predictions_df(test_df, y_test, predictions, actual_col, predicted_col))
             X_test_last = X_test
 
         if not folds:
@@ -259,6 +263,79 @@ def train_model(
     mae = mean_absolute_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
     rmse = np.sqrt(mean_squared_error(predictions_df["actual_spread"], predictions_df["predicted_spread"]))
     logger.info("Overall — MAE: %.2f £/MWh | RMSE: %.2f £/MWh", mae, rmse)
+
+    if hasattr(model, "feature_importances_"):
+        importances = sorted(zip(features, model.feature_importances_), key=lambda x: -x[1])
+        logger.info("Top-5 features: %s", importances[:5])
+
+    return model, predictions_df, X_test
+
+
+def train_da_price_model(
+    features_path: str | None = None,
+    model_type: str = "xgboost",
+    model_params: dict | None = None,
+    validation_type: str = "walk_forward",
+    wf_train_days: int = 200,
+    wf_test_days: int = 30,
+    wf_step_days: int = 30,
+) -> tuple:
+    """Train an ML model to predict day-ahead prices from pre-auction features.
+
+    Returns:
+        (model, predictions_df, X_test)
+
+        predictions_df — out-of-sample rows with columns:
+                         time, actual_da_price, predicted_da_price,
+                         plus any auxiliary price columns present in the dataset.
+        model          — last fitted estimator
+        X_test         — last test feature matrix
+    """
+    logger.info(
+        "Starting DA price model training — target: day_ahead_price [%s]",
+        validation_type,
+    )
+
+    if features_path is None:
+        features_path = str(FEATURES_DATASET)
+
+    if not os.path.exists(features_path):
+        raise FileNotFoundError(f"Features file not found: {features_path}")
+
+    df = pd.read_parquet(features_path)
+    df = df.sort_values("time").reset_index(drop=True)
+    logger.info("Loaded %d rows, %s → %s", len(df), df["time"].min(), df["time"].max())
+
+    if "day_ahead_price" not in df.columns:
+        raise ValueError("Features dataset must contain day_ahead_price")
+
+    features = [c for c in _FEATURE_COLS if c in df.columns]
+    missing = [c for c in _FEATURE_COLS if c not in df.columns]
+    if missing:
+        logger.warning("Missing feature columns (skipped): %s", missing)
+    logger.info("Using %d features: %s", len(features), features)
+
+    valid = ~(df[features].isna().any(axis=1) | df["day_ahead_price"].isna())
+    df_valid = df[valid].reset_index(drop=True)
+    logger.info("After NaN drop: %d rows remain (dropped %d)", len(df_valid), (~valid).sum())
+
+    predictions_df, model, X_test = train_with_validation(
+        df=df_valid,
+        features=features,
+        target_col="day_ahead_price",
+        validation_type=validation_type,
+        model_type=model_type,
+        model_params=model_params,
+        wf_train_days=wf_train_days,
+        wf_test_days=wf_test_days,
+        wf_step_days=wf_step_days,
+        actual_col="actual_da_price",
+        predicted_col="predicted_da_price",
+    )
+
+    mae = mean_absolute_error(predictions_df["actual_da_price"], predictions_df["predicted_da_price"])
+    rmse = np.sqrt(mean_squared_error(predictions_df["actual_da_price"], predictions_df["predicted_da_price"]))
+    logger.info("DA price model — MAE: %.2f £/MWh | RMSE: %.2f £/MWh", mae, rmse)
 
     if hasattr(model, "feature_importances_"):
         importances = sorted(zip(features, model.feature_importances_), key=lambda x: -x[1])
