@@ -8,7 +8,8 @@ def battery() -> BESSAsset:
     return BESSAsset(
         capacity_mwh=100.0,
         power_mw=50.0,
-        round_trip_efficiency=0.9,
+        charge_efficiency=0.9,
+        discharge_efficiency=0.95,
         degradation_cost_per_mwh=0.50,
         initial_soc_pct=0.5,
     )
@@ -22,10 +23,11 @@ class TestChargeDischarge:
 
     def test_discharge_updates_soc(self, battery: BESSAsset) -> None:
         battery.discharge(mw=25, duration_h=1.0)
-        assert battery._soc_mwh == pytest.approx(25.0)
+        expected = 50.0 - 25.0 / 0.95
+        assert battery._soc_mwh == pytest.approx(expected)
 
     def test_charge_then_discharge_round_trip(self, battery: BESSAsset) -> None:
-        battery.discharge(mw=50, duration_h=1.0)
+        battery.discharge(mw=47.5, duration_h=1.0)
         assert battery._soc_mwh == pytest.approx(0.0)
         battery.charge(mw=50, duration_h=1.0)
         assert battery._soc_mwh == pytest.approx(45.0)
@@ -33,17 +35,17 @@ class TestChargeDischarge:
     def test_soc_pct_property(self, battery: BESSAsset) -> None:
         assert battery.soc_pct == pytest.approx(0.5)
         battery.discharge(mw=25, duration_h=1.0)
-        assert battery.soc_pct == pytest.approx(0.25)
+        assert battery.soc_pct == pytest.approx((50.0 - 25.0 / 0.95) / 100.0)
 
 
-class TestRoundTripEfficiency:
-    def test_efficiency_applied_on_charge(self, battery: BESSAsset) -> None:
+class TestSplitEfficiency:
+    def test_charge_efficiency_applied_on_charge(self, battery: BESSAsset) -> None:
         battery.charge(mw=10, duration_h=1.0)
         assert battery._soc_mwh == pytest.approx(50.0 + 9.0)
 
-    def test_efficiency_not_applied_on_discharge(self, battery: BESSAsset) -> None:
+    def test_discharge_efficiency_applied_on_discharge(self, battery: BESSAsset) -> None:
         battery.discharge(mw=10, duration_h=1.0)
-        assert battery._soc_mwh == pytest.approx(40.0)
+        assert battery._soc_mwh == pytest.approx(50.0 - 10.0 / 0.95)
 
 
 class TestLimitEnforcement:
@@ -65,7 +67,7 @@ class TestLimitEnforcement:
 
     def test_charge_at_exact_power_limit(self, battery: BESSAsset) -> None:
         battery.charge(mw=50, duration_h=0.5)
-        assert battery._soc_mwh == pytest.approx(50.0 + 22.5)
+        assert battery._soc_mwh == pytest.approx(50.0 + 25.0 * 0.9)
 
     def test_float_tolerance_near_full_and_empty(self, battery: BESSAsset) -> None:
         battery._soc_mwh = battery.capacity_mwh - 4e-11
@@ -105,7 +107,7 @@ class TestCanChargeDischarge:
         assert battery.can_charge(mw=50, duration_h=2.0) is False
 
     def test_can_discharge_within_limits(self, battery: BESSAsset) -> None:
-        assert battery.can_discharge(mw=50, duration_h=1.0) is True
+        assert battery.can_discharge(mw=40, duration_h=1.0) is True
 
     def test_can_discharge_over_power(self, battery: BESSAsset) -> None:
         assert battery.can_discharge(mw=51, duration_h=1.0) is False

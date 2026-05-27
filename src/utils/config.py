@@ -120,7 +120,8 @@ _VALID_STRATEGY_TYPES = ("virtual", "bess")
 _BESS_DEFAULTS = {
     "capacity_mwh": 100.0,
     "power_mw": 50.0,
-    "round_trip_efficiency": 0.88,
+    "charge_efficiency": 0.94,
+    "discharge_efficiency": 0.94,
     "degradation_cost_per_mwh": 8.50,
     "initial_soc_pct": 0.50,
 }

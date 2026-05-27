@@ -125,7 +125,8 @@ The `bess` block defines battery asset parameters (used when `strategy_type: "be
 bess:
   capacity_mwh: 100.0              # total energy storage capacity (MWh)
   power_mw: 50.0                   # max charge/discharge rate (MW)
-  round_trip_efficiency: 0.88      # fraction retained through a full cycle
+  charge_efficiency: 0.94           # fraction stored during charging
+  discharge_efficiency: 0.94       # fraction delivered during discharge
   degradation_cost_per_mwh: 8.50   # £/MWh throughput cost for battery wear
   initial_soc_pct: 0.50            # starting state-of-charge (0.0–1.0)
 ```
@@ -134,7 +135,8 @@ bess:
 |---|---|
 | `capacity_mwh` | Total energy the battery can store |
 | `power_mw` | Maximum instantaneous power for charge or discharge |
-| `round_trip_efficiency` | Energy retained after a charge-discharge cycle (0.0–1.0) |
+| `charge_efficiency` | Fraction of energy stored in the battery during charging (0.0–1.0) |
+| `discharge_efficiency` | Fraction of stored energy delivered to the grid during discharge (0.0–1.0) |
 | `degradation_cost_per_mwh` | Cost per MWh of throughput, representing battery wear |
 | `initial_soc_pct` | State of charge at the start of each day, as a fraction of capacity |
 

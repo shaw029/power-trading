@@ -80,7 +80,8 @@ def run_bess_simulation(
     power_mw: float,
     degradation_cost: float,
     lookback_days: int,
-    round_trip_efficiency: float = 0.88,
+    charge_efficiency: float = 0.94,
+    discharge_efficiency: float = 0.94,
     initial_soc_pct: float = 0.50,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     period = pd.Period(month_str, freq="M")
@@ -93,7 +94,8 @@ def run_bess_simulation(
     bess_cfg = {
         "capacity_mwh": capacity_mwh,
         "power_mw": power_mw,
-        "round_trip_efficiency": round_trip_efficiency,
+        "charge_efficiency": charge_efficiency,
+        "discharge_efficiency": discharge_efficiency,
         "degradation_cost_per_mwh": degradation_cost,
         "initial_soc_pct": initial_soc_pct,
     }
@@ -377,7 +379,8 @@ def render_bess(prices: pd.DataFrame):
     capacity = st.sidebar.slider("Battery Capacity (MWh)", 20, 500, 100, step=10)
     power = st.sidebar.slider("Max Power (MW)", 10, 200, 50, step=5)
     degradation = st.sidebar.slider("Degradation Cost (£/MWh)", 0.0, 30.0, 8.50, step=0.50)
-    rte = st.sidebar.slider("Round-Trip Efficiency", 0.70, 1.00, 0.88, step=0.01)
+    charge_eff = st.sidebar.slider("Charge Efficiency", 0.70, 1.00, 0.94, step=0.01)
+    discharge_eff = st.sidebar.slider("Discharge Efficiency", 0.70, 1.00, 0.94, step=0.01)
     initial_soc = st.sidebar.slider("Initial SOC (%)", 0, 100, 50, step=5)
 
     if st.sidebar.button("Run Simulation", type="primary"):
@@ -386,7 +389,8 @@ def render_bess(prices: pd.DataFrame):
         with st.spinner("Running BESS simulation..."):
             results_df, dispatch_df, da_sched_df = run_bess_simulation(
                 prices, selected_month, capacity, power, degradation,
-                round_trip_efficiency=rte,
+                charge_efficiency=charge_eff,
+                discharge_efficiency=discharge_eff,
                 initial_soc_pct=initial_soc / 100.0,
                 lookback_days=lookback,
             )

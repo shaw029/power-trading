@@ -36,13 +36,14 @@ class TestBessConfig:
             "bess": {
                 "capacity_mwh": 200.0,
                 "power_mw": 100.0,
-                "round_trip_efficiency": 0.92,
+                "charge_efficiency": 0.96,
+                "discharge_efficiency": 0.96,
                 "degradation_cost_per_mwh": 5.00,
                 "initial_soc_pct": 0.80,
             },
         })
         assert cfg["bess"]["capacity_mwh"] == 200.0
-        assert cfg["bess"]["round_trip_efficiency"] == 0.92
+        assert cfg["bess"]["charge_efficiency"] == 0.96
 
     def test_bess_partial_override_fills_defaults(self):
         cfg = validate_config({

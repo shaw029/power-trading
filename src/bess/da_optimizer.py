@@ -31,7 +31,7 @@ def optimize_da_schedule(
     prob += soc[n_hours] >= initial_soc
 
     for h in hours:
-        prob += soc[h + 1] == soc[h] - discharge[h] + charge[h] * asset.round_trip_efficiency
+        prob += soc[h + 1] == soc[h] - discharge[h] / asset.discharge_efficiency + charge[h] * asset.charge_efficiency
 
     try:
         import highspy  # noqa: F401

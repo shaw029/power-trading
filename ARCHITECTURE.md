@@ -58,7 +58,8 @@ The `BESSAsset` dataclass tracks internal state across the trading day:
 |---|---|
 | `capacity_mwh` | Total energy storage capacity |
 | `power_mw` | Maximum charge/discharge rate |
-| `round_trip_efficiency` | Fraction of energy retained through a charge-discharge cycle |
+| `charge_efficiency` | Fraction of energy stored in the battery during charging |
+| `discharge_efficiency` | Fraction of stored energy delivered to the grid during discharge |
 | `degradation_cost_per_mwh` | £/MWh throughput cost representing battery wear |
 | `initial_soc_pct` | Starting state-of-charge as a fraction of capacity |
 

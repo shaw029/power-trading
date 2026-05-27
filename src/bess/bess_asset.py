@@ -8,7 +8,8 @@ _SOC_TOL = 1e-9
 class BESSAsset:
     capacity_mwh: float
     power_mw: float
-    round_trip_efficiency: float
+    charge_efficiency: float
+    discharge_efficiency: float
     degradation_cost_per_mwh: float
     initial_soc_pct: float
 
@@ -33,7 +34,7 @@ class BESSAsset:
                 f"Charge power {mw} MW exceeds limit {self.power_mw} MW"
             )
         gross_mwh = mw * duration_h
-        stored_mwh = gross_mwh * self.round_trip_efficiency
+        stored_mwh = gross_mwh * self.charge_efficiency
         new_soc = self._soc_mwh + stored_mwh
         if new_soc > self.capacity_mwh and not math.isclose(
             new_soc, self.capacity_mwh, abs_tol=_SOC_TOL
@@ -51,7 +52,8 @@ class BESSAsset:
                 f"Discharge power {mw} MW exceeds limit {self.power_mw} MW"
             )
         released_mwh = mw * duration_h
-        new_soc = self._soc_mwh - released_mwh
+        drawn_mwh = released_mwh / self.discharge_efficiency
+        new_soc = self._soc_mwh - drawn_mwh
         if new_soc < 0 and not math.isclose(new_soc, 0.0, abs_tol=_SOC_TOL):
             raise ValueError(
                 f"Discharge would deplete SOC: "
@@ -63,7 +65,7 @@ class BESSAsset:
     def can_charge(self, mw: float, duration_h: float) -> bool:
         if mw > self.power_mw:
             return False
-        stored_mwh = mw * duration_h * self.round_trip_efficiency
+        stored_mwh = mw * duration_h * self.charge_efficiency
         new_soc = self._soc_mwh + stored_mwh
         return new_soc <= self.capacity_mwh or math.isclose(
             new_soc, self.capacity_mwh, abs_tol=_SOC_TOL
@@ -72,8 +74,8 @@ class BESSAsset:
     def can_discharge(self, mw: float, duration_h: float) -> bool:
         if mw > self.power_mw:
             return False
-        released_mwh = mw * duration_h
-        new_soc = self._soc_mwh - released_mwh
+        drawn_mwh = mw * duration_h / self.discharge_efficiency
+        new_soc = self._soc_mwh - drawn_mwh
         return new_soc >= 0 or math.isclose(new_soc, 0.0, abs_tol=_SOC_TOL)
 
     def reset(self) -> None:

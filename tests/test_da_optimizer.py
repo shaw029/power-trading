@@ -12,7 +12,8 @@ def battery() -> BESSAsset:
     return BESSAsset(
         capacity_mwh=100.0,
         power_mw=50.0,
-        round_trip_efficiency=0.9,
+        charge_efficiency=0.9,
+        discharge_efficiency=0.95,
         degradation_cost_per_mwh=0.50,
         initial_soc_pct=0.5,
     )
@@ -49,9 +50,9 @@ class TestDAOptimizer:
         for h in range(24):
             dispatch = schedule[h]
             if dispatch > 0:
-                soc -= dispatch
+                soc -= dispatch / battery.discharge_efficiency
             else:
-                soc += (-dispatch) * battery.round_trip_efficiency
+                soc += (-dispatch) * battery.charge_efficiency
             assert soc >= -1e-6, f"SOC went negative at hour {h}"
             assert soc <= battery.capacity_mwh + 1e-6, f"SOC exceeded capacity at hour {h}"
 
@@ -59,7 +60,8 @@ class TestDAOptimizer:
         empty_battery = BESSAsset(
             capacity_mwh=100.0,
             power_mw=50.0,
-            round_trip_efficiency=0.9,
+            charge_efficiency=0.9,
+            discharge_efficiency=0.95,
             degradation_cost_per_mwh=0.50,
             initial_soc_pct=0.0,
         )
@@ -70,12 +72,13 @@ class TestDAOptimizer:
         assert total_activity < 1e-6, "No trade expected with flat prices and empty battery"
 
     def test_degradation_cost_prevents_unprofitable_trade(self) -> None:
-        prices = [40.0] * 12 + [45.0] * 12
+        prices = [30.0] * 12 + [60.0] * 12
 
         asset_no_deg = BESSAsset(
             capacity_mwh=100.0,
             power_mw=50.0,
-            round_trip_efficiency=0.9,
+            charge_efficiency=0.9,
+            discharge_efficiency=0.95,
             degradation_cost_per_mwh=0.0,
             initial_soc_pct=0.5,
         )
@@ -86,8 +89,9 @@ class TestDAOptimizer:
         asset_with_deg = BESSAsset(
             capacity_mwh=100.0,
             power_mw=50.0,
-            round_trip_efficiency=0.9,
-            degradation_cost_per_mwh=2.0,
+            charge_efficiency=0.9,
+            discharge_efficiency=0.95,
+            degradation_cost_per_mwh=15.0,
             initial_soc_pct=0.5,
         )
         schedule_with_deg = optimize_da_schedule(prices, asset_with_deg)
@@ -108,9 +112,9 @@ class TestDAOptimizer:
         soc = battery.capacity_mwh * battery.initial_soc_pct
         for dispatch in schedule:
             if dispatch > 0:
-                soc -= dispatch
+                soc -= dispatch / battery.discharge_efficiency
             else:
-                soc += (-dispatch) * battery.round_trip_efficiency
+                soc += (-dispatch) * battery.charge_efficiency
 
         initial_soc = battery.capacity_mwh * battery.initial_soc_pct
         assert soc >= initial_soc - 1e-6, (
@@ -134,9 +138,9 @@ class TestDAOptimizer:
         soc = battery.capacity_mwh * battery.initial_soc_pct
         for dispatch in schedule:
             if dispatch > 0:
-                soc -= dispatch
+                soc -= dispatch / battery.discharge_efficiency
             else:
-                soc += (-dispatch) * battery.round_trip_efficiency
+                soc += (-dispatch) * battery.charge_efficiency
 
         initial_soc = battery.capacity_mwh * battery.initial_soc_pct
         assert soc == pytest.approx(initial_soc, abs=1e-3)

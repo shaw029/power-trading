@@ -4,15 +4,16 @@ from src.bess.bess_asset import BESSAsset
 def _compute_implied_soc(
     da_schedule: list[float],
     initial_soc_mwh: float,
-    round_trip_efficiency: float,
+    charge_efficiency: float,
+    discharge_efficiency: float,
     capacity_mwh: float,
 ) -> list[float]:
     soc = [initial_soc_mwh]
     for mw in da_schedule:
         if mw >= 0:
-            next_soc = soc[-1] - mw
+            next_soc = soc[-1] - mw / discharge_efficiency
         else:
-            next_soc = soc[-1] + abs(mw) * round_trip_efficiency
+            next_soc = soc[-1] + abs(mw) * charge_efficiency
         soc.append(max(0.0, min(next_soc, capacity_mwh)))
     return soc
 
@@ -31,7 +32,7 @@ def run_intraday_session(
     soc_drift_tolerance = config.get("soc_drift_tolerance", 0.05)
 
     implied_soc = _compute_implied_soc(
-        da_schedule, asset._soc_mwh, asset.round_trip_efficiency, asset.capacity_mwh
+        da_schedule, asset._soc_mwh, asset.charge_efficiency, asset.discharge_efficiency, asset.capacity_mwh
     )
 
     da_revenue = 0.0
@@ -50,7 +51,7 @@ def run_intraday_session(
 
         # Rule 1: execute DA schedule dispatch
         if mw > 0:
-            max_mw = max(0.0, min(mw, asset._soc_mwh / duration_h, asset.power_mw))
+            max_mw = max(0.0, min(mw, asset._soc_mwh * asset.discharge_efficiency / duration_h, asset.power_mw))
             if max_mw > 0:
                 asset.discharge(max_mw, duration_h)
             shortfall = mw - max_mw
@@ -67,7 +68,7 @@ def run_intraday_session(
                 0.0,
                 min(
                     target,
-                    headroom / (asset.round_trip_efficiency * duration_h),
+                    headroom / (asset.charge_efficiency * duration_h),
                     asset.power_mw,
                 ),
             )

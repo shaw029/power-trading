@@ -318,7 +318,8 @@ def _run_bess_pipeline(config: dict) -> dict:
     asset = BESSAsset(
         capacity_mwh=bess_cfg["capacity_mwh"],
         power_mw=bess_cfg["power_mw"],
-        round_trip_efficiency=bess_cfg["round_trip_efficiency"],
+        charge_efficiency=bess_cfg["charge_efficiency"],
+        discharge_efficiency=bess_cfg["discharge_efficiency"],
         degradation_cost_per_mwh=bess_cfg["degradation_cost_per_mwh"],
         initial_soc_pct=bess_cfg["initial_soc_pct"],
     )
