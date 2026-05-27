@@ -19,7 +19,7 @@ def _compute_implied_soc(
 
 def run_intraday_session(
     da_schedule: list[float],
-    da_prices: list[float],
+    da_price_actual: list[float],
     mid_prices: list[float],
     imbalance_prices: list[float],
     asset: BESSAsset,
@@ -46,7 +46,7 @@ def run_intraday_session(
         log_mw = 0.0
         log_price = 0.0
 
-        da_revenue += mw * da_prices[h]
+        da_revenue += mw * da_price_actual[h]
 
         # Rule 1: execute DA schedule dispatch
         if mw > 0:
@@ -58,7 +58,7 @@ def run_intraday_session(
                 imbalance_pnl -= shortfall * imbalance_prices[h]
             log_action = "discharge"
             log_mw = max_mw
-            log_price = da_prices[h]
+            log_price = da_price_actual[h]
 
         elif mw < 0:
             target = abs(mw)
@@ -78,7 +78,7 @@ def run_intraday_session(
                 imbalance_pnl += shortfall * imbalance_prices[h]
             log_action = "charge"
             log_mw = max_mw
-            log_price = da_prices[h]
+            log_price = da_price_actual[h]
 
         # Rule 2: SOC drift rebalance
         actual_pct = asset.soc_pct
@@ -102,11 +102,11 @@ def run_intraday_session(
         if mw != 0:
             remaining_mw = asset.power_mw - abs(mw)
             if remaining_mw > 0:
-                if mw > 0 and mid_prices[h] > da_prices[h] + degradation_cost:
+                if mw > 0 and mid_prices[h] > da_price_actual[h] + degradation_cost:
                     if asset.can_discharge(remaining_mw, duration_h):
                         asset.discharge(remaining_mw, duration_h)
                         intraday_pnl += remaining_mw * mid_prices[h]
-                elif mw < 0 and mid_prices[h] < da_prices[h] - degradation_cost:
+                elif mw < 0 and mid_prices[h] < da_price_actual[h] - degradation_cost:
                     if asset.can_charge(remaining_mw, duration_h):
                         asset.charge(remaining_mw, duration_h)
                         intraday_pnl -= remaining_mw * mid_prices[h]

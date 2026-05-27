@@ -296,10 +296,10 @@ def _run_bess_pipeline(config: dict) -> dict:
             price_history.append(da_prices)
             continue
         forecast = naive_da_forecast(price_history, n_hours=n_hours)
-        schedule = optimize_da_schedule(forecast, asset)
+        schedule = optimize_da_schedule(da_price_forecast=forecast, asset=asset)
         result = run_intraday_session(
             da_schedule=schedule,
-            da_prices=da_prices,
+            da_price_actual=da_prices,
             mid_prices=day_df["mid_price"].tolist(),
             imbalance_prices=day_df["system_buy_price"].tolist(),
             asset=asset,

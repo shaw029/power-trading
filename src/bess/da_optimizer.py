@@ -8,10 +8,10 @@ logger = logging.getLogger(__name__)
 
 
 def optimize_da_schedule(
-    da_prices: list[float],
+    da_price_forecast: list[float],
     asset: BESSAsset,
 ) -> list[float]:
-    n_hours = len(da_prices)
+    n_hours = len(da_price_forecast)
     hours = range(n_hours)
 
     prob = pulp.LpProblem("DA_BESS_Schedule", pulp.LpMaximize)
@@ -21,7 +21,7 @@ def optimize_da_schedule(
     soc = [pulp.LpVariable(f"soc_{h}", lowBound=0, upBound=asset.capacity_mwh) for h in range(n_hours + 1)]
 
     prob += pulp.lpSum(
-        (discharge[h] - charge[h]) * da_prices[h]
+        (discharge[h] - charge[h]) * da_price_forecast[h]
         - (discharge[h] + charge[h]) * asset.degradation_cost_per_mwh
         for h in hours
     )

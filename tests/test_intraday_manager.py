@@ -34,7 +34,7 @@ class TestNoRebalance:
         )
         result = run_intraday_session(
             da_schedule=[10.0, -10.0, 0.0],
-            da_prices=[50.0, 30.0, 40.0],
+            da_price_actual=[50.0, 30.0, 40.0],
             mid_prices=[51.0, 31.0, 40.0],
             imbalance_prices=[48.0, 32.0, 40.0],
             asset=asset,
@@ -60,7 +60,7 @@ class TestSOCDrift:
         )
         result = run_intraday_session(
             da_schedule=[-30.0],
-            da_prices=[40.0],
+            da_price_actual=[40.0],
             mid_prices=[42.0],
             imbalance_prices=[38.0],
             asset=asset,
@@ -80,7 +80,7 @@ class TestSOCDrift:
         )
         result = run_intraday_session(
             da_schedule=[-30.0],
-            da_prices=[40.0],
+            da_price_actual=[40.0],
             mid_prices=[42.0],
             imbalance_prices=[38.0],
             asset=asset,
@@ -97,7 +97,7 @@ class TestSOCDrift:
         )
         result = run_intraday_session(
             da_schedule=[-30.0],
-            da_prices=[40.0],
+            da_price_actual=[40.0],
             mid_prices=[42.0],
             imbalance_prices=[38.0],
             asset=asset,
@@ -116,7 +116,7 @@ class TestSpreadImprovement:
         )
         result = run_intraday_session(
             da_schedule=[46.0],
-            da_prices=[40.0],
+            da_price_actual=[40.0],
             mid_prices=[50.0],
             imbalance_prices=[38.0],
             asset=asset,
@@ -136,7 +136,7 @@ class TestSpreadImprovement:
         )
         result = run_intraday_session(
             da_schedule=[20.0],
-            da_prices=[40.0],
+            da_price_actual=[40.0],
             mid_prices=[45.0],
             imbalance_prices=[38.0],
             asset=asset,
@@ -155,7 +155,7 @@ class TestImbalanceFallback:
         )
         result = run_intraday_session(
             da_schedule=[30.0],
-            da_prices=[50.0],
+            da_price_actual=[50.0],
             mid_prices=[50.0],
             imbalance_prices=[60.0],
             asset=asset,
@@ -174,7 +174,7 @@ class TestImbalanceFallback:
         )
         result = run_intraday_session(
             da_schedule=[-40.0],
-            da_prices=[30.0],
+            da_price_actual=[30.0],
             mid_prices=[30.0],
             imbalance_prices=[25.0],
             asset=asset,
