@@ -308,10 +308,13 @@ def _run_bess_pipeline(config: dict) -> dict:
     mid_processed = process_market_index_price(fetch_market_index_price())
     imb_processed = process_imbalance_price(fetch_imbalance_price())
 
+    duration_h = bess_cfg.get("duration_h", 1.0)
+    resample_freq = f"{int(duration_h * 60)}min"
+
     prices = (
-        da_processed.resample("1h").mean()
-        .join(mid_processed.resample("1h").mean())
-        .join(imb_processed[["system_buy_price"]].resample("1h").mean())
+        da_processed.resample(resample_freq).mean()
+        .join(mid_processed.resample(resample_freq).mean())
+        .join(imb_processed[["system_buy_price"]].resample(resample_freq).mean())
         .dropna()
     )
 
@@ -325,10 +328,14 @@ def _run_bess_pipeline(config: dict) -> dict:
     )
 
     # Step 5: Daily BESS simulation using ML forecasts
+    periods_per_day = int(24 / duration_h)
+    dst_delta = int(1 / duration_h)
+    valid_period_counts = {periods_per_day - dst_delta, periods_per_day, periods_per_day + dst_delta}
+
     daily_results = []
     for date, day_df in prices.groupby(prices.index.date):
-        n_hours = len(day_df)
-        if n_hours not in (23, 24, 25):
+        n_periods = len(day_df)
+        if n_periods not in valid_period_counts:
             continue
         if date not in oos_dates:
             continue
@@ -340,20 +347,19 @@ def _run_bess_pipeline(config: dict) -> dict:
 
         raw_forecast = ml_da_forecast(da_model, X_day)
 
-        # Aggregate half-hourly predictions to hourly if needed
-        if len(raw_forecast) >= 2 * n_hours:
+        if len(raw_forecast) >= 2 * n_periods:
             forecast = [
                 (raw_forecast[i] + raw_forecast[i + 1]) / 2
-                for i in range(0, 2 * n_hours, 2)
+                for i in range(0, 2 * n_periods, 2)
             ]
-        elif len(raw_forecast) >= n_hours:
-            forecast = raw_forecast[:n_hours]
+        elif len(raw_forecast) >= n_periods:
+            forecast = raw_forecast[:n_periods]
         else:
             continue
 
         asset.reset()
         da_prices = day_df["day_ahead_price"].tolist()
-        schedule = optimize_da_schedule(da_price_forecast=forecast, asset=asset)
+        schedule = optimize_da_schedule(da_price_forecast=forecast, asset=asset, duration_h=duration_h)
         result = run_intraday_session(
             da_schedule=schedule,
             da_price_actual=da_prices,

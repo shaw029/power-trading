@@ -7,13 +7,14 @@ def _compute_implied_soc(
     charge_efficiency: float,
     discharge_efficiency: float,
     capacity_mwh: float,
+    duration_h: float = 1.0,
 ) -> list[float]:
     soc = [initial_soc_mwh]
     for mw in da_schedule:
         if mw >= 0:
-            next_soc = soc[-1] - mw / discharge_efficiency
+            next_soc = soc[-1] - mw * duration_h / discharge_efficiency
         else:
-            next_soc = soc[-1] + abs(mw) * charge_efficiency
+            next_soc = soc[-1] + abs(mw) * duration_h * charge_efficiency
         soc.append(max(0.0, min(next_soc, capacity_mwh)))
     return soc
 
@@ -27,12 +28,13 @@ def run_intraday_session(
     config: dict,
 ) -> dict:
     n_periods = len(da_schedule)
-    duration_h = 1.0
+    duration_h = config.get("duration_h", 1.0)
     degradation_cost = config["degradation_cost_per_mwh"]
     soc_drift_tolerance = config.get("soc_drift_tolerance", 0.05)
 
     implied_soc = _compute_implied_soc(
-        da_schedule, asset._soc_mwh, asset.charge_efficiency, asset.discharge_efficiency, asset.capacity_mwh
+        da_schedule, asset._soc_mwh, asset.charge_efficiency, asset.discharge_efficiency, asset.capacity_mwh,
+        duration_h,
     )
 
     da_revenue = 0.0
@@ -47,7 +49,7 @@ def run_intraday_session(
         log_mw = 0.0
         log_price = 0.0
 
-        da_revenue += mw * da_price_actual[h]
+        da_revenue += mw * duration_h * da_price_actual[h]
 
         # Rule 1: execute DA schedule dispatch
         if mw > 0:
@@ -56,7 +58,7 @@ def run_intraday_session(
                 asset.discharge(max_mw, duration_h)
             shortfall = mw - max_mw
             if shortfall > 0:
-                imbalance_pnl -= shortfall * imbalance_prices[h]
+                imbalance_pnl -= shortfall * duration_h * imbalance_prices[h]
             log_action = "discharge"
             log_mw = max_mw
             log_price = da_price_actual[h]
@@ -76,7 +78,7 @@ def run_intraday_session(
                 asset.charge(max_mw, duration_h)
             shortfall = target - max_mw
             if shortfall > 0:
-                imbalance_pnl += shortfall * imbalance_prices[h]
+                imbalance_pnl += shortfall * duration_h * imbalance_prices[h]
             log_action = "charge"
             log_mw = max_mw
             log_price = da_price_actual[h]
@@ -92,12 +94,12 @@ def run_intraday_session(
                 rebal_mw = min(drift_mwh / duration_h, asset.power_mw)
                 if asset.can_discharge(rebal_mw, duration_h):
                     asset.discharge(rebal_mw, duration_h)
-                    intraday_pnl += rebal_mw * mid_prices[h]
+                    intraday_pnl += rebal_mw * duration_h * mid_prices[h]
             else:
                 rebal_mw = min(drift_mwh / duration_h, asset.power_mw)
                 if asset.can_charge(rebal_mw, duration_h):
                     asset.charge(rebal_mw, duration_h)
-                    intraday_pnl -= rebal_mw * mid_prices[h]
+                    intraday_pnl -= rebal_mw * duration_h * mid_prices[h]
 
         # Rule 3: spread improvement
         if mw != 0:
@@ -106,11 +108,11 @@ def run_intraday_session(
                 if mw > 0 and mid_prices[h] > da_price_actual[h] + degradation_cost:
                     if asset.can_discharge(remaining_mw, duration_h):
                         asset.discharge(remaining_mw, duration_h)
-                        intraday_pnl += remaining_mw * mid_prices[h]
+                        intraday_pnl += remaining_mw * duration_h * mid_prices[h]
                 elif mw < 0 and mid_prices[h] < da_price_actual[h] - degradation_cost:
                     if asset.can_charge(remaining_mw, duration_h):
                         asset.charge(remaining_mw, duration_h)
-                        intraday_pnl -= remaining_mw * mid_prices[h]
+                        intraday_pnl -= remaining_mw * duration_h * mid_prices[h]
 
         dispatch_log.append({
             "period": h,
