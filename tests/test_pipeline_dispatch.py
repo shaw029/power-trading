@@ -17,6 +17,35 @@ class TestRunFullPipelineDispatch:
         mock.assert_called_once_with(None, skip_features=False)
         assert result["mode"] == "virtual"
 
+    def test_download_mode_calls_download(self, monkeypatch):
+        mock = MagicMock(return_value={"mode": "download"})
+        monkeypatch.setattr("pipeline._run_download", mock)
+        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+
+        result = run_full_pipeline(mode="download")
+
+        mock.assert_called_once()
+        assert result["mode"] == "download"
+
+    def test_features_mode_calls_features(self, monkeypatch):
+        mock = MagicMock(return_value={"mode": "features", "features_file": None})
+        monkeypatch.setattr("pipeline._run_features", mock)
+        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+
+        result = run_full_pipeline(mode="features")
+
+        mock.assert_called_once()
+        assert result["mode"] == "features"
+
+    def test_model_mode_calls_virtual_with_skip_features(self, monkeypatch):
+        mock = MagicMock(return_value={"mode": "virtual"})
+        monkeypatch.setattr("pipeline._run_virtual_pipeline", mock)
+        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+
+        run_full_pipeline(mode="model")
+
+        mock.assert_called_once_with(None, skip_features=True)
+
     def test_bess_mode_calls_bess(self, monkeypatch):
         mock = MagicMock(return_value={"mode": "bess"})
         monkeypatch.setattr("pipeline._run_bess_pipeline", mock)
@@ -111,7 +140,6 @@ class TestMainCLIParsing:
 
         _, kwargs = mock_run.call_args
         assert kwargs["mode"] == "virtual"
-        assert kwargs["skip_features"] is False
 
     def test_mode_bess_short_flag(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["main.py", "-m", "bess"])
@@ -137,27 +165,38 @@ class TestMainCLIParsing:
         _, kwargs = mock_run.call_args
         assert kwargs["mode"] == "bess"
 
-    def test_skip_features_flag(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["main.py", "--skip-features"])
+    def test_mode_download(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "download"])
         mock_run = MagicMock()
         monkeypatch.setattr("main.run_full_pipeline", mock_run)
-        monkeypatch.setattr("main._load_config", lambda _: {"strategy_type": "virtual"})
+        monkeypatch.setattr("main._load_config", lambda _: {})
 
         from main import main
         main()
 
         _, kwargs = mock_run.call_args
-        assert kwargs["skip_features"] is True
+        assert kwargs["mode"] == "download"
 
-    def test_mode_and_skip_features_combined(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["main.py", "-m", "virtual", "--skip-features"])
+    def test_mode_features(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "features"])
         mock_run = MagicMock()
         monkeypatch.setattr("main.run_full_pipeline", mock_run)
-        monkeypatch.setattr("main._load_config", lambda _: {"strategy_type": "virtual"})
+        monkeypatch.setattr("main._load_config", lambda _: {})
 
         from main import main
         main()
 
         _, kwargs = mock_run.call_args
-        assert kwargs["mode"] == "virtual"
-        assert kwargs["skip_features"] is True
+        assert kwargs["mode"] == "features"
+
+    def test_mode_model(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "model"])
+        mock_run = MagicMock()
+        monkeypatch.setattr("main.run_full_pipeline", mock_run)
+        monkeypatch.setattr("main._load_config", lambda _: {})
+
+        from main import main
+        main()
+
+        _, kwargs = mock_run.call_args
+        assert kwargs["mode"] == "model"

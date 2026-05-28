@@ -555,20 +555,54 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
         raise
 
 
+def _run_download(config: dict | None = None) -> dict:
+    """Fetch all seven raw data sources and write them to the per-day cache."""
+    logger.info("Download mode: fetching all raw data sources")
+    fetch_wind_forecast()
+    fetch_demand_forecast()
+    fetch_generation_actual()
+    fetch_day_ahead_price()
+    fetch_market_index_price()
+    fetch_demand_actual()
+    fetch_imbalance_price()
+    logger.info("Download complete")
+    return {"mode": "download"}
+
+
+def _run_features(config: dict | None = None) -> dict:
+    """Download raw data, preprocess, and build the feature set — stop before training."""
+    paths = setup_experiment_paths(config)
+    logger.info("Features mode: building features from raw data")
+    build_features_pipeline(features_save_path=paths["features_file"])
+    logger.info("Features written to %s", paths["features_file"])
+    return {"mode": "features", "features_file": paths["features_file"]}
+
+
 def run_full_pipeline(mode: str | None = None, config: dict | None = None, skip_features: bool = False) -> dict:
     """Run the trading pipeline.
 
     Args:
-        mode:   'virtual' (ML spread-trading), 'bess' (battery storage), or 'all'.
+        mode:   'download'  — fetch raw data only
+                'features'  — download + preprocess + build features
+                'model'     — train + backtest on existing features (skip download/features)
+                'virtual'   — full ML spread-trading pipeline
+                'bess'      — full battery storage pipeline
+                'all'       — virtual + bess sequentially
                 Defaults to config['strategy_type'] when omitted, then 'virtual'.
         config: Experiment config dict loaded from YAML.
-        skip_features: If True, skip feature building and retrain on existing features.
+        skip_features: If True, skip feature building (alias for mode='model').
     """
     effective_mode = mode or (config or {}).get("strategy_type", "virtual")
     logger.info(f"Starting pipeline in '{effective_mode}' mode")
     ensure_directories()
 
-    if effective_mode == "virtual":
+    if effective_mode == "download":
+        return _run_download(config)
+    elif effective_mode == "features":
+        return _run_features(config)
+    elif effective_mode == "model":
+        return _run_virtual_pipeline(config, skip_features=True)
+    elif effective_mode == "virtual":
         return _run_virtual_pipeline(config, skip_features=skip_features)
     elif effective_mode == "bess":
         return _run_bess_pipeline(config)  # type: ignore[arg-type]
@@ -577,7 +611,10 @@ def run_full_pipeline(mode: str | None = None, config: dict | None = None, skip_
         bess_results = _run_bess_pipeline(config)  # type: ignore[arg-type]
         return {"virtual": virtual_results, "bess": bess_results}
     else:
-        raise ValueError(f"Invalid mode: {effective_mode!r}. Must be 'virtual', 'bess', or 'all'.")
+        raise ValueError(
+            f"Invalid mode: {effective_mode!r}. "
+            "Must be 'download', 'features', 'model', 'virtual', 'bess', or 'all'."
+        )
 
 
 def print_pipeline_results(results: dict):
