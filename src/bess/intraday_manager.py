@@ -28,7 +28,7 @@ def run_intraday_session(
     config: dict,
 ) -> dict:
     n_periods = len(da_schedule)
-    duration_h = config.get("duration_h", 1.0)
+    duration_h = config.get("resolution_h", 1.0)
     degradation_cost = config["degradation_cost_per_mwh"]
     soc_drift_tolerance = config.get("soc_drift_tolerance", 0.05)
 

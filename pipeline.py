@@ -308,7 +308,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     mid_processed = process_market_index_price(fetch_market_index_price())
     imb_processed = process_imbalance_price(fetch_imbalance_price())
 
-    duration_h = bess_cfg.get("duration_h", 1.0)
+    duration_h = bess_cfg.get("resolution_h", 1.0)
     resample_freq = f"{int(duration_h * 60)}min"
 
     prices = (

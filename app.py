@@ -83,13 +83,16 @@ def run_bess_simulation(
     charge_efficiency: float = 0.88,
     discharge_efficiency: float = 1.0,
     initial_soc_pct: float = 0.50,
+    resolution_h: float = 1.0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     period = pd.Period(month_str, freq="M")
     start = period.start_time.tz_localize("UTC")
     end = period.end_time.tz_localize("UTC")
     month_df = prices.loc[start:end].copy()
 
-    hourly = month_df[["day_ahead_price", "mid_price", "system_buy_price"]].resample("1h").mean().dropna()
+    resample_freq = f"{int(resolution_h * 60)}min"
+    periods_per_day = int(24 / resolution_h)
+    hourly = month_df[["day_ahead_price", "mid_price", "system_buy_price"]].resample(resample_freq).mean().dropna()
 
     bess_cfg = {
         "capacity_mwh": capacity_mwh,
@@ -99,14 +102,18 @@ def run_bess_simulation(
         "degradation_cost_per_mwh": degradation_cost,
         "initial_soc_pct": initial_soc_pct,
     }
+    sim_cfg = {**bess_cfg, "resolution_h": resolution_h}
 
     daily_results = []
     all_dispatch_logs = []
     all_da_schedules = []
     price_history: list[list[float]] = []
 
+    dst_delta = int(1 / resolution_h)
+    valid_period_counts = {periods_per_day - dst_delta, periods_per_day, periods_per_day + dst_delta}
+
     for date, day_df in hourly.groupby(hourly.index.date):
-        if len(day_df) != 24:
+        if len(day_df) not in valid_period_counts:
             continue
 
         asset = BESSAsset(**bess_cfg)
@@ -114,8 +121,8 @@ def run_bess_simulation(
         if not price_history:
             price_history.append(da_prices)
             continue
-        forecast = _naive_da_forecast(price_history)
-        schedule = optimize_da_schedule(forecast, asset)
+        forecast = _naive_da_forecast(price_history, n_hours=len(day_df))
+        schedule = optimize_da_schedule(forecast, asset, duration_h=resolution_h)
 
         asset.reset()
         result = run_intraday_session(
@@ -124,7 +131,7 @@ def run_bess_simulation(
             mid_prices=day_df["mid_price"].tolist(),
             imbalance_prices=day_df["system_buy_price"].tolist(),
             asset=asset,
-            config=bess_cfg,
+            config=sim_cfg,
         )
 
         daily_results.append({
@@ -385,7 +392,9 @@ def render_bess(prices: pd.DataFrame):
 
     if st.sidebar.button("Run Simulation", type="primary"):
         cfg = _load_config()
-        lookback = cfg["bess"]["price_history_lookback_days"]
+        bess_cfg = cfg["bess"]
+        lookback = bess_cfg["price_history_lookback_days"]
+        resolution_h = bess_cfg.get("resolution_h", 1.0)
         with st.spinner("Running BESS simulation..."):
             results_df, dispatch_df, da_sched_df = run_bess_simulation(
                 prices, selected_month, capacity, power, degradation,
@@ -393,6 +402,7 @@ def render_bess(prices: pd.DataFrame):
                 discharge_efficiency=discharge_eff,
                 initial_soc_pct=initial_soc / 100.0,
                 lookback_days=lookback,
+                resolution_h=resolution_h,
             )
 
         if results_df.empty:
