@@ -358,7 +358,11 @@ def _run_bess_pipeline(config: dict) -> dict:
 
     sorted_times = features_df["time"].sort_values()
     deltas_h = sorted_times.diff().dropna().dt.total_seconds() / 3600
-    source_resolution_h = deltas_h.mode().iloc[0]
+    mode_result = deltas_h.mode()
+    if mode_result.empty:
+        logger.warning("Cannot determine source resolution: not enough data rows")
+        return results
+    source_resolution_h = mode_result.iloc[0]
 
     daily_results = []
     for date, day_df in prices.groupby(prices.index.date):
