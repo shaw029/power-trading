@@ -12,3 +12,5 @@ pytest
 streamlit
 plotly
 pulp
+seaborn
+shap
