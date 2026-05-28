@@ -90,7 +90,7 @@ def run_bess_simulation(
     end = period.end_time.tz_localize("UTC")
     month_df = prices.loc[start:end].copy()
 
-    resample_freq = f"{int(resolution_h * 60)}min"
+    resample_freq = f"{int(resolution_h * 3600)}s"
     periods_per_day = int(24 / resolution_h)
     hourly = month_df[["day_ahead_price", "mid_price", "system_buy_price"]].resample(resample_freq).mean().dropna()
 
