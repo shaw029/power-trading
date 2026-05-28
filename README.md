@@ -257,6 +257,14 @@ power-trading/
 
 ---
 
+## Roadmap
+
+- [x] **Phase 1 — DA Positioning Engine (complete):** End-to-end ML pipeline for virtual trading in the GB Day-Ahead market. Walk-forward validated XGBoost model predicting residual load mispricing, with signal gating, execution constraints, and dynamic position sizing.
+- [x] **Phase 2 — Intraday Execution (complete):** Hybrid execution engine that splits DA positions between a passive Market Index Price (MID) hedge and an active Take-Profit/Stop-Loss engine. Configurable hedge ratio, TP/SL thresholds, and per-period stop-loss cap reduce tail-risk from full imbalance exposure.
+- [x] **Phase 3 — Physical Asset Optimisation / BESS (complete):** Battery storage dispatch via LP Day-Ahead scheduling (PuLP/HiGHS), rules-based intraday rebalancing, and imbalance settlement. State-of-charge tracking, separate charge/discharge efficiencies, and cycle degradation costs enforced throughout.
+
+---
+
 ## Acknowledgements
 
 Data is sourced from three open platforms:
