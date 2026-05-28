@@ -141,6 +141,31 @@ class TestSpreadImprovement:
         assert result["intraday_pnl"] == pytest.approx(0.0)
 
 
+class TestHalfHourlyResolution:
+    def test_half_hourly_session(self):
+        asset = BESSAsset(
+            capacity_mwh=100, power_mw=50, charge_efficiency=0.88,
+            discharge_efficiency=1.0, degradation_cost_per_mwh=5.0, initial_soc_pct=0.5,
+        )
+        result = run_intraday_session(
+            da_schedule=[10.0, -10.0],
+            da_price_actual=[50.0, 30.0],
+            mid_prices=[50.0, 30.0],
+            imbalance_prices=[48.0, 32.0],
+            asset=asset,
+            config={"degradation_cost_per_mwh": 5.0, "resolution_h": 0.5},
+        )
+
+        assert result["da_revenue"] == pytest.approx(10 * 0.5 * 50 + (-10) * 0.5 * 30)
+        assert result["intraday_pnl"] == pytest.approx(0.0)
+        assert result["imbalance_pnl"] == pytest.approx(0.0)
+        assert result["total_degradation_cost"] == pytest.approx(5.0 * 5.0 + 5.0 * 5.0)
+        assert len(result["dispatch_log"]) == 2
+        assert result["dispatch_log"][0]["action"] == "discharge"
+        assert result["dispatch_log"][1]["action"] == "charge"
+        assert result["dispatch_log"][1]["soc_after"] == pytest.approx(0.494)
+
+
 class TestImbalanceFallback:
     def test_discharge_shortfall_settles_at_imbalance(self):
         asset = BESSAsset(

@@ -47,6 +47,18 @@ class TestSplitEfficiency:
         battery.discharge(mw=10, duration_h=1.0)
         assert battery._soc_mwh == pytest.approx(50.0 - 10.0 / 0.95)
 
+    def test_charge_with_88_pct_efficiency(self) -> None:
+        asset = BESSAsset(
+            capacity_mwh=100.0,
+            power_mw=50.0,
+            charge_efficiency=0.88,
+            discharge_efficiency=1.0,
+            degradation_cost_per_mwh=0.50,
+            initial_soc_pct=0.5,
+        )
+        asset.charge(mw=10, duration_h=1.0)
+        assert asset._soc_mwh == pytest.approx(50.0 + 8.8)
+
 
 class TestLimitEnforcement:
     def test_charge_exceeds_power_limit(self, battery: BESSAsset) -> None:
