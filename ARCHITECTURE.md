@@ -35,13 +35,13 @@ All features are constructed from the D-1 10:30 pre-auction forecast vintage. No
 
 ## 5. Phase 3: Physical Asset (BESS) Optimisation
 
-Phase 3 extends the framework beyond virtual trading to physical asset dispatch. A Battery Energy Storage System (BESS) is modelled as a state machine with capacity, power, round-trip efficiency, and cycle degradation constraints.
+Phase 3 extends the framework beyond virtual trading to physical asset dispatch. A Battery Energy Storage System (BESS) is modelled as a state machine with capacity, power, separate charge and discharge efficiencies, and cycle degradation constraints.
 
 ### Commercial Rationale
 
 The BESS strategy decomposes the trading day into three settlement layers, each targeting a different liquidity venue:
 
-1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal 24-hour charge/discharge schedule against the DA price curve, maximising `Σ (discharge_h − charge_h) × DA_price_h` subject to SOC, power, and efficiency constraints. This produces the committed DA revenue.
+1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal charge/discharge schedule against an ML-generated DA price *forecast*, maximising `Σ (discharge_h − charge_h) × forecast_price_h` subject to SOC, power, and efficiency constraints. Revenue is then settled against the *actual* cleared DA price, so forecast quality directly drives PnL. The schedule length adapts to the configured `duration_h` (e.g. 48 half-hourly periods or 24 hourly).
 
 2. **Intraday (Rules-Based Rebalancing):** During the delivery window, a rules engine adjusts the DA schedule in real time against Market Index Prices:
    - **Rule 1 — DA Dispatch Execution:** Execute the committed schedule; any shortfall from SOC constraints settles at the imbalance price.

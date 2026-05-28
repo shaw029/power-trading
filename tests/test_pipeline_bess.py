@@ -147,8 +147,8 @@ class TestBESSPipelineIntegration:
             "bess": {
                 "capacity_mwh": 100.0,
                 "power_mw": 50.0,
-                "charge_efficiency": 0.94,
-                "discharge_efficiency": 0.94,
+                "charge_efficiency": 0.92,
+                "discharge_efficiency": 0.96,
                 "degradation_cost_per_mwh": 8.50,
                 "initial_soc_pct": 0.50,
             },
@@ -192,8 +192,8 @@ class TestBESSPipelineIntegration:
             "bess": {
                 "capacity_mwh": 100.0,
                 "power_mw": 50.0,
-                "charge_efficiency": 0.94,
-                "discharge_efficiency": 0.94,
+                "charge_efficiency": 0.92,
+                "discharge_efficiency": 0.96,
                 "degradation_cost_per_mwh": 8.50,
                 "initial_soc_pct": 0.50,
             },

@@ -49,9 +49,11 @@ python -m src.pipeline
 
 ### BESS Strategy
 
-- Day-Ahead schedule solved via linear programming (PuLP/HiGHS) to maximise charge/discharge revenue against the DA price curve
+- Day-Ahead schedule solved via linear programming (PuLP/HiGHS) to maximise charge/discharge revenue against an ML DA price forecast
 - Intraday session applies three rules: execute DA dispatch, SOC drift rebalance against MID, and spread-improvement trades when MID beats DA + degradation cost
-- State-of-charge tracking, round-trip efficiency losses, and cycle degradation costs are enforced throughout
+- Separate charge and discharge efficiencies model asymmetric conversion losses realistically
+- DA schedule is optimised against an ML price forecast; revenue settles against actual cleared DA prices
+- State-of-charge tracking and cycle degradation costs are enforced throughout
 
 ```bash
 # Virtual strategy (default)
@@ -71,7 +73,7 @@ python main.py --config configs/config.yaml
 |---|---|---|
 | **DA pricing** | Day-Ahead positions are priced at the cleared DA auction price. The model takes directional exposure only when ML-predicted mispricing exceeds a volatility-adjusted threshold, and exposure is capped at the top 5 highest-conviction periods per direction per day. | `01_da_positioning_backtest.ipynb` |
 | **Intraday exit (hybrid)** | Positions are unwound using a hybrid strategy: a configurable fraction is hedged passively at the Market Index Price (MID) when sufficient liquidity exists, with residual unhedged volume settled at the system Imbalance price (SSP/SBP). An active TP/SL engine can further reduce tail-risk on the unhedged slice. | `02_hybrid_execution_analysis.ipynb` |
-| **BESS dispatch** | The Day-Ahead schedule is solved via LP optimisation (PuLP/HiGHS) maximising charge/discharge revenue subject to SOC, power, and round-trip efficiency constraints. During the intraday window a rules engine rebalances against MID: executing the DA schedule, correcting SOC drift, and capturing spread improvements when MID exceeds DA + degradation cost. Any undeliverable volume settles at the Imbalance price. | `03_bess_dispatch_analysis.ipynb` |
+| **BESS dispatch** | The Day-Ahead schedule is solved via LP optimisation (PuLP/HiGHS) against an ML price forecast, maximising charge/discharge revenue subject to SOC, power, and separate charge/discharge efficiency constraints. Revenue settles against the actual cleared DA price. During the intraday window a rules engine rebalances against MID: executing the DA schedule, correcting SOC drift, and capturing spread improvements when MID exceeds DA + degradation cost. Any undeliverable volume settles at the Imbalance price. | `03_bess_dispatch_analysis.ipynb` |
 
 All notebooks live in `notebooks/`.
 
