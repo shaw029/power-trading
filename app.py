@@ -80,8 +80,8 @@ def run_bess_simulation(
     power_mw: float,
     degradation_cost: float,
     lookback_days: int,
-    charge_efficiency: float = 0.94,
-    discharge_efficiency: float = 0.94,
+    charge_efficiency: float = 0.88,
+    discharge_efficiency: float = 1.0,
     initial_soc_pct: float = 0.50,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     period = pd.Period(month_str, freq="M")
@@ -379,8 +379,8 @@ def render_bess(prices: pd.DataFrame):
     capacity = st.sidebar.slider("Battery Capacity (MWh)", 20, 500, 100, step=10)
     power = st.sidebar.slider("Max Power (MW)", 10, 200, 50, step=5)
     degradation = st.sidebar.slider("Degradation Cost (£/MWh)", 0.0, 30.0, 8.50, step=0.50)
-    charge_eff = st.sidebar.slider("Charge Efficiency", 0.70, 1.00, 0.94, step=0.01)
-    discharge_eff = st.sidebar.slider("Discharge Efficiency", 0.70, 1.00, 0.94, step=0.01)
+    charge_eff = st.sidebar.slider("Charge Efficiency", 0.70, 1.00, 0.88, step=0.01)
+    discharge_eff = st.sidebar.slider("Discharge Efficiency", 0.70, 1.00, 1.00, step=0.01)
     initial_soc = st.sidebar.slider("Initial SOC (%)", 0, 100, 50, step=5)
 
     if st.sidebar.button("Run Simulation", type="primary"):
