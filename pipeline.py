@@ -248,6 +248,30 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
     logger.info(f"BESS metrics saved to {trading_dir / 'metrics.json'}")
 
 
+def _resample_forecast(
+    raw_forecast: list[float],
+    source_resolution_h: float,
+    target_resolution_h: float,
+    n_target: int,
+) -> list[float] | None:
+    ratio = target_resolution_h / source_resolution_h
+    int_ratio = round(ratio)
+    if abs(int_ratio - ratio) > 1e-9 or int_ratio < 1:
+        return None
+
+    n_needed = n_target * int_ratio
+    if len(raw_forecast) < n_needed:
+        return None
+
+    if int_ratio == 1:
+        return raw_forecast[:n_target]
+
+    return [
+        sum(raw_forecast[i:i + int_ratio]) / int_ratio
+        for i in range(0, n_needed, int_ratio)
+    ]
+
+
 def _run_bess_pipeline(config: dict) -> dict:
     from src.bess.bess_asset import BESSAsset
     from src.bess.da_optimizer import optimize_da_schedule
@@ -332,6 +356,9 @@ def _run_bess_pipeline(config: dict) -> dict:
     dst_delta = int(1 / duration_h)
     valid_period_counts = {periods_per_day - dst_delta, periods_per_day, periods_per_day + dst_delta}
 
+    sorted_times = features_df["time"].sort_values()
+    source_resolution_h = (sorted_times.iloc[1] - sorted_times.iloc[0]).total_seconds() / 3600
+
     daily_results = []
     for date, day_df in prices.groupby(prices.index.date):
         n_periods = len(day_df)
@@ -346,15 +373,10 @@ def _run_bess_pipeline(config: dict) -> dict:
             continue
 
         raw_forecast = ml_da_forecast(da_model, X_day)
-
-        if len(raw_forecast) >= 2 * n_periods:
-            forecast = [
-                (raw_forecast[i] + raw_forecast[i + 1]) / 2
-                for i in range(0, 2 * n_periods, 2)
-            ]
-        elif len(raw_forecast) == n_periods:
-            forecast = raw_forecast[:n_periods]
-        else:
+        forecast = _resample_forecast(
+            raw_forecast, source_resolution_h, duration_h, n_periods,
+        )
+        if forecast is None:
             continue
 
         asset.reset()
