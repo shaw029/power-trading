@@ -2,9 +2,7 @@ strategy: "da_imbalance"
 strategy_type: "virtual"
 run_name: "xgb_wf_v1"
 
-data:
-  start_date: "2017-01-01"
-  end_date: "2018-01-01"
+# Date range is controlled via START_DATE / END_DATE in .env, not here.
 
 model:
   type: xgboost

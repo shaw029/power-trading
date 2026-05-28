@@ -1,57 +1,9 @@
-"""Unit tests for the two normalization helpers in src/data/download.py.
-
-Both _normalize_forecast and _normalize_neso_ndfd are pure functions —
-no network or filesystem access required.
-"""
+"""Unit tests for _normalize_neso_ndfd in src/data/download.py."""
 
 import pandas as pd
 import pytest
 
-from src.data.download import _normalize_elexon_ndfd, _normalize_neso_ndfd
-
-# ---------------------------------------------------------------------------
-# _normalize_elexon_ndfd
-# ---------------------------------------------------------------------------
-
-
-class TestNormalizeElexonNdfd:
-    """NDFD path: DataFrame has forecastDate + publishTime + demand."""
-
-    def _make(self, n: int = 3):
-        dates = pd.date_range("2018-01-10", periods=n, freq="D")
-        publish = dates - pd.Timedelta(hours=16)
-        return pd.DataFrame(
-            {
-                "forecastDate": [str(d.date()) for d in dates],
-                "publishTime": [str(p) for p in publish],
-                "demand": [25000.0 + i * 100 for i in range(n)],
-            }
-        )
-
-    def test_output_columns(self):
-        result = _normalize_elexon_ndfd(self._make())
-        assert list(result.columns) == ["time", "forecast_time", "value"]
-
-    def test_demand_mapped_to_value(self):
-        result = _normalize_elexon_ndfd(self._make())
-        assert result["value"].iloc[0] == pytest.approx(25000.0)
-
-    def test_time_is_utc(self):
-        result = _normalize_elexon_ndfd(self._make())
-        assert str(result["time"].dt.tz) == "UTC"
-
-    def test_missing_demand_raises(self):
-        df = self._make()
-        df = df.drop(columns=["demand"])
-        with pytest.raises(ValueError, match="demand column missing for Elexon NDFD"):
-            _normalize_elexon_ndfd(df)
-
-    def test_missing_publish_time_raises(self):
-        df = self._make()
-        df = df.drop(columns=["publishTime"])
-        with pytest.raises(ValueError, match="publishTime missing for Elexon NDFD"):
-            _normalize_elexon_ndfd(df)
-
+from src.data.download import _normalize_neso_ndfd
 
 # ---------------------------------------------------------------------------
 # _normalize_neso_ndfd

@@ -11,8 +11,10 @@ Column naming conventions:
   wind_fc_rel_{N}h    wind rolling snapshots       (WINDFOR, 24/12/6/3/1h before delivery)
   wind_fc_da_*        wind auction snapshots       (WINDFOR, d-2 noon / d-1 00h/07h/10h30)
   day_ahead_price     day-ahead auction price      (ENTSOE, expanded)
-  demand_fc_rel_{N}h  demand rolling snapshots     (NESO NDFD, 24/12/6/3/1h before delivery)
-  demand_fc_da_*      demand auction snapshots     (NESO NDFD, d-2 noon / d-1 00h/07h/10h30)
+  demand_fc_rel_{N}h  demand rolling snapshots     (NESO_API/ENTSOE/CSV, 24/12/6/3/1h before delivery)
+  demand_fc_da_*      demand auction snapshots     (NESO_API/ENTSOE/CSV, d-2 noon / d-1 00h/07h/10h30)
+                      NOTE: ENTSOE stamps all periods with a single D-1 10:30 Europe/London publish time
+                      (no intraday revisions); only fc_da_d1_1030 carries signal with that source.
 """
 
 import pandas as pd
@@ -243,10 +245,17 @@ def process_day_ahead_price(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def process_demand_forecast(df: pd.DataFrame) -> pd.DataFrame:
-    """NESO NDFD → rolling (fc_rel_*) + static auction (fc_da_*) snapshot columns, 30-min.
+    """Demand forecast → rolling (fc_rel_*) + static auction (fc_da_*) snapshot columns, 30-min.
 
     Rolling: latest forecast 1/3/6/12/24 h before each delivery period.
     Static:  latest forecast at d-2 noon, d-1 00h/07h/10h30 (Europe/London).
+
+    Source assumptions:
+      NESO_API — real publish times; all rolling and static features are meaningful.
+      ENTSOE   — publish time is assumed D-1 10:30 Europe/London for every delivery period
+                 (A65 feed has no intraday revisions). Rolling features will be flat within
+                 the day; only fc_da_d1_1030 carries signal with this source.
+      CSV      — publish times taken as-is from the file.
     """
     df = df.copy()
     df["time"] = pd.to_datetime(df["time"], utc=True)

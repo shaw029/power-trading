@@ -7,7 +7,7 @@ Seven datasets are fetched from three APIs. Each source can be switched to a loc
 Set in `.env` (or override per-call — see below):
 
 ```python
-DEFAULT_DEMAND_FORECAST_SOURCE = "NESO_API"   # "ELEXON" | "NESO_API" | "CSV"
+DEFAULT_DEMAND_FORECAST_SOURCE = "NESO_API"   # "NESO_API" | "ENTSOE" | "CSV"
 DEFAULT_WIND_FORECAST_SOURCE   = "ELEXON"     # "ELEXON" | "CSV"
 DEFAULT_GENERATION_ACTUAL_SOURCE = "ELEXON"   # "ELEXON" | "CSV"
 DEFAULT_DAY_AHEAD_PRICE_SOURCE = "ENTSOE"     # "ENTSOE" | "CSV"
@@ -17,6 +17,8 @@ DEFAULT_IMBALANCE_PRICE_SOURCE = "ELEXON"     # "ELEXON" | "CSV"
 ```
 
 Per-call override (ignores the `.env` default): `fetch_wind_forecast("CSV")`
+
+> **ENTSOE demand forecast note:** the A65 feed has no intraday revisions — all periods in a day share a single publish time stamped at D-1 10:30 Europe/London. Rolling features (`fc_rel_*`) will be flat within the day; only `fc_da_d1_1030` carries real signal with this source. Use `NESO_API` for full rolling feature resolution.
 
 ## Using CSV Sources (offline / fast re-runs)
 
@@ -62,13 +64,19 @@ Once the CSVs exist, set `"CSV"` in `.env` for the relevant sources.
 All API sources download day-by-day and cache raw JSON under `data/raw/<DATASET>/`. Subsequent runs skip already-cached days. To force a re-download, delete the relevant directory:
 
 ```bash
-rm -rf data/raw/NESO_NDFD/          # demand forecast (NESO)
-rm -rf data/raw/WINDFOR/            # wind forecast (Elexon)
-rm -rf data/raw/B1770/              # generation actual (Elexon)
-rm -rf data/raw/FUELHH/             # generation by fuel type (Elexon)
-rm -rf data/raw/ITSDO/              # demand actual (Elexon)
-rm -rf data/raw/MID/                # market index price (Elexon)
+rm -rf data/raw/NESO_NDFD/               # demand forecast (NESO_API)
+rm -rf data/raw/entsoe_demand_forecast/  # demand forecast (ENTSOE)
+rm -rf data/raw/WINDFOR/                 # wind forecast (Elexon)
+rm -rf data/raw/B1770/                   # generation actual (Elexon)
+rm -rf data/raw/FUELHH/                  # generation by fuel type (Elexon)
+rm -rf data/raw/ITSDO/                   # demand actual (Elexon)
+rm -rf data/raw/MID/                     # market index price (Elexon)
 rm -rf data/raw/entsoe_day_ahead_price/  # day-ahead price (ENTSO-E)
+```
+
+The raw data directory defaults to `data/raw/`. Override via `.env` to point at a renamed folder:
+```
+RAW_DATA_DIR=data/raw_2018
 ```
 
 ## Date Range
