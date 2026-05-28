@@ -352,7 +352,7 @@ def _run_bess_pipeline(config: dict) -> dict:
                 (raw_forecast[i] + raw_forecast[i + 1]) / 2
                 for i in range(0, 2 * n_periods, 2)
             ]
-        elif len(raw_forecast) >= n_periods:
+        elif len(raw_forecast) == n_periods:
             forecast = raw_forecast[:n_periods]
         else:
             continue

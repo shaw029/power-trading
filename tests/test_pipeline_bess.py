@@ -80,9 +80,9 @@ def _synthetic_features(price_df):
     })
 
 
-class _ConstantModel:
+class _RampModel:
     def predict(self, X):
-        return np.full(len(X), 40.0)
+        return np.arange(len(X), dtype=float)
 
 
 def _setup_bess_mocks(da, tmp_path, monkeypatch):
@@ -101,11 +101,11 @@ def _setup_bess_mocks(da, tmp_path, monkeypatch):
 
     def mock_train(*args, **kwargs):
         return (
-            _ConstantModel(),
+            _RampModel(),
             pd.DataFrame({
                 "time": oos_rows["time"].values,
                 "actual_da_price": oos_rows["day_ahead_price"].values,
-                "predicted_da_price": np.full(len(oos_rows), 40.0),
+                "predicted_da_price": np.arange(len(oos_rows), dtype=float),
             }),
             pd.DataFrame({"dummy": [0]}),
         )
@@ -217,3 +217,48 @@ class TestBESSPipelineIntegration:
         assert len(results_df) == 3
         fall_back = results_df[results_df["date"].astype(str) == "2024-10-27"]
         assert len(fall_back) == 1
+
+    def test_forecast_aggregation(self, tmp_path, monkeypatch):
+        da, mid, imb = _synthetic_prices(4)
+
+        monkeypatch.setattr("pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
+        monkeypatch.setattr("pipeline.fetch_market_index_price", lambda *a, **kw: None)
+        monkeypatch.setattr("pipeline.fetch_imbalance_price", lambda *a, **kw: None)
+        monkeypatch.setattr("pipeline.process_day_ahead_price", lambda _: da)
+        monkeypatch.setattr("pipeline.process_market_index_price", lambda _: mid)
+        monkeypatch.setattr("pipeline.process_imbalance_price", lambda _: imb)
+        monkeypatch.setattr("pipeline.PROJECT_ROOT", tmp_path)
+        _setup_bess_mocks(da, tmp_path, monkeypatch)
+
+        captured_forecasts = []
+
+        def capturing_optimize(da_price_forecast, asset, duration_h=1.0):
+            captured_forecasts.append(list(da_price_forecast))
+            return [0.0] * len(da_price_forecast)
+
+        monkeypatch.setattr(
+            "src.bess.da_optimizer.optimize_da_schedule", capturing_optimize,
+        )
+
+        config = {
+            "strategy": "bess_test",
+            "strategy_type": "bess",
+            "run_name": "integration_run",
+            "bess": {
+                "capacity_mwh": 100.0,
+                "power_mw": 50.0,
+                "charge_efficiency": 0.92,
+                "discharge_efficiency": 0.96,
+                "degradation_cost_per_mwh": 8.50,
+                "initial_soc_pct": 0.50,
+            },
+        }
+
+        run_full_pipeline(config=config)
+
+        assert len(captured_forecasts) == 3
+
+        for forecast in captured_forecasts:
+            assert len(forecast) == 24
+            expected = [i * 2 + 0.5 for i in range(24)]
+            np.testing.assert_allclose(forecast, expected)
