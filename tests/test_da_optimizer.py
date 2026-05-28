@@ -128,6 +128,29 @@ class TestDAOptimizer:
 
         assert schedule == [0.0] * 24
 
+    def test_negative_prices_trigger_charging(self, battery: BESSAsset) -> None:
+        prices = [-20.0] * 12 + [80.0] * 12
+        schedule = optimize_da_schedule(prices, battery)
+
+        neg_period = schedule[:12]
+        pos_period = schedule[12:]
+
+        assert sum(neg_period) < 0, "Should net charge during negative-price hours"
+        assert sum(pos_period) > 0, "Should net discharge during positive-price hours"
+
+        revenue = sum(schedule[h] * prices[h] for h in range(24))
+        assert revenue > 0, "Revenue must be positive when buying at negative and selling at positive prices"
+
+    def test_all_negative_prices_charges_only(self, battery: BESSAsset) -> None:
+        prices = [-50.0] * 12 + [-10.0] * 12
+        schedule = optimize_da_schedule(prices, battery)
+
+        total_activity = sum(abs(mw) for mw in schedule)
+        assert total_activity > 1e-6, "Should trade when prices are negative"
+
+        net_dispatch = sum(schedule)
+        assert net_dispatch < 0, "Should net charge when all prices are negative (paid to consume)"
+
     def test_terminal_soc_equals_initial(self, battery: BESSAsset) -> None:
         prices = [15.0, 85.0, 20.0, 90.0, 10.0, 80.0] * 4
         schedule = optimize_da_schedule(prices, battery)
