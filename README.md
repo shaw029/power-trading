@@ -162,9 +162,13 @@ bess:
 
 ```
 artifacts/{strategy}/{run_name}/
-├── features/features.parquet
-├── model/model.joblib, metadata.json
-└── trading/predictions.csv, signals.csv, pnl.csv, metrics.json
+├── features/features.parquet          # shared between modes
+├── virtual/
+│   ├── model/model.joblib, metadata.json
+│   └── trading/predictions.csv, signals.csv, pnl.csv, metrics.json
+└── bess/
+    ├── model/model.joblib, metadata.json
+    └── trading/pnl.csv, metrics.json
 ```
 
 ---

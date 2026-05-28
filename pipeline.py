@@ -37,13 +37,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def setup_experiment_paths(config: dict | None = None) -> dict:
+def setup_experiment_paths(config: dict | None = None, mode: str | None = None) -> dict:
     """Return a dict of Path objects for all experiment artifacts.
 
-    Paths follow a three-tier structure under artifacts/:
-        artifacts/{strategy}/{run_name}/features/  — engineered features
-        artifacts/{strategy}/{run_name}/model/     — model + metadata
-        artifacts/{strategy}/{run_name}/trading/   — predictions, signals, pnl, metrics
+    Layout under artifacts/:
+        artifacts/{strategy}/{run_name}/features/        — shared between modes
+        artifacts/{strategy}/{run_name}/{mode}/model/    — model + metadata
+        artifacts/{strategy}/{run_name}/{mode}/trading/  — predictions, signals, pnl, metrics
 
     When config is None, falls back to the static versioned paths from config.py.
     """
@@ -65,8 +65,9 @@ def setup_experiment_paths(config: dict | None = None) -> dict:
     run_name = config["run_name"]
     run_dir      = PROJECT_ROOT / "artifacts" / strategy / run_name
     features_dir = run_dir / "features"
-    model_dir    = run_dir / "model"
-    trading_dir  = run_dir / "trading"
+    mode_dir     = run_dir / mode if mode else run_dir
+    model_dir    = mode_dir / "model"
+    trading_dir  = mode_dir / "trading"
     return {
         "features_dir":     features_dir,
         "model_dir":        model_dir,
@@ -280,7 +281,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     from src.models.train import train_da_price_model, _FEATURE_COLS
 
     bess_cfg = config["bess"]
-    paths = setup_experiment_paths(config)
+    paths = setup_experiment_paths(config, mode="bess")
 
     results = {
         "timestamp": datetime.now().isoformat(),
@@ -429,7 +430,7 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
     wf_test_days     = config["validation"]["test_days"]  if config else 30
     wf_step_days     = config["validation"]["step_days"]  if config else 30
 
-    paths = setup_experiment_paths(config)
+    paths = setup_experiment_paths(config, mode="virtual")
 
     results = {
         "timestamp": datetime.now().isoformat(),

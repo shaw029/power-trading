@@ -106,9 +106,11 @@ python main.py --config configs/config.yaml
 The config controls model hyperparameters, walk-forward settings, signal threshold, execution behaviour, and where all artifacts are written. Each config must declare a `strategy` and `run_name`; the pipeline writes everything to:
 
 ```
-artifacts/{strategy}/{run_name}/features/   # features.parquet
-artifacts/{strategy}/{run_name}/model/      # model.joblib, metadata.json
-artifacts/{strategy}/{run_name}/trading/    # predictions.csv, signals.csv, pnl.csv, metrics.json
+artifacts/{strategy}/{run_name}/features/               # features.parquet (shared)
+artifacts/{strategy}/{run_name}/virtual/model/          # model.joblib, metadata.json
+artifacts/{strategy}/{run_name}/virtual/trading/        # predictions.csv, signals.csv, pnl.csv, metrics.json
+artifacts/{strategy}/{run_name}/bess/model/             # model.joblib, metadata.json
+artifacts/{strategy}/{run_name}/bess/trading/           # pnl.csv, metrics.json
 ```
 
 ### Strategy Type
@@ -184,15 +186,23 @@ power-trading/
 ├── artifacts/
 │   └── {strategy}/{run_name}/
 │       ├── features/
-│       │   └── features.parquet    # Engineered features for this run
-│       ├── model/
-│       │   ├── model.joblib        # Serialised XGBoost model
-│       │   └── metadata.json       # Training params, feature list, dates
-│       └── trading/
-│           ├── predictions.csv     # actual_spread, predicted_spread
-│           ├── signals.csv         # auction_time, signal, direction
-│           ├── pnl.csv             # Per-period net PnL (£)
-│           └── metrics.json        # Model + trading performance
+│       │   └── features.parquet    # Engineered features (shared between modes)
+│       ├── virtual/
+│       │   ├── model/
+│       │   │   ├── model.joblib    # Spread-prediction XGBoost model
+│       │   │   └── metadata.json
+│       │   └── trading/
+│       │       ├── predictions.csv # actual_spread, predicted_spread
+│       │       ├── signals.csv     # auction_time, signal, direction
+│       │       ├── pnl.csv         # Per-period net PnL (£)
+│       │       └── metrics.json
+│       └── bess/
+│           ├── model/
+│           │   ├── model.joblib    # DA price-prediction XGBoost model
+│           │   └── metadata.json
+│           └── trading/
+│               ├── pnl.csv         # Daily BESS PnL decomposition
+│               └── metrics.json
 ├── src/
 │   ├── data/                       # download.py, preprocess.py
 │   ├── evaluation/                 # splitter.py (walk-forward)
