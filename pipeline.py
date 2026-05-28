@@ -357,7 +357,8 @@ def _run_bess_pipeline(config: dict) -> dict:
     valid_period_counts = {periods_per_day - dst_delta, periods_per_day, periods_per_day + dst_delta}
 
     sorted_times = features_df["time"].sort_values()
-    source_resolution_h = (sorted_times.iloc[1] - sorted_times.iloc[0]).total_seconds() / 3600
+    deltas_h = sorted_times.diff().dropna().dt.total_seconds() / 3600
+    source_resolution_h = deltas_h.mode().iloc[0]
 
     daily_results = []
     for date, day_df in prices.groupby(prices.index.date):
