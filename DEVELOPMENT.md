@@ -91,6 +91,12 @@ DEFAULT_IMBALANCE_PRICE_SOURCE=ELEXON     # ELEXON | CSV
 
 ## Experiment Configs
 
+`configs/config.yaml` is gitignored — it holds your local experiment settings and is never committed. `configs/config.example.yaml` is the committed template; copy it to get started:
+
+```bash
+cp configs/config.example.yaml configs/config.yaml
+```
+
 Experiments are driven by YAML files in `configs/`. Pass one with `--config`:
 
 ```bash

@@ -21,9 +21,10 @@ conda create -n power-trading python=3.12 && conda activate power-trading
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configure API keys
+# 3. Configure API keys and experiment settings
 cp .env.example .env
-# Edit .env and fill in your ENTSO-E API key (Elexon/NESO are open — no key required)
+cp configs/config.example.yaml configs/config.yaml
+# Edit .env with your ENTSO-E API key; edit config.yaml for dates, model params, etc.
 
 # 4. Seed sample data
 python bootstrap_data.py
