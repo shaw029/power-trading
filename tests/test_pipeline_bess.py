@@ -218,6 +218,71 @@ class TestBESSPipelineIntegration:
         fall_back = results_df[results_df["date"].astype(str) == "2024-10-27"]
         assert len(fall_back) == 1
 
+    def test_insufficient_feature_data_for_date(self, tmp_path, monkeypatch):
+        da, mid, imb = _synthetic_prices(4)
+
+        monkeypatch.setattr("pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
+        monkeypatch.setattr("pipeline.fetch_market_index_price", lambda *a, **kw: None)
+        monkeypatch.setattr("pipeline.fetch_imbalance_price", lambda *a, **kw: None)
+        monkeypatch.setattr("pipeline.process_day_ahead_price", lambda _: da)
+        monkeypatch.setattr("pipeline.process_market_index_price", lambda _: mid)
+        monkeypatch.setattr("pipeline.process_imbalance_price", lambda _: imb)
+        monkeypatch.setattr("pipeline.PROJECT_ROOT", tmp_path)
+
+        features_df = _synthetic_features(da)
+        times = pd.to_datetime(features_df["time"], utc=True)
+        london_dates = sorted(times.dt.tz_convert("Europe/London").dt.date.unique())
+
+        sparse_date = london_dates[1]
+        features_df["_london_date"] = times.dt.tz_convert("Europe/London").dt.date
+        mask = features_df["_london_date"] == sparse_date
+        trimmed = pd.concat([
+            features_df[~mask],
+            features_df[mask].iloc[:1],
+        ]).drop(columns=["_london_date"]).sort_values("time").reset_index(drop=True)
+
+        features_dir = tmp_path / "artifacts" / "bess_test" / "integration_run" / "features"
+        features_dir.mkdir(parents=True)
+        trimmed.to_parquet(features_dir / "features.parquet", index=False)
+
+        oos_dates = set(london_dates[1:])
+        oos_mask = times.dt.tz_convert("Europe/London").dt.date.isin(oos_dates)
+        oos_rows = features_df[oos_mask]
+
+        def mock_train(*args, **kwargs):
+            return (
+                _RampModel(),
+                pd.DataFrame({
+                    "time": oos_rows["time"].values,
+                    "actual_da_price": oos_rows["day_ahead_price"].values,
+                    "predicted_da_price": np.arange(len(oos_rows), dtype=float),
+                }),
+                pd.DataFrame({"dummy": [0]}),
+            )
+
+        monkeypatch.setattr("src.models.train.train_da_price_model", mock_train)
+        monkeypatch.setattr("pipeline.save_model", lambda *a, **kw: None)
+
+        config = {
+            "strategy": "bess_test",
+            "strategy_type": "bess",
+            "run_name": "integration_run",
+            "bess": {
+                "capacity_mwh": 100.0,
+                "power_mw": 50.0,
+                "charge_efficiency": 0.92,
+                "discharge_efficiency": 0.96,
+                "degradation_cost_per_mwh": 8.50,
+                "initial_soc_pct": 0.50,
+            },
+        }
+
+        results = run_full_pipeline(config=config)
+
+        assert "results_df" in results
+        result_dates = set(results["results_df"]["date"].astype(str))
+        assert str(sparse_date) not in result_dates
+
     def test_forecast_aggregation(self, tmp_path, monkeypatch):
         da, mid, imb = _synthetic_prices(4)
 
