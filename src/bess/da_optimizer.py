@@ -32,7 +32,12 @@ def optimize_da_schedule(
     prob += soc[n_periods] >= initial_soc
 
     for h in periods:
-        prob += soc[h + 1] == soc[h] - discharge[h] * duration_h / asset.discharge_efficiency + charge[h] * duration_h * asset.charge_efficiency
+        prob += (
+            soc[h + 1]
+            == soc[h]
+            - discharge[h] * duration_h / asset.discharge_efficiency
+            + charge[h] * duration_h * asset.charge_efficiency
+        )
 
     try:
         import highspy  # noqa: F401

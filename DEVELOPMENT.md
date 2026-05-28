@@ -38,6 +38,24 @@ make lint
 make typecheck
 ```
 
+## Pre-commit Hook
+
+A git pre-commit hook lives in `scripts/pre-commit`. It runs the full check suite — flake8, mypy, and pytest — before every `git commit`, blocking the commit if anything fails. This mirrors the CI pipeline exactly so failures are caught locally rather than on GitHub Actions.
+
+Install it once after cloning:
+
+```bash
+make install-hooks
+```
+
+The hook is a plain shell script tracked in `scripts/`. Because `.git/hooks/` is never cloned, every contributor must run `make install-hooks` once on their own machine.
+
+To bypass in an emergency (strongly discouraged — fix the issue instead):
+
+```bash
+git commit --no-verify
+```
+
 ## Local Configuration (.env)
 
 All local settings live in a `.env` file at the project root. It is gitignored — never committed.

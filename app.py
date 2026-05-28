@@ -26,6 +26,7 @@ def _naive_da_forecast(price_history, lookback=7, n_hours=24):
             forecast.append(sum(price_history[-1]) / len(price_history[-1]))
     return forecast
 
+
 st.set_page_config(page_title="Power Trading Dashboard", layout="wide")
 
 PROCESSED_DATA = Path(os.environ.get("PT_PROCESSED_DATA", "data/processed/processed_data.parquet"))
@@ -127,7 +128,7 @@ def run_bess_simulation(
         asset.reset()
         result = run_intraday_session(
             da_schedule=schedule,
-            da_prices=da_prices,
+            da_price_actual=da_prices,
             mid_prices=day_df["mid_price"].tolist(),
             imbalance_prices=day_df["system_buy_price"].tolist(),
             asset=asset,

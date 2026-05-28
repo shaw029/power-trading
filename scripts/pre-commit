@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Pre-commit hook — blocks the commit if any check fails.
+# Mirrors the CI pipeline (flake8 → mypy → pytest) so failures are caught
+# locally before they reach GitHub Actions.
+#
+# Install once after cloning:
+#   make install-hooks
+#
+# Skip in an emergency (not recommended):
+#   git commit --no-verify
+set -e
+
+echo ">>> flake8"
+python -m flake8 .
+
+echo ">>> mypy"
+python -m mypy .
+
+echo ">>> pytest"
+python -m pytest -q
+
+echo ">>> all checks passed"

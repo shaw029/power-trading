@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 
 def ml_da_forecast(model, features: pd.DataFrame) -> list[float]:
@@ -13,4 +12,4 @@ def ml_da_forecast(model, features: pd.DataFrame) -> list[float]:
     Returns:
         Predicted day-ahead prices, one per row in features.
     """
-    return model.predict(features).tolist()
+    return model.predict(features).tolist()  # type: ignore[no-any-return]

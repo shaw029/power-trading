@@ -28,10 +28,13 @@ cp .env.example .env
 # 4. Seed sample data
 python bootstrap_data.py
 
-# 5. Lint, type-check, and run tests
+# 5. Install the pre-commit hook (run once — blocks commits that break CI)
+make install-hooks
+
+# 6. Lint, type-check, and run tests
 make check
 
-# 6. Run the full pipeline
+# 7. Run the full pipeline
 python -m src.pipeline
 ```
 
