@@ -76,10 +76,11 @@ class TestRunFullPipelineDispatch:
         monkeypatch.setattr("pipeline._run_bess_pipeline", mock_b)
         monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
 
-        result = run_full_pipeline(mode="all")
+        config = {"strategy_type": "all"}
+        result = run_full_pipeline(mode="all", config=config)
 
-        mock_v.assert_called_once()
-        mock_b.assert_called_once()
+        mock_v.assert_called_once_with(config, skip_features=False)
+        mock_b.assert_called_once_with(config)
         assert "virtual" in result
         assert "bess" in result
 
@@ -135,9 +136,10 @@ class TestRunFullPipelineDispatch:
         monkeypatch.setattr("pipeline._run_bess_pipeline", mock_b)
         monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
 
-        run_full_pipeline(mode="all", skip_features=True)
+        config = {"strategy_type": "all"}
+        run_full_pipeline(mode="all", config=config, skip_features=True)
 
-        mock_v.assert_called_once_with(None, skip_features=True)
+        mock_v.assert_called_once_with(config, skip_features=True)
 
 
 class TestMainCLIParsing:

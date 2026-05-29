@@ -629,22 +629,27 @@ def run_full_pipeline(mode: str | None = None, config: dict | None = None, skip_
     logger.info(f"Starting pipeline in '{effective_mode}' mode")
     ensure_directories()
 
-    if effective_mode in ("download", "features") and config is None:
-        raise ValueError(f"'{effective_mode}' mode requires a config dict.")
-
     if effective_mode == "download":
-        return _run_download(config)  # type: ignore[arg-type]
+        if config is None:
+            raise ValueError("'download' mode requires a config dict.")
+        return _run_download(config)
     elif effective_mode == "features":
-        return _run_features(config)  # type: ignore[arg-type]
+        if config is None:
+            raise ValueError("'features' mode requires a config dict.")
+        return _run_features(config)
     elif effective_mode == "model":
         return _run_virtual_pipeline(config, skip_features=True)
     elif effective_mode == "virtual":
         return _run_virtual_pipeline(config, skip_features=skip_features)
     elif effective_mode == "bess":
-        return _run_bess_pipeline(config)  # type: ignore[arg-type]
+        if config is None:
+            raise ValueError("'bess' mode requires a config dict.")
+        return _run_bess_pipeline(config)
     elif effective_mode == "all":
+        if config is None:
+            raise ValueError("'all' mode requires a config dict.")
         virtual_results = _run_virtual_pipeline(config, skip_features=skip_features)
-        bess_results = _run_bess_pipeline(config)  # type: ignore[arg-type]
+        bess_results = _run_bess_pipeline(config)
         return {"virtual": virtual_results, "bess": bess_results}
     else:
         raise ValueError(
