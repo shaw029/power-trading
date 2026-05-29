@@ -56,7 +56,7 @@
       "stopOnEntry": false
     },
     {
-      "name": "Train & Backtest",
+      "name": "Virtual: Train & Backtest",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/main.py",

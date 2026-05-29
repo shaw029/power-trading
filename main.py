@@ -13,13 +13,8 @@ Usage:
 """
 
 import argparse
-import yaml
 from pipeline import run_full_pipeline
-
-
-def _load_config(path: str) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f) or {}
+from src.utils.config import load_config
 
 
 def main():
@@ -37,7 +32,7 @@ def main():
     )
     args = parser.parse_args()
 
-    config = _load_config(args.config)
+    config = load_config(args.config)
     mode = args.mode or config.get("strategy_type", "virtual")
 
     run_full_pipeline(mode=mode, config=config)

@@ -347,11 +347,13 @@ def _run_bess_pipeline(config: dict) -> dict:
     features_df["_london_date"] = features_df["time"].dt.tz_convert("Europe/London").dt.date
     feature_cols = [c for c in _FEATURE_COLS if c in features_df.columns]
 
-    # Step 4: Load price data for BESS simulation
-    logger.info("BESS pipeline: loading and processing price data")
-    da_processed = process_day_ahead_price(fetch_day_ahead_price())
-    mid_processed = process_market_index_price(fetch_market_index_price())
-    imb_processed = process_imbalance_price(fetch_imbalance_price())
+    # Step 4: Load price data for BESS simulation — use the same date range as features
+    feat_start = features_df["time"].min().strftime("%Y-%m-%d")
+    feat_end = (features_df["time"].max() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    logger.info("BESS pipeline: loading and processing price data (%s → %s)", feat_start, feat_end)
+    da_processed = process_day_ahead_price(fetch_day_ahead_price(start_date=feat_start, end_date=feat_end))
+    mid_processed = process_market_index_price(fetch_market_index_price(start_date=feat_start, end_date=feat_end))
+    imb_processed = process_imbalance_price(fetch_imbalance_price(start_date=feat_start, end_date=feat_end))
 
     duration_h = bess_cfg.get("resolution_h", 1.0)
     resample_freq = f"{int(duration_h * 60)}min"
@@ -426,6 +428,11 @@ def _run_bess_pipeline(config: dict) -> dict:
         })
 
     results_df = pd.DataFrame(daily_results)
+    if results_df.empty:
+        raise RuntimeError(
+            "BESS simulation produced no results — no OOS days matched the prices date range. "
+            "Check that the features parquet and price data cover the same period."
+        )
     save_bess_outputs(results_df, config, paths)
     results["results_df"] = results_df
 

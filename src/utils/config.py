@@ -225,6 +225,6 @@ def get_periods(config: dict) -> list[dict[str, str]]:
 
 
 def get_sources(config: dict) -> dict:
-    """Return fixed (non-period) data sources as a flat dict."""
-    data = config["data"]
-    return {key: data[key] for key in _FIXED_SOURCE_KEYS}
+    """Return fixed (non-period) data sources as a flat dict, applying defaults where absent."""
+    data = config.get("data", {})
+    return {key: data.get(key, _FIXED_SOURCE_DEFAULTS[key]) for key in _FIXED_SOURCE_KEYS}
