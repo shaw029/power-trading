@@ -147,7 +147,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "virtual"])
         mock_run = MagicMock()
         monkeypatch.setattr("main.run_full_pipeline", mock_run)
-        monkeypatch.setattr("main._load_config", lambda _: {"strategy_type": "virtual"})
+        monkeypatch.setattr("main.load_config", lambda _: {"strategy_type": "virtual"})
 
         from main import main
         main()
@@ -159,7 +159,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr(sys, "argv", ["main.py", "-m", "bess"])
         mock_run = MagicMock()
         monkeypatch.setattr("main.run_full_pipeline", mock_run)
-        monkeypatch.setattr("main._load_config", lambda _: {"strategy_type": "virtual"})
+        monkeypatch.setattr("main.load_config", lambda _: {"strategy_type": "virtual"})
 
         from main import main
         main()
@@ -171,7 +171,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr(sys, "argv", ["main.py"])
         mock_run = MagicMock()
         monkeypatch.setattr("main.run_full_pipeline", mock_run)
-        monkeypatch.setattr("main._load_config", lambda _: {"strategy_type": "bess"})
+        monkeypatch.setattr("main.load_config", lambda _: {"strategy_type": "bess"})
 
         from main import main
         main()
@@ -183,7 +183,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "download"])
         mock_run = MagicMock()
         monkeypatch.setattr("main.run_full_pipeline", mock_run)
-        monkeypatch.setattr("main._load_config", lambda _: {})
+        monkeypatch.setattr("main.load_config", lambda _: {})
 
         from main import main
         main()
@@ -195,7 +195,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "features"])
         mock_run = MagicMock()
         monkeypatch.setattr("main.run_full_pipeline", mock_run)
-        monkeypatch.setattr("main._load_config", lambda _: {})
+        monkeypatch.setattr("main.load_config", lambda _: {})
 
         from main import main
         main()
@@ -207,7 +207,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "model"])
         mock_run = MagicMock()
         monkeypatch.setattr("main.run_full_pipeline", mock_run)
-        monkeypatch.setattr("main._load_config", lambda _: {})
+        monkeypatch.setattr("main.load_config", lambda _: {})
 
         from main import main
         main()
