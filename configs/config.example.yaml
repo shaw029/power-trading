@@ -2,7 +2,20 @@ strategy: "da_imbalance"
 strategy_type: "virtual"
 run_name: "xgb_wf_v1"
 
-# Date range is controlled via START_DATE / END_DATE in .env, not here.
+data:
+  periods:
+    - start: "2017-01-01"
+      end:   "2018-01-01"
+      demand_source: ENTSOE
+    - start: "2018-01-01"
+      end:   "2019-01-01"
+      demand_source: NESO_API
+  wind_source:            ELEXON    # ELEXON | CSV
+  generation_source:      ELEXON    # ELEXON | CSV
+  day_ahead_price_source: ENTSOE    # ENTSOE | CSV
+  market_index_source:    ELEXON    # ELEXON | CSV
+  demand_actual_source:   ELEXON    # ELEXON | CSV
+  imbalance_source:       ELEXON    # ELEXON | CSV
 
 model:
   type: xgboost
