@@ -27,6 +27,7 @@ from src.utils.config import (
     SIGNALS_FILE, PNL_FILE, METRICS_FILE, MODEL_METADATA_FILE, CURRENT_VERSION,
     PROCESSED_DATA_DIR, DEFAULT_SIGNAL_THRESHOLD, SAVE_OUTPUTS_DEFAULT,
     PROJECT_ROOT, VERSIONED_FEATURES_DIR, VERSIONED_MODELS_DIR, VERSIONED_TRADING_DIR,
+    get_periods, get_sources,
 )
 
 # Set up logging
@@ -104,20 +105,39 @@ def load_processed_data(version: str = CURRENT_VERSION) -> pd.DataFrame:
     return df
 
 
-def build_features_pipeline(features_save_path=None):
+def build_features_pipeline(config, features_save_path=None):
     logger.info("Building features from raw data")
+
+    periods = get_periods(config)
+    sources = get_sources(config)
+    full_start = min(str(p["start"]) for p in periods)
+    full_end = max(str(p["end"]) for p in periods)
 
     try:
         # Step 1: Download raw data
         logger.info("Step 1: Downloading raw data")
 
-        wind_df = fetch_wind_forecast()
-        demand_df = fetch_demand_forecast()
-        generation_df = fetch_generation_actual()
-        price_df = fetch_day_ahead_price()
-        mid_df = fetch_market_index_price()
-        itsdo_df = fetch_demand_actual()
-        b1770_df = fetch_imbalance_price()
+        wind_df = fetch_wind_forecast(
+            source=sources["wind_source"], start_date=full_start, end_date=full_end)
+        generation_df = fetch_generation_actual(
+            source=sources["generation_source"], start_date=full_start, end_date=full_end)
+        price_df = fetch_day_ahead_price(
+            source=sources["day_ahead_price_source"], start_date=full_start, end_date=full_end)
+        mid_df = fetch_market_index_price(
+            source=sources["market_index_source"], start_date=full_start, end_date=full_end)
+        itsdo_df = fetch_demand_actual(
+            source=sources["demand_actual_source"], start_date=full_start, end_date=full_end)
+        b1770_df = fetch_imbalance_price(
+            source=sources["imbalance_source"], start_date=full_start, end_date=full_end)
+
+        demand_dfs = []
+        for p in periods:
+            demand_dfs.append(fetch_demand_forecast(
+                source=str(p["demand_source"]),
+                start_date=str(p["start"]),
+                end_date=str(p["end"]),
+            ))
+        demand_df = pd.concat(demand_dfs, ignore_index=True)
 
         # Step 2: Preprocess and merge
         logger.info("Step 2: Preprocessing and merging data")
@@ -292,7 +312,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     # Step 1: Build features if needed
     if not paths["features_file"].exists():
         logger.info("BESS pipeline: building features from raw data")
-        build_features_pipeline(features_save_path=paths["features_file"])
+        build_features_pipeline(config, features_save_path=paths["features_file"])
     else:
         logger.info("BESS pipeline: reusing existing features at %s", paths["features_file"])
 
@@ -448,7 +468,7 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
             logger.info("Skipping feature build, retraining on existing features")
         else:
             logger.info("Virtual pipeline: building features from raw data")
-            build_features_pipeline(features_save_path=paths["features_file"])
+            build_features_pipeline(config, features_save_path=paths["features_file"])
 
         logger.info("Training model")
         model, predictions_df, X_test = train_model(
@@ -555,25 +575,38 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
         raise
 
 
-def _run_download(config: dict | None = None) -> dict:
-    """Fetch all seven raw data sources and write them to the per-day cache."""
+def _run_download(config: dict) -> dict:
+    """Fetch all raw data sources and write them to the per-day cache."""
     logger.info("Download mode: fetching all raw data sources")
-    fetch_wind_forecast()
-    fetch_demand_forecast()
-    fetch_generation_actual()
-    fetch_day_ahead_price()
-    fetch_market_index_price()
-    fetch_demand_actual()
-    fetch_imbalance_price()
+
+    periods = get_periods(config)
+    sources = get_sources(config)
+    full_start = min(str(p["start"]) for p in periods)
+    full_end = max(str(p["end"]) for p in periods)
+
+    fetch_wind_forecast(source=sources["wind_source"], start_date=full_start, end_date=full_end)
+    fetch_generation_actual(source=sources["generation_source"], start_date=full_start, end_date=full_end)
+    fetch_day_ahead_price(source=sources["day_ahead_price_source"], start_date=full_start, end_date=full_end)
+    fetch_market_index_price(source=sources["market_index_source"], start_date=full_start, end_date=full_end)
+    fetch_demand_actual(source=sources["demand_actual_source"], start_date=full_start, end_date=full_end)
+    fetch_imbalance_price(source=sources["imbalance_source"], start_date=full_start, end_date=full_end)
+
+    for p in periods:
+        fetch_demand_forecast(
+            source=str(p["demand_source"]),
+            start_date=str(p["start"]),
+            end_date=str(p["end"]),
+        )
+
     logger.info("Download complete")
     return {"mode": "download"}
 
 
-def _run_features(config: dict | None = None) -> dict:
+def _run_features(config: dict) -> dict:
     """Download raw data, preprocess, and build the feature set — stop before training."""
     paths = setup_experiment_paths(config)
     logger.info("Features mode: building features from raw data")
-    build_features_pipeline(features_save_path=paths["features_file"])
+    build_features_pipeline(config, features_save_path=paths["features_file"])
     logger.info("Features written to %s", paths["features_file"])
     return {"mode": "features", "features_file": paths["features_file"]}
 
@@ -596,10 +629,13 @@ def run_full_pipeline(mode: str | None = None, config: dict | None = None, skip_
     logger.info(f"Starting pipeline in '{effective_mode}' mode")
     ensure_directories()
 
+    if effective_mode in ("download", "features") and config is None:
+        raise ValueError(f"'{effective_mode}' mode requires a config dict.")
+
     if effective_mode == "download":
-        return _run_download(config)
+        return _run_download(config)  # type: ignore[arg-type]
     elif effective_mode == "features":
-        return _run_features(config)
+        return _run_features(config)  # type: ignore[arg-type]
     elif effective_mode == "model":
         return _run_virtual_pipeline(config, skip_features=True)
     elif effective_mode == "virtual":

@@ -5,6 +5,18 @@ import pytest
 
 from pipeline import run_full_pipeline
 
+_MINIMAL_CONFIG = {
+    "data": {
+        "periods": [{"start": "2018-01-01", "end": "2019-01-01", "demand_source": "NESO_API"}],
+        "wind_source": "ELEXON",
+        "generation_source": "ELEXON",
+        "day_ahead_price_source": "ENTSOE",
+        "market_index_source": "ELEXON",
+        "demand_actual_source": "ELEXON",
+        "imbalance_source": "ELEXON",
+    },
+}
+
 
 class TestRunFullPipelineDispatch:
     def test_virtual_mode_calls_virtual(self, monkeypatch):
@@ -22,9 +34,9 @@ class TestRunFullPipelineDispatch:
         monkeypatch.setattr("pipeline._run_download", mock)
         monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
 
-        result = run_full_pipeline(mode="download")
+        result = run_full_pipeline(mode="download", config=_MINIMAL_CONFIG)
 
-        mock.assert_called_once()
+        mock.assert_called_once_with(_MINIMAL_CONFIG)
         assert result["mode"] == "download"
 
     def test_features_mode_calls_features(self, monkeypatch):
@@ -32,9 +44,9 @@ class TestRunFullPipelineDispatch:
         monkeypatch.setattr("pipeline._run_features", mock)
         monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
 
-        result = run_full_pipeline(mode="features")
+        result = run_full_pipeline(mode="features", config=_MINIMAL_CONFIG)
 
-        mock.assert_called_once()
+        mock.assert_called_once_with(_MINIMAL_CONFIG)
         assert result["mode"] == "features"
 
     def test_model_mode_calls_virtual_with_skip_features(self, monkeypatch):
