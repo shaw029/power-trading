@@ -376,13 +376,13 @@ def _normalize_neso_ndfd(df: pd.DataFrame) -> pd.DataFrame:
     return df[output_cols]
 
 
-def fetch_neso_ndfd() -> pd.DataFrame:
+def fetch_neso_ndfd(start_date: str = START_DATE, end_date: str = END_DATE) -> pd.DataFrame:
     """
     Fetch NESO day-ahead demand forecast using daily chunking.
     """
     logger.info("Fetching NESO NDFD via daily chunking")
 
-    download_neso_ndfd_daily(START_DATE, END_DATE)
+    download_neso_ndfd_daily(start_date, end_date)
     df = read_neso_ndfd()
     logger.info(f"Read {len(df)} rows from NESO NDFD cache")
 
@@ -413,11 +413,15 @@ def fetch_neso_ndfd_from_csv(csv_path=NESO_NDFD_CSV) -> pd.DataFrame:
     return df
 
 
-def fetch_demand_forecast(source: str | None = None) -> pd.DataFrame:
+def fetch_demand_forecast(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """Fetch demand forecast data from the specified source.
 
     Args:
         source: "NESO_API" (default) | "ENTSOE" | "CSV"
+        start_date: Start date (YYYY-MM-DD).
+        end_date: End date (YYYY-MM-DD).
 
     Returns:
         DataFrame with columns: time (UTC delivery), forecast_time (UTC issue), value (MW).
@@ -435,13 +439,13 @@ def fetch_demand_forecast(source: str | None = None) -> pd.DataFrame:
 
     if source == "ENTSOE":
         logger.info("Fetching demand forecast data (Total Load A65 via ENTSO-E)")
-        df = fetch_entsoe_demand_forecast()
+        df = fetch_entsoe_demand_forecast(start_date, end_date)
         logger.info(f"Demand forecast: {len(df)} records")
         return df
 
     elif source == "NESO_API":
         logger.info("Fetching demand forecast data (NDFD via NESO API with daily chunking)")
-        df = fetch_neso_ndfd()
+        df = fetch_neso_ndfd(start_date, end_date)
         logger.info(f"Demand forecast: {len(df)} records")
         return df
 
@@ -466,7 +470,9 @@ def fetch_wind_forecast_from_csv(csv_path=WIND_FORECAST_CSV) -> pd.DataFrame:
     return df
 
 
-def fetch_wind_forecast(source: str | None = None) -> pd.DataFrame:
+def fetch_wind_forecast(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch wind forecast data (WINDFOR).
     source: "ELEXON" (default) or "CSV"
@@ -478,7 +484,7 @@ def fetch_wind_forecast(source: str | None = None) -> pd.DataFrame:
         return fetch_wind_forecast_from_csv()
     if source == "ELEXON":
         logger.info("Fetching wind forecast data (WINDFOR via Elexon)")
-        df = fetch_elexon_dataset("WINDFOR", START_DATE, END_DATE)
+        df = fetch_elexon_dataset("WINDFOR", start_date, end_date)
         logger.info(f"Wind forecast: {len(df)} records")
         return df
     raise ValueError(f"Unknown source '{source}'. Must be 'ELEXON' or 'CSV'")
@@ -495,7 +501,9 @@ def fetch_generation_actual_from_csv(csv_path=GENERATION_ACTUAL_CSV) -> pd.DataF
     return df
 
 
-def fetch_generation_actual(source: str | None = None) -> pd.DataFrame:
+def fetch_generation_actual(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch full generation mix (FUELHH).
     source: "ELEXON" (default) or "CSV"
@@ -508,7 +516,7 @@ def fetch_generation_actual(source: str | None = None) -> pd.DataFrame:
         return fetch_generation_actual_from_csv()
     if source == "ELEXON":
         logger.info("Fetching generation mix data (FUELHH via Elexon)")
-        df = fetch_elexon_dataset("FUELHH", START_DATE, END_DATE)
+        df = fetch_elexon_dataset("FUELHH", start_date, end_date)
         logger.info(f"Generation mix: {len(df)} records")
         return df
     raise ValueError(f"Unknown source '{source}'. Must be 'ELEXON' or 'CSV'")
@@ -632,7 +640,9 @@ def fetch_day_ahead_price_from_csv(csv_path=DAY_AHEAD_PRICE_CSV) -> pd.DataFrame
     return df
 
 
-def fetch_day_ahead_price(source: str | None = None) -> pd.DataFrame:
+def fetch_day_ahead_price(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch day-ahead electricity price data.
     source: "ENTSOE" (default) or "CSV"
@@ -649,8 +659,8 @@ def fetch_day_ahead_price(source: str | None = None) -> pd.DataFrame:
 
     all_dfs = []
 
-    current = pd.to_datetime(START_DATE)
-    end = pd.to_datetime(END_DATE)
+    current = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
 
     while current < end:
         next_day = current + pd.Timedelta(days=1)
@@ -806,7 +816,7 @@ def _fetch_entsoe_load_forecast_day(market_day: pd.Timestamp) -> pd.DataFrame:
     return df.sort_values("time").drop_duplicates(subset=["time"])
 
 
-def fetch_entsoe_demand_forecast() -> pd.DataFrame:
+def fetch_entsoe_demand_forecast(start_date: str = START_DATE, end_date: str = END_DATE) -> pd.DataFrame:
     """Fetch ENTSO-E Total Load Forecast (A65) for GB over the configured date range.
 
     Caches one JSON file per market day under data/raw/entsoe_demand_forecast/.
@@ -824,8 +834,8 @@ def fetch_entsoe_demand_forecast() -> pd.DataFrame:
     If intraday resolution matters, use NESO_API instead.
     """
     dataset_name = "entsoe_demand_forecast"
-    current = pd.to_datetime(START_DATE)
-    end = pd.to_datetime(END_DATE)
+    current = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
     all_dfs: list[pd.DataFrame] = []
 
     while current < end:
@@ -924,7 +934,9 @@ def fetch_market_index_from_csv(csv_path=MARKET_INDEX_CSV) -> pd.DataFrame:
     return df
 
 
-def fetch_market_index_price(source: str | None = None) -> pd.DataFrame:
+def fetch_market_index_price(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch Market Index Data (MID).
     source: "ELEXON" (default) or "CSV"
@@ -937,7 +949,7 @@ def fetch_market_index_price(source: str | None = None) -> pd.DataFrame:
         return fetch_market_index_from_csv()
     if source == "ELEXON":
         try:
-            df = fetch_elexon_dataset("MID", START_DATE, END_DATE)
+            df = fetch_elexon_dataset("MID", start_date, end_date)
             if df.empty:
                 logger.warning("MID dataset returned no data; skipping market_index_price feature")
                 return pd.DataFrame()
@@ -959,7 +971,9 @@ def fetch_demand_actual_from_csv(csv_path=DEMAND_ACTUAL_CSV) -> pd.DataFrame:
     return df
 
 
-def fetch_demand_actual(source: str | None = None) -> pd.DataFrame:
+def fetch_demand_actual(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch actual demand (ITSDO).
     source: "ELEXON" (default) or "CSV"
@@ -971,7 +985,7 @@ def fetch_demand_actual(source: str | None = None) -> pd.DataFrame:
         return fetch_demand_actual_from_csv()
     if source == "ELEXON":
         try:
-            df = fetch_elexon_dataset("ITSDO", START_DATE, END_DATE)
+            df = fetch_elexon_dataset("ITSDO", start_date, end_date)
             if df.empty:
                 logger.warning("ITSDO returned no data; skipping demand_actual feature")
                 return pd.DataFrame()
@@ -992,7 +1006,9 @@ def fetch_imbalance_price_from_csv(csv_path=IMBALANCE_PRICE_CSV) -> pd.DataFrame
     return df
 
 
-def fetch_imbalance_price(source: str | None = None) -> pd.DataFrame:
+def fetch_imbalance_price(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch B1770 system prices (SBP/SSP/NIV).
     source: "ELEXON" (default) or "CSV"
@@ -1006,7 +1022,7 @@ def fetch_imbalance_price(source: str | None = None) -> pd.DataFrame:
     if source != "ELEXON":
         raise ValueError(f"Unknown source '{source}'. Must be 'ELEXON' or 'CSV'")
 
-    download_b1770(START_DATE, END_DATE)
+    download_b1770(start_date, end_date)
 
     dataset_dir = os.path.join(RAW_DATA_DIR, "B1770")
     files = sorted(glob.glob(os.path.join(dataset_dir, "B1770_*_page_1.json")))
