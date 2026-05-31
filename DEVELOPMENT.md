@@ -110,6 +110,27 @@ strategy_type: "virtual"   # "virtual" (default) | "bess"
 - **`virtual`** — ML-driven DA positioning with hybrid intraday execution (Phases 1 & 2).
 - **`bess`** — Physical battery dispatch: LP Day-Ahead scheduling, rules-based intraday rebalancing, and imbalance settlement (Phase 3).
 
+### Signal Config
+
+The `signal` block controls trade signal generation and cost assumptions:
+
+```yaml
+signal:
+  threshold: 2.0         # minimum edge required to fire (£/MWh)
+  top_n: 5               # max concurrent positions
+  vol_multiplier: 1.0    # gate = max(threshold, vol_multiplier × rolling_vol)
+  vol_window: 336        # rolling std lookback in half-hour periods (336 = 7 days)
+  transaction_cost: 1.0  # cost applied per trade (£/MWh of position)
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `threshold` | float | 2.0 | Minimum predicted edge (£/MWh) required to open a position |
+| `top_n` | int | 5 | Maximum number of concurrent positions |
+| `vol_multiplier` | float | 1.0 | Multiplier applied to rolling volatility for dynamic gating |
+| `vol_window` | int | 336 | Rolling standard-deviation lookback in half-hour periods |
+| `transaction_cost` | float | 1.0 | Cost deducted per trade in £/MWh of position size |
+
 ### Execution Config (Virtual)
 
 The `execution` block controls how DA positions are managed during the intraday window:
@@ -144,6 +165,7 @@ bess:
   initial_soc_pct: 0.50            # starting state-of-charge (0.0–1.0)
   resolution_h: 1.0                # dispatch interval in hours (1 = hourly)
   price_history_lookback_days: 14  # days of DA price history for naive forecast
+  soc_drift_tolerance: 0.05        # max SOC drift before intraday rebalance (0.0–1.0)
 ```
 
 | Key | Description |
@@ -154,6 +176,7 @@ bess:
 | `discharge_efficiency` | Fraction of stored energy delivered to the grid during discharge (0.0–1.0) |
 | `degradation_cost_per_mwh` | Cost per MWh of throughput, representing battery wear |
 | `initial_soc_pct` | State of charge at the start of each day, as a fraction of capacity |
+| `soc_drift_tolerance` | Maximum allowed SOC deviation (fraction of capacity) from the DA schedule before intraday rebalancing triggers |
 
 ## Project Structure
 

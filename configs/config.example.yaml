@@ -37,6 +37,7 @@ signal:
   top_n: 5
   vol_multiplier: 1.0  # gate = max(threshold, vol_multiplier × rolling_vol)
   vol_window: 336      # rolling std lookback, half-hour periods (336 = 7 days)
+  transaction_cost: 1.0  # cost applied per trade (£/MWh of position)
 
 execution:
   baseline_hedge_ratio: 0.50
@@ -53,3 +54,4 @@ bess:
   initial_soc_pct: 0.50
   resolution_h: 1.0
   price_history_lookback_days: 14
+  soc_drift_tolerance: 0.05
