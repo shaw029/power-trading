@@ -40,7 +40,7 @@ make typecheck
 
 ## Pre-commit Hook
 
-A git pre-commit hook lives in `scripts/pre-commit`. It runs the full check suite — flake8, mypy, and pytest — before every `git commit`, blocking the commit if anything fails. This mirrors the CI pipeline exactly so failures are caught locally rather than on GitHub Actions.
+A git pre-commit hook lives in `scripts/pre-commit`. It runs the full check suite — flake8, mypy, and pytest — before every `git commit`, blocking the commit if anything fails. This closely mirrors the CI pipeline so failures are caught locally rather than on GitHub Actions.
 
 Install it once after cloning:
 
@@ -64,29 +64,15 @@ All local settings live in a `.env` file at the project root. It is gitignored �
 Create the file and fill in your values:
 
 ```bash
-# ── API Keys ───────────────────────────────────────────────────────────────
 # ENTSO-E key — register at https://transparency.entsoe.eu
 #   → My Account Settings → Web API Security Token
 ENTSOE_API_KEY=your_key_here
 
 # Elexon BMRS and NESO CKAN are open — no key required.
 # ELEXON_API_KEY=
-
-# ── Experiment settings ────────────────────────────────────────────────────
-# Date range for all downloads
-START_DATE=2018-01-01
-END_DATE=2019-01-01
-
-# ── Data sources ───────────────────────────────────────────────────────────
-# Switch any source to "CSV" to load from a local file instead of the API.
-DEFAULT_DEMAND_FORECAST_SOURCE=NESO_API   # ELEXON | NESO_API | CSV
-DEFAULT_WIND_FORECAST_SOURCE=ELEXON       # ELEXON | CSV
-DEFAULT_GENERATION_ACTUAL_SOURCE=ELEXON   # ELEXON | CSV
-DEFAULT_DAY_AHEAD_PRICE_SOURCE=ENTSOE     # ENTSOE | CSV
-DEFAULT_MARKET_INDEX_SOURCE=ELEXON        # ELEXON | CSV
-DEFAULT_DEMAND_ACTUAL_SOURCE=ELEXON       # ELEXON | CSV
-DEFAULT_IMBALANCE_PRICE_SOURCE=ELEXON     # ELEXON | CSV
 ```
+
+Date ranges and data source selections are configured in `configs/config.yaml` under the `data:` block, not in `.env`. See **Experiment Configs** below.
 
 
 ## Experiment Configs
@@ -132,8 +118,9 @@ The `execution` block controls how DA positions are managed during the intraday 
 execution:
   mode: hybrid                # execution strategy (hybrid | imbalance_only)
   baseline_hedge_ratio: 0.5   # fraction of position hedged passively at MID (0.0–1.0)
-  take_profit_pct: 0.08       # take-profit trigger as fraction of predicted spread
-  stop_loss_price_delta: 15.0         # per-period stop-loss cap in £/MWh
+  take_profit_pct: 0.90        # take-profit trigger as fraction of predicted spread
+  stop_loss_price_delta: 5.00  # per-period stop-loss cap in £/MWh
+  slippage: 0.50               # execution slippage cost in £/MWh
 ```
 
 | Key | Description |
@@ -155,6 +142,8 @@ bess:
   discharge_efficiency: 0.94       # fraction delivered during discharge
   degradation_cost_per_mwh: 8.50   # £/MWh throughput cost for battery wear
   initial_soc_pct: 0.50            # starting state-of-charge (0.0–1.0)
+  resolution_h: 1.0                # dispatch interval in hours (1 = hourly)
+  price_history_lookback_days: 14  # days of DA price history for naive forecast
 ```
 
 | Key | Description |

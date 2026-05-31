@@ -4,19 +4,25 @@ Seven datasets are fetched from three APIs. Each source can be switched to a loc
 
 ## Source Configuration
 
-Set in `.env` (or override per-call — see below):
+Configured in `configs/config.yaml` under the `data:` block:
 
-```python
-DEFAULT_DEMAND_FORECAST_SOURCE = "NESO_API"   # "NESO_API" | "ENTSOE" | "CSV"
-DEFAULT_WIND_FORECAST_SOURCE   = "ELEXON"     # "ELEXON" | "CSV"
-DEFAULT_GENERATION_ACTUAL_SOURCE = "ELEXON"   # "ELEXON" | "CSV"
-DEFAULT_DAY_AHEAD_PRICE_SOURCE = "ENTSOE"     # "ENTSOE" | "CSV"
-DEFAULT_MARKET_INDEX_SOURCE    = "ELEXON"     # "ELEXON" | "CSV"
-DEFAULT_DEMAND_ACTUAL_SOURCE   = "ELEXON"     # "ELEXON" | "CSV"
-DEFAULT_IMBALANCE_PRICE_SOURCE = "ELEXON"     # "ELEXON" | "CSV"
+```yaml
+data:
+  periods:
+    - start: "2018-01-01"
+      end:   "2019-01-01"
+      demand_source: NESO_API   # NESO_API | ENTSOE | CSV
+  wind_source:            ELEXON    # ELEXON | CSV
+  generation_source:      ELEXON    # ELEXON | CSV
+  day_ahead_price_source: ENTSOE    # ENTSOE | CSV
+  market_index_source:    ELEXON    # ELEXON | CSV
+  demand_actual_source:   ELEXON    # ELEXON | CSV
+  imbalance_source:       ELEXON    # ELEXON | CSV
 ```
 
-Per-call override (ignores the `.env` default): `fetch_wind_forecast("CSV")`
+`demand_source` is set per period because the available feeds differ across date ranges (NESO_API from mid-2017 onwards; ENTSOE for earlier periods). All other sources apply across all periods.
+
+Per-call override (ignores config default): `fetch_wind_forecast("CSV")`
 
 > **ENTSOE demand forecast note:** the A65 feed has no intraday revisions — all periods in a day share a single publish time stamped at D-1 10:30 Europe/London. Rolling features (`fc_rel_*`) will be flat within the day; only `fc_da_d1_1030` carries real signal with this source. Use `NESO_API` for full rolling feature resolution.
 
@@ -67,8 +73,8 @@ All API sources download day-by-day and cache raw JSON under `data/raw/<DATASET>
 rm -rf data/raw/NESO_NDFD/               # demand forecast (NESO_API)
 rm -rf data/raw/entsoe_demand_forecast/  # demand forecast (ENTSOE)
 rm -rf data/raw/WINDFOR/                 # wind forecast (Elexon)
-rm -rf data/raw/B1770/                   # generation actual (Elexon)
-rm -rf data/raw/FUELHH/                  # generation by fuel type (Elexon)
+rm -rf data/raw/B1770/   # imbalance prices (SBP/SSP)
+rm -rf data/raw/FUELHH/  # generation mix
 rm -rf data/raw/ITSDO/                   # demand actual (Elexon)
 rm -rf data/raw/MID/                     # market index price (Elexon)
 rm -rf data/raw/entsoe_day_ahead_price/  # day-ahead price (ENTSO-E)
@@ -81,4 +87,4 @@ RAW_DATA_DIR=data/raw_2018
 
 ## Date Range
 
-All API fetches use `START_DATE` / `END_DATE` from `.env`. CSV sources load the file as-is — filter afterwards if needed.
+All API fetches use the `start`/`end` dates defined in `config.yaml` under `data.periods`. CSV sources load the file as-is — filter afterwards if needed.

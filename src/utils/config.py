@@ -110,6 +110,8 @@ _BESS_DEFAULTS = {
     "discharge_efficiency": 0.94,
     "degradation_cost_per_mwh": 8.50,
     "initial_soc_pct": 0.50,
+    "resolution_h": 1.0,
+    "price_history_lookback_days": 14,
 }
 
 _FIXED_SOURCE_KEYS = (

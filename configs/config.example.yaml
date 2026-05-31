@@ -1,4 +1,4 @@
-strategy: "da_imbalance"
+strategy: "da_positioning"
 strategy_type: "virtual"
 run_name: "xgb_wf_v1"
 
@@ -21,8 +21,8 @@ model:
   type: xgboost
   hyperparameters:
     n_estimators: 400
-    max_depth: 4
-    learning_rate: 0.03
+    max_depth: 3
+    learning_rate: 0.01
     subsample: 0.8
     colsample_bytree: 0.7
 
@@ -33,7 +33,7 @@ validation:
   step_days: 30
 
 signal:
-  threshold: 5.0       # floor: minimum edge required to fire, £/MWh
+  threshold: 2.0       # floor: minimum edge required to fire, £/MWh
   top_n: 5
   vol_multiplier: 1.0  # gate = max(threshold, vol_multiplier × rolling_vol)
   vol_window: 336      # rolling std lookback, half-hour periods (336 = 7 days)
@@ -47,8 +47,8 @@ execution:
 bess:
   capacity_mwh: 100.0
   power_mw: 50.0
-  charge_efficiency: 0.88
-  discharge_efficiency: 1.0
+  charge_efficiency: 0.94
+  discharge_efficiency: 0.94
   degradation_cost_per_mwh: 8.50
   initial_soc_pct: 0.50
   resolution_h: 1.0
