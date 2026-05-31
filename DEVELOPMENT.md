@@ -137,16 +137,16 @@ The `execution` block controls how DA positions are managed during the intraday 
 
 ```yaml
 execution:
-  mode: hybrid                # execution strategy (hybrid | imbalance_only)
   baseline_hedge_ratio: 0.5   # fraction of position hedged passively at MID (0.0–1.0)
   take_profit_pct: 0.90        # take-profit trigger as fraction of predicted spread
   stop_loss_price_delta: 5.00  # per-period stop-loss cap in £/MWh
   slippage: 0.50               # execution slippage cost in £/MWh
 ```
 
+Execution archetype is controlled numerically by `baseline_hedge_ratio`: set `1.0` for a full passive hedge (all volume exits at MID), or `0.0` for imbalance-only settlement (Phase 1 behaviour). The default `0.5` runs the hybrid two-slice engine.
+
 | Key | Description |
 |---|---|
-| `mode` | `hybrid` splits volume between a passive MID hedge and an active TP/SL engine; `imbalance_only` settles everything at imbalance (Phase 1 behaviour) |
 | `baseline_hedge_ratio` | Share of each position passively exited at the Market Index Price. Must be between 0 and 1 |
 | `take_profit_pct` | Fraction of predicted spread at which the active slice locks in profit |
 | `stop_loss_price_delta` | Maximum adverse price move (£/MWh) before the active slice is stopped out |
@@ -183,7 +183,7 @@ bess:
 ```
 power-trading/
 ├── configs/                        # YAML experiment configs
-│   └── config.yaml
+│   └── config.yaml     # gitignored — copy from config.example.yaml
 ├── data/
 │   ├── raw/                        # Per-day cached API responses
 │   │   ├── B1770/                  # Imbalance prices (Elexon)

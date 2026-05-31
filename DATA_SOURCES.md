@@ -51,7 +51,7 @@ fetch_demand_actual("ELEXON").to_csv("data/raw/demand_actual.csv", index=False)
 fetch_imbalance_price("ELEXON").to_csv("data/raw/imbalance_price.csv", index=False)
 ```
 
-Once the CSVs exist, set `"CSV"` in `.env` for the relevant sources.
+Once the CSVs exist, change the relevant `*_source` keys in `configs/config.yaml` to `CSV`.
 
 ### Required CSV columns
 
