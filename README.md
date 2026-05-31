@@ -10,7 +10,9 @@ End-to-end quantitative research framework for virtual and physical trading in t
 
 **Best-run selection:** Calmar Ratio → Sharpe → Profit Factor → Total Return (TC = £1.00/MWh tier, ≥ 500 trades floor)
 
-![Equity Curve](notebooks/assets/equity_curve.png)
+![Equity Curve](notebooks/assets/equity_curve_combined.png)
+
+![BESS Strategy Showcase](notebooks/assets/bess_strategy_showcase.png)
 
 ---
 
@@ -91,7 +93,7 @@ All notebooks live in `notebooks/`.
 |---|---|
 | `01_da_positioning_backtest.ipynb` | Full tournament sweep: model shootout, hyperparameter calibration under walk-forward discipline, execution stress-testing with transaction costs, and a production tear sheet |
 | `02_hybrid_execution_analysis.ipynb` | Compares four execution archetypes (pure imbalance, pure MID hedge, hybrid passive, hybrid active TP/SL) across return, risk, and tail-exposure metrics |
-| `03_bess_dispatch_analysis.ipynb` | BESS dispatch deep-dive: DA price vs. MW dispatch overlay, state-of-charge tracking, rebalancing impact, and PnL waterfall decomposition |
+| `03_bess_dispatch_analysis.ipynb` | BESS dispatch deep-dive: 3-panel strategy showcase (price → dispatch → SOC), rebalancing impact, PnL waterfall decomposition, and combined equity curve |
 
 ---
 
