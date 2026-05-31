@@ -21,7 +21,7 @@ def build_features(df: pd.DataFrame, save_path: Path | str | None = None) -> pd.
     Args:
         df:        Preprocessed merged DataFrame.
         save_path: Where to write features.parquet.  Defaults to the global
-                   FEATURES_DIR / features_dataset.parquet from config.
+                   FEATURES_DIR / features.parquet from config.
     """
     logger.info("Building features from preprocessed data")
 
@@ -74,7 +74,7 @@ def build_features(df: pd.DataFrame, save_path: Path | str | None = None) -> pd.
     # -------------------------------------------------------------------------
     # Save
     # -------------------------------------------------------------------------
-    output_path = Path(save_path) if save_path is not None else VERSIONED_FEATURES_DIR / "features_dataset.parquet"
+    output_path = Path(save_path) if save_path is not None else VERSIONED_FEATURES_DIR / "features.parquet"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(output_path, index=False)
 

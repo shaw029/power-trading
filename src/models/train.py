@@ -39,11 +39,11 @@ def _fit_model(
             from xgboost import XGBRegressor
 
             model = XGBRegressor(
-                n_estimators=p.get("n_estimators", 300),
-                max_depth=p.get("max_depth", 5),
-                learning_rate=p.get("learning_rate", 0.05),
+                n_estimators=p.get("n_estimators", 400),
+                max_depth=p.get("max_depth", 3),
+                learning_rate=p.get("learning_rate", 0.01),
                 subsample=p.get("subsample", 0.8),
-                colsample_bytree=p.get("colsample_bytree", 0.8),
+                colsample_bytree=p.get("colsample_bytree", 0.7),
                 random_state=42,
                 n_jobs=-1,
                 verbosity=0,

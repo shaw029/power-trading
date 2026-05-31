@@ -30,12 +30,12 @@ def _naive_da_forecast(price_history, lookback=7, n_hours=24):
 st.set_page_config(page_title="Power Trading Dashboard", layout="wide")
 
 PROCESSED_DATA = Path(os.environ.get("PT_PROCESSED_DATA", "data/processed/processed_data.parquet"))
-VIRTUAL_PNL = Path(os.environ.get("PT_VIRTUAL_PNL", "artifacts/da_imbalance/xgb_wf_v1/virtual/trading/pnl.csv"))
+VIRTUAL_PNL = Path(os.environ.get("PT_VIRTUAL_PNL", "artifacts/da_positioning/xgb_wf_v1/virtual/trading/pnl.csv"))
 VIRTUAL_SIGNALS = Path(
-    os.environ.get("PT_VIRTUAL_SIGNALS", "artifacts/da_imbalance/xgb_wf_v1/virtual/trading/signals.csv")
+    os.environ.get("PT_VIRTUAL_SIGNALS", "artifacts/da_positioning/xgb_wf_v1/virtual/trading/signals.csv")
 )
 VIRTUAL_PREDICTIONS = Path(
-    os.environ.get("PT_VIRTUAL_PREDICTIONS", "artifacts/da_imbalance/xgb_wf_v1/virtual/trading/predictions.csv")
+    os.environ.get("PT_VIRTUAL_PREDICTIONS", "artifacts/da_positioning/xgb_wf_v1/virtual/trading/predictions.csv")
 )
 CONFIG_PATH = Path(__file__).resolve().parent / "configs" / "config.yaml"
 
