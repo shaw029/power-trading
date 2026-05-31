@@ -242,6 +242,9 @@ def run_backtest(
     sum_losses = float(np.sum(net_pnl[loss_mask])) if loss_mask.any() else 0.0
     profit_factor = sum_wins / abs(sum_losses) if sum_losses != 0.0 else float("inf")
 
+    max_dd_pct = abs(max_drawdown) / starting_capital if starting_capital > 0 else 0.0
+    calmar_ratio = total_return_pct / max_dd_pct if max_dd_pct > 0 else float("nan")
+
     n_long = int((signals == 1).sum())
     n_short = int((signals == -1).sum())
     n_neutral = int((signals == 0).sum())
@@ -284,6 +287,7 @@ def run_backtest(
         "avg_win": avg_win,
         "avg_loss": avg_loss,
         "profit_factor": profit_factor,
+        "calmar_ratio": calmar_ratio,
         "sharpe_ratio": sharpe_ratio,
         "max_drawdown": max_drawdown,
         "halted_at_period": halted_at,

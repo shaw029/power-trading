@@ -8,6 +8,8 @@ End-to-end quantitative research framework for virtual and physical trading in t
 
 **2018 validated backtest (Virtual):** +285.8% return · 3.70 Sharpe · 53.6% win rate
 
+**Best-run selection:** Calmar Ratio → Sharpe → Profit Factor → Total Return (TC = £1.00/MWh tier, ≥ 500 trades floor)
+
 ![Equity Curve](notebooks/assets/equity_curve.png)
 
 ---
