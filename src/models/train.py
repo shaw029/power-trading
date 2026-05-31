@@ -19,6 +19,8 @@ _FEATURE_COLS = [
     "day_ahead_price_lag96",  # DA price 48 h ago
     "system_sell_price_lag48",  # imbalance sell price 24 h ago
     "system_sell_price_lag96",  # imbalance sell price 48 h ago
+    "system_buy_price_lag48",  # imbalance buy price 24 h ago
+    "system_buy_price_lag96",  # imbalance buy price 48 h ago
     "hour_sin",
     "hour_cos",
     "dow_sin",
