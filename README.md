@@ -6,11 +6,9 @@ End-to-end quantitative research framework for virtual and physical trading in t
 
 **BESS Strategy** — Battery Energy Storage System dispatch optimisation via LP-based Day-Ahead scheduling, rules-based intraday rebalancing, and ex-post imbalance settlement.
 
-**2018 validated backtest (Virtual):** +285.8% return · 3.70 Sharpe · 53.6% win rate
+**2018 validated backtest (Virtual):** +173.5% return · 4.50 Sharpe · 51.9% win rate
 
 **Best-run selection:** Calmar Ratio → Sharpe → Profit Factor → Total Return (TC = £1.00/MWh tier, ≥ 500 trades floor)
-
-![Equity Curve](notebooks/assets/equity_curve_combined.png)
 
 ![BESS Strategy Showcase](notebooks/assets/bess_strategy_showcase.png)
 
