@@ -6,9 +6,11 @@ End-to-end quantitative research framework for virtual and physical trading in t
 
 **BESS Strategy** — Battery Energy Storage System dispatch optimisation via LP-based Day-Ahead scheduling, rules-based intraday rebalancing, and ex-post imbalance settlement.
 
-**2018 validated backtest (Virtual):** +173.5% return · 4.50 Sharpe · 51.9% win rate
+**2018 validated backtest (Virtual):**
 
-**Best-run selection:** Calmar Ratio → Sharpe → Profit Factor → Total Return (TC = £1.00/MWh tier, ≥ 500 trades floor)
+![Virtual Strategy Showcase](notebooks/assets/equity.png)
+
+**Battery Dispatch in DA market:**
 
 ![BESS Strategy Showcase](notebooks/assets/bess_strategy_showcase.png)
 
@@ -109,7 +111,7 @@ All notebooks live in `notebooks/`.
 
 - [x] **Phase 1 — DA Positioning Engine (complete):** End-to-end ML pipeline for virtual trading in the GB Day-Ahead market. Walk-forward validated XGBoost model predicting residual load mispricing, with signal gating, execution constraints, and dynamic position sizing.
 - [x] **Phase 2 — Intraday Execution (complete):** Hybrid execution engine that splits DA positions between a passive Market Index Price (MID) hedge and an active Take-Profit/Stop-Loss engine. Configurable hedge ratio, TP/SL thresholds, and per-period stop-loss cap reduce tail-risk from full imbalance exposure.
-- [x] **Phase 3 — Physical Asset Optimisation / BESS (complete):** Battery storage dispatch via LP Day-Ahead scheduling (PuLP/HiGHS), rules-based intraday rebalancing, and imbalance settlement. State-of-charge tracking, separate charge/discharge efficiencies, and cycle degradation costs enforced throughout.
+- [ ] **Phase 3 — Physical Asset Optimisation / BESS (in-progress):** Battery storage dispatch via LP Day-Ahead scheduling (PuLP/HiGHS), rules-based intraday rebalancing, and imbalance settlement. State-of-charge tracking, separate charge/discharge efficiencies, and cycle degradation costs enforced throughout.
 - [ ] **Phase 4 — BESS Intraday Optimisation (planned):** Replace the rules-based intraday engine with a proper optimisation layer that replans the remaining schedule dynamically as new MID prices arrive. Two tracks: (1) **rolling deterministic** — rerun the LP horizon at each replan interval against updated price forecasts, rolling the SOC constraint forward from the current observed state; (2) **stochastic** — reformulate as a multi-stage stochastic programme (or approximate via scenario trees / DP) that explicitly models MID price uncertainty across the remaining delivery window, producing dispatch decisions that are robust to forecast error rather than point-optimal.
 
 ---
