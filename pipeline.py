@@ -361,7 +361,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     prices = (
         da_processed.resample(resample_freq).mean()
         .join(mid_processed.resample(resample_freq).mean())
-        .join(imb_processed[["system_buy_price"]].resample(resample_freq).mean())
+        .join(imb_processed[["system_buy_price", "system_sell_price"]].resample(resample_freq).mean())
         .dropna()
     )
 
@@ -417,6 +417,7 @@ def _run_bess_pipeline(config: dict) -> dict:
             imbalance_prices=day_df["system_buy_price"].tolist(),
             asset=asset,
             config=bess_cfg,
+            imbalance_sell_prices=day_df["system_sell_price"].tolist(),
         )
         daily_results.append({
             "date": date,

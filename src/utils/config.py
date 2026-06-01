@@ -111,7 +111,7 @@ _BESS_DEFAULTS = {
     "degradation_cost_per_mwh": 8.50,
     "initial_soc_pct": 0.50,
     "resolution_h": 1.0,
-    "price_history_lookback_days": 14,
+    "soc_drift_tolerance": 0.05,
 }
 
 _FIXED_SOURCE_KEYS = (

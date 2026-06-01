@@ -187,7 +187,8 @@ class TestImbalanceFallback:
         assert result["imbalance_pnl"] == pytest.approx(-shortfall * 60.0)
         assert result["dispatch_log"][0]["mw"] == pytest.approx(max_mw)
 
-    def test_charge_shortfall_settles_at_imbalance(self):
+    def test_charge_shortfall_settles_at_ssp(self):
+        # Charging shortfall: BESS is long (couldn't absorb), settles at SSP not SBP.
         asset = BESSAsset(
             capacity_mwh=100, power_mw=50, charge_efficiency=0.9,
             discharge_efficiency=0.95, degradation_cost_per_mwh=1.0, initial_soc_pct=0.9,
@@ -196,12 +197,13 @@ class TestImbalanceFallback:
             da_schedule=[-40.0],
             da_price_actual=[30.0],
             mid_prices=[30.0],
-            imbalance_prices=[25.0],
+            imbalance_prices=[25.0],       # SBP
             asset=asset,
             config={"degradation_cost_per_mwh": 1.0},
+            imbalance_sell_prices=[18.0],  # SSP — distinct value to confirm it is used
         )
 
         max_charge = 10.0 / 0.9
         shortfall = 40.0 - max_charge
         assert result["da_revenue"] == pytest.approx(-40.0 * 30.0)
-        assert result["imbalance_pnl"] == pytest.approx(shortfall * 25.0)
+        assert result["imbalance_pnl"] == pytest.approx(shortfall * 18.0)  # uses SSP=18.0

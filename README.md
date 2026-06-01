@@ -65,12 +65,16 @@ python main.py --config configs/config.yaml
 
 ```bash
 # Virtual strategy (default)
-python main.py --config configs/config.yaml                   # full pipeline
+python main.py --config configs/config.yaml                    # full virtual pipeline
+python main.py --config configs/config.yaml --mode download   # fetch raw data only
 python main.py --config configs/config.yaml --mode features   # features only
-python main.py --config configs/config.yaml --mode model      # train & backtest
+python main.py --config configs/config.yaml --mode model      # train & backtest on existing features
 
-# BESS strategy — set strategy_type: "bess" in the config
-python main.py --config configs/config.yaml
+# BESS strategy
+python main.py --config configs/config.yaml --mode bess       # full BESS pipeline
+
+# Both strategies sequentially
+python main.py --config configs/config.yaml --mode all
 ```
 
 ---

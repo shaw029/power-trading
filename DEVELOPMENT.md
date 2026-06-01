@@ -125,7 +125,7 @@ signal:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `threshold` | float | 2.0 | Minimum predicted edge (£/MWh) required to open a position |
+| `threshold` | float | 5.0 | Minimum predicted edge (£/MWh) required to open a position. `config.example.yaml` uses 2.0 — a calibrated starting value for 2018 data; the code default is 5.0. |
 | `top_n` | int | 5 | Maximum number of concurrent positions |
 | `vol_multiplier` | float | 1.0 | Multiplier applied to rolling volatility for dynamic gating |
 | `vol_window` | int | 336 | Rolling standard-deviation lookback in half-hour periods |
@@ -164,7 +164,6 @@ bess:
   degradation_cost_per_mwh: 8.50   # £/MWh throughput cost for battery wear
   initial_soc_pct: 0.50            # starting state-of-charge (0.0–1.0)
   resolution_h: 1.0                # dispatch interval in hours (1 = hourly)
-  price_history_lookback_days: 14  # days of DA price history for naive forecast
   soc_drift_tolerance: 0.05        # max SOC drift before intraday rebalance (0.0–1.0)
 ```
 
@@ -237,8 +236,9 @@ power-trading/
 Select the `quantenv` interpreter via **Python: Select Interpreter** (`⌘⇧P`) after cloning.
 
 Launch configs are pre-configured in `.vscode/launch.json` (`⌘⇧D` to open):
+- **Download Only** — fetch and cache all raw API data without preprocessing or training.
 - **Full Pipeline** — download data, build features, train model, run backtest
 - **Features Only** — rebuild features from existing processed data, then stop. Use after changing data sources or feature engineering.
-- **Train & Backtest** — retrain model and run backtest on already-built features. Fastest for tuning hyperparameters or signal thresholds.
+- **Virtual: Train & Backtest** — retrain model and run backtest on already-built features. Fastest for tuning hyperparameters or signal thresholds.
 - **Static Analysis** — runs mypy + flake8 in parallel
 - **Run All Tests** — pytest with verbose output

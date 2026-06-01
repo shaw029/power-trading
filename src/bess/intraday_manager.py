@@ -26,7 +26,15 @@ def run_intraday_session(
     imbalance_prices: list[float],
     asset: BESSAsset,
     config: dict,
+    imbalance_sell_prices: list[float] | None = None,
 ) -> dict:
+    """
+    imbalance_prices      — SBP (system buy price): cost when the BESS is short
+                            (couldn't deliver scheduled discharge volume).
+    imbalance_sell_prices — SSP (system sell price): credit when the BESS is long
+                            (couldn't absorb scheduled charging volume).
+                            Defaults to imbalance_prices when not supplied.
+    """
     n_periods = len(da_schedule)
     duration_h = config.get("resolution_h", 1.0)
     degradation_cost = config["degradation_cost_per_mwh"]
@@ -78,7 +86,9 @@ def run_intraday_session(
                 asset.charge(max_mw, duration_h)
             shortfall = target - max_mw
             if shortfall > 0:
-                imbalance_pnl += shortfall * duration_h * imbalance_prices[h]
+                # Charging shortfall: BESS is long — receives SSP (system sell price).
+                ssp = imbalance_sell_prices[h] if imbalance_sell_prices is not None else imbalance_prices[h]
+                imbalance_pnl += shortfall * duration_h * ssp
             log_action = "charge"
             log_mw = max_mw
             log_price = da_price_actual[h]

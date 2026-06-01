@@ -21,6 +21,8 @@ _FEATURE_COLS = [
     "system_sell_price_lag96",  # imbalance sell price 48 h ago
     "system_buy_price_lag48",  # imbalance buy price 24 h ago
     "system_buy_price_lag96",  # imbalance buy price 48 h ago
+    "imbalance_spread_lag48",  # SBP − SSP spread 24 h ago
+    "imbalance_spread_lag96",  # SBP − SSP spread 48 h ago
     "hour_sin",
     "hour_cos",
     "dow_sin",
@@ -205,7 +207,7 @@ def train_model(
     features_path: str | None = None,
     model_type: str = "xgboost",
     model_params: dict | None = None,
-    validation_type: str = "static",
+    validation_type: str = "walk_forward",
     wf_train_days: int = 200,
     wf_test_days: int = 30,
     wf_step_days: int = 30,

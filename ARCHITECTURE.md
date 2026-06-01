@@ -45,7 +45,7 @@ Phase 3 extends the framework beyond virtual trading to physical asset dispatch.
 
 The BESS strategy decomposes the trading day into three settlement layers, each targeting a different liquidity venue:
 
-1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal charge/discharge schedule against an ML-generated DA price *forecast*, maximising `Σ (discharge_h − charge_h) × forecast_price_h` subject to SOC, power, and efficiency constraints. Revenue is then settled against the *actual* cleared DA price, so forecast quality directly drives PnL. The schedule length adapts to the configured `duration_h` (e.g. 48 half-hourly periods or 24 hourly).
+1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal charge/discharge schedule against an ML-generated DA price *forecast*, maximising `Σ [(discharge_h − charge_h) × forecast_price_h − (discharge_h + charge_h) × degradation_cost_per_mwh] × resolution_h` subject to SOC, power, and efficiency constraints. Degradation cost is included in the primal objective so the solver avoids unprofitable cycling — not applied only as a post-hoc deduction. Revenue is then settled against the *actual* cleared DA price, so forecast quality directly drives PnL. The schedule length adapts to the configured `resolution_h` (BESS config key; e.g. 48 half-hourly periods or 24 hourly).
 
 2. **Intraday (Rules-Based Rebalancing):** During the delivery window, a rules engine adjusts the DA schedule in real time against Market Index Prices:
    - **Rule 1 — DA Dispatch Execution:** Execute the committed schedule; any shortfall from SOC constraints settles at the imbalance price.
@@ -81,6 +81,6 @@ This decomposition lets the analyst attribute value to each settlement layer ind
 
 ## 6. Validated Results
 
-Performance numbers are run-specific and live with the experiment that produced them. See the headline metrics in [README.md](README.md) and the full tear sheet — equity curve, drawdown analysis, and sensitivity sweep — in `notebooks/01_da_positioning_backtest.ipynb`.
+Performance numbers are run-specific and live with the experiment that produced them. See the equity curve, drawdown analysis, and sensitivity sweep in `notebooks/01_da_positioning_backtest.ipynb`; quantitative metrics are saved to `artifacts/{strategy}/{run_name}/{mode}/trading/metrics.json` after each run.
 
 **Best-run selection criterion (Section 4 sweep):** configurations are ranked by **Calmar Ratio** (primary), then Sharpe Ratio, then Profit Factor, then Total Return, evaluated within the TC = £1.00/MWh execution cost tier with a minimum 500-trade liquidity floor. This priority reflects the quant PM view: drawdown-adjusted return (Calmar) is the headline risk metric; Sharpe and Profit Factor confirm consistency; raw return is the tiebreak only.
