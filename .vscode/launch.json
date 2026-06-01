@@ -30,11 +30,11 @@
       "presentation": { "hidden": true }
     },
     {
-      "name": "Full Pipeline",
+      "name": "Download Only",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/main.py",
-      "args": ["--config", "configs/config.yaml"],
+      "args": ["--mode", "download", "--config", "configs/config.yaml"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "env": { "PYTHONPATH": "${workspaceFolder}" },
@@ -56,11 +56,24 @@
       "stopOnEntry": false
     },
     {
-      "name": "Train & Backtest",
+      "name": "Virtual: Train & Backtest",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/main.py",
       "args": ["--mode", "model", "--config", "configs/config.yaml"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "python": "${command:python.interpreterPath}",
+      "justMyCode": false,
+      "stopOnEntry": false
+    },
+    {
+      "name": "Full Pipeline",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--config", "configs/config.yaml"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "env": { "PYTHONPATH": "${workspaceFolder}" },

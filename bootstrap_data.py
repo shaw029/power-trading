@@ -1,7 +1,14 @@
 """Download 3 days of sample data from all configured sources."""
 
+from __future__ import annotations
+
 import os
+from collections.abc import Callable
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 from dotenv import load_dotenv
 
@@ -26,7 +33,7 @@ from src.data.download import (  # noqa: E402
 
 ensure_directories()
 
-FETCHERS = [
+FETCHERS: list[tuple[str, Callable[..., "pd.DataFrame"]]] = [
     ("demand_forecast", fetch_demand_forecast),
     ("wind_forecast", fetch_wind_forecast),
     ("generation_actual", fetch_generation_actual),

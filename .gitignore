@@ -10,9 +10,10 @@ __pycache__/
 /data/
 /artifacts/
 
-# Local config — .env is secret, .env.example is committed as a template
+# Local config — gitignored; *.example files are the committed templates
 .env
 .env.local
+configs/config.yaml
 
 # OS / editor
 .DS_Store

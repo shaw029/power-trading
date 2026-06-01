@@ -156,7 +156,7 @@ class TestBESSPipelineIntegration:
 
         results = run_full_pipeline(config=config)
 
-        trading_dir = tmp_path / "artifacts" / "bess_test" / "integration_run" / "trading"
+        trading_dir = tmp_path / "artifacts" / "bess_test" / "integration_run" / "bess" / "trading"
         assert (trading_dir / "pnl.csv").exists()
         assert (trading_dir / "metrics.json").exists()
 

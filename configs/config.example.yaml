@@ -1,0 +1,57 @@
+strategy: "da_positioning"
+strategy_type: "virtual"
+run_name: "xgb_wf_v1"
+
+data:
+  periods:
+    - start: "2017-01-01"
+      end:   "2018-01-01"
+      demand_source: ENTSOE
+    - start: "2018-01-01"
+      end:   "2019-01-01"
+      demand_source: NESO_API
+  wind_source:            ELEXON    # ELEXON | CSV
+  generation_source:      ELEXON    # ELEXON | CSV
+  day_ahead_price_source: ENTSOE    # ENTSOE | CSV
+  market_index_source:    ELEXON    # ELEXON | CSV
+  demand_actual_source:   ELEXON    # ELEXON | CSV
+  imbalance_source:       ELEXON    # ELEXON | CSV
+
+model:
+  type: xgboost
+  hyperparameters:
+    n_estimators: 400
+    max_depth: 3
+    learning_rate: 0.01
+    subsample: 0.8
+    colsample_bytree: 0.7
+
+validation:
+  type: walk_forward
+  train_days: 200
+  test_days: 30
+  step_days: 30
+
+signal:
+  threshold: 2.0       # floor: minimum edge required to fire, £/MWh
+  top_n: 5
+  vol_multiplier: 1.0  # gate = max(threshold, vol_multiplier × rolling_vol)
+  vol_window: 336      # rolling std lookback, half-hour periods (336 = 7 days)
+  transaction_cost: 1.0  # cost applied per trade (£/MWh of position)
+
+execution:
+  baseline_hedge_ratio: 0.50
+  take_profit_pct: 0.90
+  stop_loss_price_delta: 5.00
+  slippage: 0.50
+
+bess:
+  capacity_mwh: 100.0
+  power_mw: 50.0
+  charge_efficiency: 0.94
+  discharge_efficiency: 0.94
+  degradation_cost_per_mwh: 8.50
+  initial_soc_pct: 0.50
+  resolution_h: 1.0
+  price_history_lookback_days: 14
+  soc_drift_tolerance: 0.05

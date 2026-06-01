@@ -190,40 +190,6 @@ def fetch_elexon_dataset(dataset: str, start_date: str, end_date: str) -> pd.Dat
     return read_elexon_dataset(dataset, start_date, end_date)
 
 
-def _normalize_elexon_ndfd(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalize Elexon NDFD (demand forecast) data.
-
-    Column mapping:
-    - time: startTime (delivery time)
-    - forecast_time: publishTime (forecast issue time)
-    - value: quantity
-    """
-    df = df.copy()
-
-    if "forecastDate" not in df.columns:
-        raise ValueError(f"forecastDate column missing for Elexon NDFD. Available: {df.columns}")
-    if "publishTime" not in df.columns:
-        raise ValueError(f"publishTime missing for Elexon NDFD. Available: {df.columns}")
-    if "demand" not in df.columns:
-        raise ValueError(f"demand column missing for Elexon NDFD. Available: {df.columns}")
-
-    df["value"] = df["demand"]
-
-    # convert forecastDate → datetime
-    df["time"] = pd.to_datetime(df["forecastDate"])
-    df["time"] = df["time"].dt.tz_localize("UTC")
-
-    df["forecast_time"] = pd.to_datetime(df["publishTime"], utc=True)
-
-    # --- CLEAN ---
-    df = df[df["time"].notna()]
-    df = df.sort_values(["time", "forecast_time"])
-    df = df.drop_duplicates(subset=["time", "forecast_time", "value"])
-
-    return df[["time", "forecast_time", "value"]]
-
-
 def download_neso_ndfd_daily(start_date: str, end_date: str) -> None:
     """
     Download raw NESO NDFD (day-ahead demand forecast) JSON using daily chunking.
@@ -410,13 +376,13 @@ def _normalize_neso_ndfd(df: pd.DataFrame) -> pd.DataFrame:
     return df[output_cols]
 
 
-def fetch_neso_ndfd() -> pd.DataFrame:
+def fetch_neso_ndfd(start_date: str = START_DATE, end_date: str = END_DATE) -> pd.DataFrame:
     """
     Fetch NESO day-ahead demand forecast using daily chunking.
     """
     logger.info("Fetching NESO NDFD via daily chunking")
 
-    download_neso_ndfd_daily(START_DATE, END_DATE)
+    download_neso_ndfd_daily(start_date, end_date)
     df = read_neso_ndfd()
     logger.info(f"Read {len(df)} rows from NESO NDFD cache")
 
@@ -447,30 +413,39 @@ def fetch_neso_ndfd_from_csv(csv_path=NESO_NDFD_CSV) -> pd.DataFrame:
     return df
 
 
-def fetch_demand_forecast(source: str | None = None) -> pd.DataFrame:
-    """
-    Fetch demand forecast data from specified source.
+def fetch_demand_forecast(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
+    """Fetch demand forecast data from the specified source.
 
     Args:
-        source: Data source - "ELEXON", "NESO_API", or "CSV"
-               If None, uses DEFAULT_DEMAND_FORECAST_SOURCE from config
+        source: "NESO_API" (default) | "ENTSOE" | "CSV"
+        start_date: Start date (YYYY-MM-DD).
+        end_date: End date (YYYY-MM-DD).
 
     Returns:
-        DataFrame with columns: time, forecast_time, value (UTC datetime)
+        DataFrame with columns: time (UTC delivery), forecast_time (UTC issue), value (MW).
+
+    Source notes
+    ------------
+    NESO_API  — half-hourly, intraday-revised forecasts; best resolution.
+    ENTSOE    — hourly, single daily snapshot stamped at D-1 10:30 Europe/London.
+                Only the fc_da_d1_1030 static feature is meaningful; rolling
+                features will be flat within the day.  Requires ENTSOE_API_KEY.
+    CSV       — load from local NESO CSV file (path set in config).
     """
     if source is None:
         source = DEFAULT_DEMAND_FORECAST_SOURCE
 
-    if source == "ELEXON":
-        logger.info("Fetching demand forecast data (NDFD via ELEXON)")
-        df = fetch_elexon_dataset("NDFD", START_DATE, END_DATE)
-        df = _normalize_elexon_ndfd(df)
+    if source == "ENTSOE":
+        logger.info("Fetching demand forecast data (Total Load A65 via ENTSO-E)")
+        df = fetch_entsoe_demand_forecast(start_date, end_date)
         logger.info(f"Demand forecast: {len(df)} records")
         return df
 
     elif source == "NESO_API":
         logger.info("Fetching demand forecast data (NDFD via NESO API with daily chunking)")
-        df = fetch_neso_ndfd()
+        df = fetch_neso_ndfd(start_date, end_date)
         logger.info(f"Demand forecast: {len(df)} records")
         return df
 
@@ -481,7 +456,7 @@ def fetch_demand_forecast(source: str | None = None) -> pd.DataFrame:
         return df
 
     else:
-        raise ValueError(f"Unknown source: {source}. Must be 'ELEXON', 'NESO_API', or 'CSV'")
+        raise ValueError(f"Unknown source: {source}. Must be 'NESO_API', 'ENTSOE', or 'CSV'")
 
 
 def fetch_wind_forecast_from_csv(csv_path=WIND_FORECAST_CSV) -> pd.DataFrame:
@@ -495,7 +470,9 @@ def fetch_wind_forecast_from_csv(csv_path=WIND_FORECAST_CSV) -> pd.DataFrame:
     return df
 
 
-def fetch_wind_forecast(source: str | None = None) -> pd.DataFrame:
+def fetch_wind_forecast(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch wind forecast data (WINDFOR).
     source: "ELEXON" (default) or "CSV"
@@ -507,7 +484,7 @@ def fetch_wind_forecast(source: str | None = None) -> pd.DataFrame:
         return fetch_wind_forecast_from_csv()
     if source == "ELEXON":
         logger.info("Fetching wind forecast data (WINDFOR via Elexon)")
-        df = fetch_elexon_dataset("WINDFOR", START_DATE, END_DATE)
+        df = fetch_elexon_dataset("WINDFOR", start_date, end_date)
         logger.info(f"Wind forecast: {len(df)} records")
         return df
     raise ValueError(f"Unknown source '{source}'. Must be 'ELEXON' or 'CSV'")
@@ -524,7 +501,9 @@ def fetch_generation_actual_from_csv(csv_path=GENERATION_ACTUAL_CSV) -> pd.DataF
     return df
 
 
-def fetch_generation_actual(source: str | None = None) -> pd.DataFrame:
+def fetch_generation_actual(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch full generation mix (FUELHH).
     source: "ELEXON" (default) or "CSV"
@@ -537,7 +516,7 @@ def fetch_generation_actual(source: str | None = None) -> pd.DataFrame:
         return fetch_generation_actual_from_csv()
     if source == "ELEXON":
         logger.info("Fetching generation mix data (FUELHH via Elexon)")
-        df = fetch_elexon_dataset("FUELHH", START_DATE, END_DATE)
+        df = fetch_elexon_dataset("FUELHH", start_date, end_date)
         logger.info(f"Generation mix: {len(df)} records")
         return df
     raise ValueError(f"Unknown source '{source}'. Must be 'ELEXON' or 'CSV'")
@@ -661,7 +640,9 @@ def fetch_day_ahead_price_from_csv(csv_path=DAY_AHEAD_PRICE_CSV) -> pd.DataFrame
     return df
 
 
-def fetch_day_ahead_price(source: str | None = None) -> pd.DataFrame:
+def fetch_day_ahead_price(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch day-ahead electricity price data.
     source: "ENTSOE" (default) or "CSV"
@@ -678,8 +659,8 @@ def fetch_day_ahead_price(source: str | None = None) -> pd.DataFrame:
 
     all_dfs = []
 
-    current = pd.to_datetime(START_DATE)
-    end = pd.to_datetime(END_DATE)
+    current = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
 
     while current < end:
         next_day = current + pd.Timedelta(days=1)
@@ -754,6 +735,158 @@ def fetch_day_ahead_price(source: str | None = None) -> pd.DataFrame:
     return df
 
 
+def _fetch_entsoe_load_forecast_day(market_day: pd.Timestamp) -> pd.DataFrame:
+    """Fetch ENTSO-E Total Load Forecast (A65) for one GB market day.
+
+    Uses outBiddingZone_Domain (not in_Domain/out_Domain used by price queries).
+    Returns a DataFrame with columns: time (UTC), value (MW).
+    """
+    london_day = market_day.tz_localize("Europe/London") if market_day.tzinfo is None else market_day
+    utc_start = london_day.normalize().tz_convert("UTC")
+    utc_end = (london_day.normalize() + pd.Timedelta(days=1)).tz_convert("UTC")
+
+    params: dict[str, str] = {
+        "documentType": "A65",
+        "processType": "A01",
+        "outBiddingZone_Domain": "10YGB----------A",
+        "periodStart": utc_start.strftime("%Y%m%d%H%M"),
+        "periodEnd": utc_end.strftime("%Y%m%d%H%M"),
+    }
+    if ENTSOE_API_KEY:
+        params["securityToken"] = ENTSOE_API_KEY
+
+    response = requests.get(ENTSOE_BASE_URL, params=params, timeout=60)
+    response.raise_for_status()
+
+    if "Acknowledgement_MarketDocument" in response.text:
+        raise ValueError(f"ENTSO-E returned no data for {market_day.date()}")
+    if not response.text.strip().startswith("<"):
+        raise ValueError("ENTSO-E returned non-XML response")
+
+    root = ET.fromstring(response.text)
+
+    def _strip_ns(tag: str) -> str:
+        return tag.split("}")[-1] if "}" in tag else tag
+
+    records = []
+    for ts in root.iter():
+        if _strip_ns(ts.tag) != "TimeSeries":
+            continue
+        for period in ts:
+            if _strip_ns(period.tag) != "Period":
+                continue
+            start_text = next(
+                (el.text for el in period.iter() if _strip_ns(el.tag) == "start"), None
+            )
+            resolution_text = next(
+                (el.text for el in period.iter() if _strip_ns(el.tag) == "resolution"), None
+            )
+            if not start_text:
+                continue
+            period_start = pd.to_datetime(start_text, utc=True)
+            resolution_h = 1.0
+            if resolution_text == "PT30M":
+                resolution_h = 0.5
+            elif resolution_text == "PT60M":
+                resolution_h = 1.0
+
+            for point in period:
+                if _strip_ns(point.tag) != "Point":
+                    continue
+                position = next(
+                    (el.text for el in point if _strip_ns(el.tag) == "position"), None
+                )
+                quantity = next(
+                    (el.text for el in point if _strip_ns(el.tag) == "quantity"), None
+                )
+                if position and quantity:
+                    try:
+                        offset_h = (int(position) - 1) * resolution_h
+                        record_time = period_start + pd.Timedelta(hours=offset_h)
+                        records.append({"time": record_time, "value": float(quantity)})
+                    except Exception:
+                        continue
+
+    if not records:
+        raise ValueError(f"No load forecast records in ENTSO-E XML for {market_day.date()}")
+
+    df = pd.DataFrame(records)
+    df["time"] = pd.to_datetime(df["time"], utc=True)
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    return df.sort_values("time").drop_duplicates(subset=["time"])
+
+
+def fetch_entsoe_demand_forecast(start_date: str = START_DATE, end_date: str = END_DATE) -> pd.DataFrame:
+    """Fetch ENTSO-E Total Load Forecast (A65) for GB over the configured date range.
+
+    Caches one JSON file per market day under data/raw/entsoe_demand_forecast/.
+
+    forecast_time assumption
+    ------------------------
+    ENTSO-E does not publish intraday-revised load forecasts the way NESO does —
+    it provides a single day-ahead forecast without a per-revision timestamp.
+    We therefore stamp every forecast record with **D-1 10:30 Europe/London**,
+    which aligns with the pre-auction static snapshot key used in
+    process_demand_forecast (fc_da_d1_1030).
+
+    Consequence: rolling forecast features (fc_rel_*) derived from this source
+    will not vary intraday.  Only the static D-1 10:30 snapshot is meaningful.
+    If intraday resolution matters, use NESO_API instead.
+    """
+    dataset_name = "entsoe_demand_forecast"
+    current = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
+    all_dfs: list[pd.DataFrame] = []
+
+    while current < end:
+        date_str = current.strftime("%Y%m%d")
+        daily_file = os.path.join(RAW_DATA_DIR, dataset_name, f"{dataset_name}_{date_str}.json")
+
+        if os.path.exists(daily_file):
+            logger.info("Loading cached ENTSO-E demand forecast %s", current.date())
+            try:
+                with open(daily_file, encoding="utf-8") as fp:
+                    cached = json.load(fp)
+                records = cached.get("data", [])
+                if records:
+                    df_cached = pd.DataFrame(records)
+                    df_cached["time"] = pd.to_datetime(df_cached["time"], utc=True)
+                    df_cached["value"] = pd.to_numeric(df_cached["value"], errors="coerce")
+                    all_dfs.append(df_cached)
+            except Exception as exc:
+                logger.warning("Failed to read cached demand forecast %s: %s", current.date(), exc)
+            current += pd.Timedelta(days=1)
+            continue
+
+        logger.info("Fetching ENTSO-E demand forecast %s", current.date())
+        try:
+            df_day = _fetch_entsoe_load_forecast_day(current)
+            if not df_day.empty:
+                _save_entsoe_daily(df_day, dataset_name, date_str)
+                all_dfs.append(df_day)
+            else:
+                logger.warning("No demand forecast data for %s", current.date())
+        except Exception as exc:
+            logger.warning("Skipping demand forecast %s: %s", current.date(), exc)
+
+        current += pd.Timedelta(days=1)
+
+    if not all_dfs:
+        logger.error("No ENTSO-E demand forecast data fetched")
+        return pd.DataFrame(columns=["time", "forecast_time", "value"])
+
+    df = pd.concat(all_dfs, ignore_index=True)
+    df = df.sort_values("time").drop_duplicates(subset=["time"])
+
+    # Stamp forecast_time as D-1 10:30 Europe/London for each delivery day.
+    delivery_london = df["time"].dt.tz_convert("Europe/London")
+    prev_day = delivery_london.dt.normalize() - pd.Timedelta(days=1)
+    df["forecast_time"] = (prev_day + pd.Timedelta(hours=10, minutes=30)).dt.tz_convert("UTC")
+
+    logger.info("ENTSO-E demand forecast: %d records", len(df))
+    return df[["time", "forecast_time", "value"]]
+
+
 def download_b1770(start_date: str, end_date: str) -> None:
     """
     Download B1770 system prices (SBP/SSP) from Elexon and cache as daily JSON files.
@@ -801,7 +934,9 @@ def fetch_market_index_from_csv(csv_path=MARKET_INDEX_CSV) -> pd.DataFrame:
     return df
 
 
-def fetch_market_index_price(source: str | None = None) -> pd.DataFrame:
+def fetch_market_index_price(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch Market Index Data (MID).
     source: "ELEXON" (default) or "CSV"
@@ -814,7 +949,7 @@ def fetch_market_index_price(source: str | None = None) -> pd.DataFrame:
         return fetch_market_index_from_csv()
     if source == "ELEXON":
         try:
-            df = fetch_elexon_dataset("MID", START_DATE, END_DATE)
+            df = fetch_elexon_dataset("MID", start_date, end_date)
             if df.empty:
                 logger.warning("MID dataset returned no data; skipping market_index_price feature")
                 return pd.DataFrame()
@@ -836,7 +971,9 @@ def fetch_demand_actual_from_csv(csv_path=DEMAND_ACTUAL_CSV) -> pd.DataFrame:
     return df
 
 
-def fetch_demand_actual(source: str | None = None) -> pd.DataFrame:
+def fetch_demand_actual(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch actual demand (ITSDO).
     source: "ELEXON" (default) or "CSV"
@@ -848,7 +985,7 @@ def fetch_demand_actual(source: str | None = None) -> pd.DataFrame:
         return fetch_demand_actual_from_csv()
     if source == "ELEXON":
         try:
-            df = fetch_elexon_dataset("ITSDO", START_DATE, END_DATE)
+            df = fetch_elexon_dataset("ITSDO", start_date, end_date)
             if df.empty:
                 logger.warning("ITSDO returned no data; skipping demand_actual feature")
                 return pd.DataFrame()
@@ -869,7 +1006,9 @@ def fetch_imbalance_price_from_csv(csv_path=IMBALANCE_PRICE_CSV) -> pd.DataFrame
     return df
 
 
-def fetch_imbalance_price(source: str | None = None) -> pd.DataFrame:
+def fetch_imbalance_price(
+    source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """
     Fetch B1770 system prices (SBP/SSP/NIV).
     source: "ELEXON" (default) or "CSV"
@@ -883,7 +1022,7 @@ def fetch_imbalance_price(source: str | None = None) -> pd.DataFrame:
     if source != "ELEXON":
         raise ValueError(f"Unknown source '{source}'. Must be 'ELEXON' or 'CSV'")
 
-    download_b1770(START_DATE, END_DATE)
+    download_b1770(start_date, end_date)
 
     dataset_dir = os.path.join(RAW_DATA_DIR, "B1770")
     files = sorted(glob.glob(os.path.join(dataset_dir, "B1770_*_page_1.json")))

@@ -27,6 +27,7 @@ from src.utils.config import (
     SIGNALS_FILE, PNL_FILE, METRICS_FILE, MODEL_METADATA_FILE, CURRENT_VERSION,
     PROCESSED_DATA_DIR, DEFAULT_SIGNAL_THRESHOLD, SAVE_OUTPUTS_DEFAULT,
     PROJECT_ROOT, VERSIONED_FEATURES_DIR, VERSIONED_MODELS_DIR, VERSIONED_TRADING_DIR,
+    get_periods, get_sources,
 )
 
 # Set up logging
@@ -37,13 +38,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def setup_experiment_paths(config: dict | None = None) -> dict:
+def setup_experiment_paths(config: dict | None = None, mode: str | None = None) -> dict:
     """Return a dict of Path objects for all experiment artifacts.
 
-    Paths follow a three-tier structure under artifacts/:
-        artifacts/{strategy}/{run_name}/features/  — engineered features
-        artifacts/{strategy}/{run_name}/model/     — model + metadata
-        artifacts/{strategy}/{run_name}/trading/   — predictions, signals, pnl, metrics
+    Layout under artifacts/:
+        artifacts/{strategy}/{run_name}/features/        — shared between modes
+        artifacts/{strategy}/{run_name}/{mode}/model/    — model + metadata
+        artifacts/{strategy}/{run_name}/{mode}/trading/  — predictions, signals, pnl, metrics
 
     When config is None, falls back to the static versioned paths from config.py.
     """
@@ -65,8 +66,9 @@ def setup_experiment_paths(config: dict | None = None) -> dict:
     run_name = config["run_name"]
     run_dir      = PROJECT_ROOT / "artifacts" / strategy / run_name
     features_dir = run_dir / "features"
-    model_dir    = run_dir / "model"
-    trading_dir  = run_dir / "trading"
+    mode_dir     = run_dir / mode if mode else run_dir
+    model_dir    = mode_dir / "model"
+    trading_dir  = mode_dir / "trading"
     return {
         "features_dir":     features_dir,
         "model_dir":        model_dir,
@@ -103,20 +105,39 @@ def load_processed_data(version: str = CURRENT_VERSION) -> pd.DataFrame:
     return df
 
 
-def build_features_pipeline(features_save_path=None):
+def build_features_pipeline(config, features_save_path=None):
     logger.info("Building features from raw data")
+
+    periods = get_periods(config)
+    sources = get_sources(config)
+    full_start = min(str(p["start"]) for p in periods)
+    full_end = max(str(p["end"]) for p in periods)
 
     try:
         # Step 1: Download raw data
         logger.info("Step 1: Downloading raw data")
 
-        wind_df = fetch_wind_forecast()
-        demand_df = fetch_demand_forecast()
-        generation_df = fetch_generation_actual()
-        price_df = fetch_day_ahead_price()
-        mid_df = fetch_market_index_price()
-        itsdo_df = fetch_demand_actual()
-        b1770_df = fetch_imbalance_price()
+        wind_df = fetch_wind_forecast(
+            source=sources["wind_source"], start_date=full_start, end_date=full_end)
+        generation_df = fetch_generation_actual(
+            source=sources["generation_source"], start_date=full_start, end_date=full_end)
+        price_df = fetch_day_ahead_price(
+            source=sources["day_ahead_price_source"], start_date=full_start, end_date=full_end)
+        mid_df = fetch_market_index_price(
+            source=sources["market_index_source"], start_date=full_start, end_date=full_end)
+        itsdo_df = fetch_demand_actual(
+            source=sources["demand_actual_source"], start_date=full_start, end_date=full_end)
+        b1770_df = fetch_imbalance_price(
+            source=sources["imbalance_source"], start_date=full_start, end_date=full_end)
+
+        demand_dfs = []
+        for p in periods:
+            demand_dfs.append(fetch_demand_forecast(
+                source=str(p["demand_source"]),
+                start_date=str(p["start"]),
+                end_date=str(p["end"]),
+            ))
+        demand_df = pd.concat(demand_dfs, ignore_index=True)
 
         # Step 2: Preprocess and merge
         logger.info("Step 2: Preprocessing and merging data")
@@ -280,7 +301,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     from src.models.train import train_da_price_model, _FEATURE_COLS
 
     bess_cfg = config["bess"]
-    paths = setup_experiment_paths(config)
+    paths = setup_experiment_paths(config, mode="bess")
 
     results = {
         "timestamp": datetime.now().isoformat(),
@@ -291,7 +312,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     # Step 1: Build features if needed
     if not paths["features_file"].exists():
         logger.info("BESS pipeline: building features from raw data")
-        build_features_pipeline(features_save_path=paths["features_file"])
+        build_features_pipeline(config, features_save_path=paths["features_file"])
     else:
         logger.info("BESS pipeline: reusing existing features at %s", paths["features_file"])
 
@@ -326,11 +347,13 @@ def _run_bess_pipeline(config: dict) -> dict:
     features_df["_london_date"] = features_df["time"].dt.tz_convert("Europe/London").dt.date
     feature_cols = [c for c in _FEATURE_COLS if c in features_df.columns]
 
-    # Step 4: Load price data for BESS simulation
-    logger.info("BESS pipeline: loading and processing price data")
-    da_processed = process_day_ahead_price(fetch_day_ahead_price())
-    mid_processed = process_market_index_price(fetch_market_index_price())
-    imb_processed = process_imbalance_price(fetch_imbalance_price())
+    # Step 4: Load price data for BESS simulation — use the same date range as features
+    feat_start = features_df["time"].min().strftime("%Y-%m-%d")
+    feat_end = (features_df["time"].max() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    logger.info("BESS pipeline: loading and processing price data (%s → %s)", feat_start, feat_end)
+    da_processed = process_day_ahead_price(fetch_day_ahead_price(start_date=feat_start, end_date=feat_end))
+    mid_processed = process_market_index_price(fetch_market_index_price(start_date=feat_start, end_date=feat_end))
+    imb_processed = process_imbalance_price(fetch_imbalance_price(start_date=feat_start, end_date=feat_end))
 
     duration_h = bess_cfg.get("resolution_h", 1.0)
     resample_freq = f"{int(duration_h * 60)}min"
@@ -405,6 +428,11 @@ def _run_bess_pipeline(config: dict) -> dict:
         })
 
     results_df = pd.DataFrame(daily_results)
+    if results_df.empty:
+        raise RuntimeError(
+            "BESS simulation produced no results — no OOS days matched the prices date range. "
+            "Check that the features parquet and price data cover the same period."
+        )
     save_bess_outputs(results_df, config, paths)
     results["results_df"] = results_df
 
@@ -429,7 +457,7 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
     wf_test_days     = config["validation"]["test_days"]  if config else 30
     wf_step_days     = config["validation"]["step_days"]  if config else 30
 
-    paths = setup_experiment_paths(config)
+    paths = setup_experiment_paths(config, mode="virtual")
 
     results = {
         "timestamp": datetime.now().isoformat(),
@@ -447,7 +475,7 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
             logger.info("Skipping feature build, retraining on existing features")
         else:
             logger.info("Virtual pipeline: building features from raw data")
-            build_features_pipeline(features_save_path=paths["features_file"])
+            build_features_pipeline(config, features_save_path=paths["features_file"])
 
         logger.info("Training model")
         model, predictions_df, X_test = train_model(
@@ -554,29 +582,87 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
         raise
 
 
+def _run_download(config: dict) -> dict:
+    """Fetch all raw data sources and write them to the per-day cache."""
+    logger.info("Download mode: fetching all raw data sources")
+
+    periods = get_periods(config)
+    sources = get_sources(config)
+    full_start = min(str(p["start"]) for p in periods)
+    full_end = max(str(p["end"]) for p in periods)
+
+    fetch_wind_forecast(source=sources["wind_source"], start_date=full_start, end_date=full_end)
+    fetch_generation_actual(source=sources["generation_source"], start_date=full_start, end_date=full_end)
+    fetch_day_ahead_price(source=sources["day_ahead_price_source"], start_date=full_start, end_date=full_end)
+    fetch_market_index_price(source=sources["market_index_source"], start_date=full_start, end_date=full_end)
+    fetch_demand_actual(source=sources["demand_actual_source"], start_date=full_start, end_date=full_end)
+    fetch_imbalance_price(source=sources["imbalance_source"], start_date=full_start, end_date=full_end)
+
+    for p in periods:
+        fetch_demand_forecast(
+            source=str(p["demand_source"]),
+            start_date=str(p["start"]),
+            end_date=str(p["end"]),
+        )
+
+    logger.info("Download complete")
+    return {"mode": "download"}
+
+
+def _run_features(config: dict) -> dict:
+    """Download raw data, preprocess, and build the feature set — stop before training."""
+    paths = setup_experiment_paths(config)
+    logger.info("Features mode: building features from raw data")
+    build_features_pipeline(config, features_save_path=paths["features_file"])
+    logger.info("Features written to %s", paths["features_file"])
+    return {"mode": "features", "features_file": paths["features_file"]}
+
+
 def run_full_pipeline(mode: str | None = None, config: dict | None = None, skip_features: bool = False) -> dict:
     """Run the trading pipeline.
 
     Args:
-        mode:   'virtual' (ML spread-trading), 'bess' (battery storage), or 'all'.
+        mode:   'download'  — fetch raw data only
+                'features'  — download + preprocess + build features
+                'model'     — train + backtest on existing features (skip download/features)
+                'virtual'   — full ML spread-trading pipeline
+                'bess'      — full battery storage pipeline
+                'all'       — virtual + bess sequentially
                 Defaults to config['strategy_type'] when omitted, then 'virtual'.
         config: Experiment config dict loaded from YAML.
-        skip_features: If True, skip feature building and retrain on existing features.
+        skip_features: If True, skip feature building (alias for mode='model').
     """
     effective_mode = mode or (config or {}).get("strategy_type", "virtual")
     logger.info(f"Starting pipeline in '{effective_mode}' mode")
     ensure_directories()
 
-    if effective_mode == "virtual":
+    if effective_mode == "download":
+        if config is None:
+            raise ValueError("'download' mode requires a config dict.")
+        return _run_download(config)
+    elif effective_mode == "features":
+        if config is None:
+            raise ValueError("'features' mode requires a config dict.")
+        return _run_features(config)
+    elif effective_mode == "model":
+        return _run_virtual_pipeline(config, skip_features=True)
+    elif effective_mode == "virtual":
         return _run_virtual_pipeline(config, skip_features=skip_features)
     elif effective_mode == "bess":
-        return _run_bess_pipeline(config)  # type: ignore[arg-type]
+        if config is None:
+            raise ValueError("'bess' mode requires a config dict.")
+        return _run_bess_pipeline(config)
     elif effective_mode == "all":
+        if config is None:
+            raise ValueError("'all' mode requires a config dict.")
         virtual_results = _run_virtual_pipeline(config, skip_features=skip_features)
-        bess_results = _run_bess_pipeline(config)  # type: ignore[arg-type]
+        bess_results = _run_bess_pipeline(config)
         return {"virtual": virtual_results, "bess": bess_results}
     else:
-        raise ValueError(f"Invalid mode: {effective_mode!r}. Must be 'virtual', 'bess', or 'all'.")
+        raise ValueError(
+            f"Invalid mode: {effective_mode!r}. "
+            "Must be 'download', 'features', 'model', 'virtual', 'bess', or 'all'."
+        )
 
 
 def print_pipeline_results(results: dict):

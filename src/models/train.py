@@ -19,6 +19,8 @@ _FEATURE_COLS = [
     "day_ahead_price_lag96",  # DA price 48 h ago
     "system_sell_price_lag48",  # imbalance sell price 24 h ago
     "system_sell_price_lag96",  # imbalance sell price 48 h ago
+    "system_buy_price_lag48",  # imbalance buy price 24 h ago
+    "system_buy_price_lag96",  # imbalance buy price 48 h ago
     "hour_sin",
     "hour_cos",
     "dow_sin",
@@ -39,11 +41,11 @@ def _fit_model(
             from xgboost import XGBRegressor
 
             model = XGBRegressor(
-                n_estimators=p.get("n_estimators", 300),
-                max_depth=p.get("max_depth", 5),
-                learning_rate=p.get("learning_rate", 0.05),
+                n_estimators=p.get("n_estimators", 400),
+                max_depth=p.get("max_depth", 3),
+                learning_rate=p.get("learning_rate", 0.01),
                 subsample=p.get("subsample", 0.8),
-                colsample_bytree=p.get("colsample_bytree", 0.8),
+                colsample_bytree=p.get("colsample_bytree", 0.7),
                 random_state=42,
                 n_jobs=-1,
                 verbosity=0,

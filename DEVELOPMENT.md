@@ -40,7 +40,7 @@ make typecheck
 
 ## Pre-commit Hook
 
-A git pre-commit hook lives in `scripts/pre-commit`. It runs the full check suite — flake8, mypy, and pytest — before every `git commit`, blocking the commit if anything fails. This mirrors the CI pipeline exactly so failures are caught locally rather than on GitHub Actions.
+A git pre-commit hook lives in `scripts/pre-commit`. It runs the full check suite — flake8, mypy, and pytest — before every `git commit`, blocking the commit if anything fails. This closely mirrors the CI pipeline so failures are caught locally rather than on GitHub Actions.
 
 Install it once after cloning:
 
@@ -64,32 +64,24 @@ All local settings live in a `.env` file at the project root. It is gitignored �
 Create the file and fill in your values:
 
 ```bash
-# ── API Keys ───────────────────────────────────────────────────────────────
 # ENTSO-E key — register at https://transparency.entsoe.eu
 #   → My Account Settings → Web API Security Token
 ENTSOE_API_KEY=your_key_here
 
 # Elexon BMRS and NESO CKAN are open — no key required.
 # ELEXON_API_KEY=
-
-# ── Experiment settings ────────────────────────────────────────────────────
-# Date range for all downloads
-START_DATE=2018-01-01
-END_DATE=2019-01-01
-
-# ── Data sources ───────────────────────────────────────────────────────────
-# Switch any source to "CSV" to load from a local file instead of the API.
-DEFAULT_DEMAND_FORECAST_SOURCE=NESO_API   # ELEXON | NESO_API | CSV
-DEFAULT_WIND_FORECAST_SOURCE=ELEXON       # ELEXON | CSV
-DEFAULT_GENERATION_ACTUAL_SOURCE=ELEXON   # ELEXON | CSV
-DEFAULT_DAY_AHEAD_PRICE_SOURCE=ENTSOE     # ENTSOE | CSV
-DEFAULT_MARKET_INDEX_SOURCE=ELEXON        # ELEXON | CSV
-DEFAULT_DEMAND_ACTUAL_SOURCE=ELEXON       # ELEXON | CSV
-DEFAULT_IMBALANCE_PRICE_SOURCE=ELEXON     # ELEXON | CSV
 ```
+
+Date ranges and data source selections are configured in `configs/config.yaml` under the `data:` block, not in `.env`. See **Experiment Configs** below.
 
 
 ## Experiment Configs
+
+`configs/config.yaml` is gitignored — it holds your local experiment settings and is never committed. `configs/config.example.yaml` is the committed template; copy it to get started:
+
+```bash
+cp configs/config.example.yaml configs/config.yaml
+```
 
 Experiments are driven by YAML files in `configs/`. Pass one with `--config`:
 
@@ -100,9 +92,11 @@ python main.py --config configs/config.yaml
 The config controls model hyperparameters, walk-forward settings, signal threshold, execution behaviour, and where all artifacts are written. Each config must declare a `strategy` and `run_name`; the pipeline writes everything to:
 
 ```
-artifacts/{strategy}/{run_name}/features/   # features.parquet
-artifacts/{strategy}/{run_name}/model/      # model.joblib, metadata.json
-artifacts/{strategy}/{run_name}/trading/    # predictions.csv, signals.csv, pnl.csv, metrics.json
+artifacts/{strategy}/{run_name}/features/               # features.parquet (shared)
+artifacts/{strategy}/{run_name}/virtual/model/          # model.joblib, metadata.json
+artifacts/{strategy}/{run_name}/virtual/trading/        # predictions.csv, signals.csv, pnl.csv, metrics.json
+artifacts/{strategy}/{run_name}/bess/model/             # model.joblib, metadata.json
+artifacts/{strategy}/{run_name}/bess/trading/           # pnl.csv, metrics.json
 ```
 
 ### Strategy Type
@@ -116,21 +110,43 @@ strategy_type: "virtual"   # "virtual" (default) | "bess"
 - **`virtual`** — ML-driven DA positioning with hybrid intraday execution (Phases 1 & 2).
 - **`bess`** — Physical battery dispatch: LP Day-Ahead scheduling, rules-based intraday rebalancing, and imbalance settlement (Phase 3).
 
+### Signal Config
+
+The `signal` block controls trade signal generation and cost assumptions:
+
+```yaml
+signal:
+  threshold: 2.0         # minimum edge required to fire (£/MWh)
+  top_n: 5               # max concurrent positions
+  vol_multiplier: 1.0    # gate = max(threshold, vol_multiplier × rolling_vol)
+  vol_window: 336        # rolling std lookback in half-hour periods (336 = 7 days)
+  transaction_cost: 1.0  # cost applied per trade (£/MWh of position)
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `threshold` | float | 2.0 | Minimum predicted edge (£/MWh) required to open a position |
+| `top_n` | int | 5 | Maximum number of concurrent positions |
+| `vol_multiplier` | float | 1.0 | Multiplier applied to rolling volatility for dynamic gating |
+| `vol_window` | int | 336 | Rolling standard-deviation lookback in half-hour periods |
+| `transaction_cost` | float | 1.0 | Cost deducted per trade in £/MWh of position size |
+
 ### Execution Config (Virtual)
 
 The `execution` block controls how DA positions are managed during the intraday window:
 
 ```yaml
 execution:
-  mode: hybrid                # execution strategy (hybrid | imbalance_only)
   baseline_hedge_ratio: 0.5   # fraction of position hedged passively at MID (0.0–1.0)
-  take_profit_pct: 0.08       # take-profit trigger as fraction of predicted spread
-  stop_loss_price_delta: 15.0         # per-period stop-loss cap in £/MWh
+  take_profit_pct: 0.90        # take-profit trigger as fraction of predicted spread
+  stop_loss_price_delta: 5.00  # per-period stop-loss cap in £/MWh
+  slippage: 0.50               # execution slippage cost in £/MWh
 ```
+
+Execution archetype is controlled numerically by `baseline_hedge_ratio`: set `1.0` for a full passive hedge (all volume exits at MID), or `0.0` for imbalance-only settlement (Phase 1 behaviour). The default `0.5` runs the hybrid two-slice engine.
 
 | Key | Description |
 |---|---|
-| `mode` | `hybrid` splits volume between a passive MID hedge and an active TP/SL engine; `imbalance_only` settles everything at imbalance (Phase 1 behaviour) |
 | `baseline_hedge_ratio` | Share of each position passively exited at the Market Index Price. Must be between 0 and 1 |
 | `take_profit_pct` | Fraction of predicted spread at which the active slice locks in profit |
 | `stop_loss_price_delta` | Maximum adverse price move (£/MWh) before the active slice is stopped out |
@@ -147,6 +163,9 @@ bess:
   discharge_efficiency: 0.94       # fraction delivered during discharge
   degradation_cost_per_mwh: 8.50   # £/MWh throughput cost for battery wear
   initial_soc_pct: 0.50            # starting state-of-charge (0.0–1.0)
+  resolution_h: 1.0                # dispatch interval in hours (1 = hourly)
+  price_history_lookback_days: 14  # days of DA price history for naive forecast
+  soc_drift_tolerance: 0.05        # max SOC drift before intraday rebalance (0.0–1.0)
 ```
 
 | Key | Description |
@@ -157,13 +176,14 @@ bess:
 | `discharge_efficiency` | Fraction of stored energy delivered to the grid during discharge (0.0–1.0) |
 | `degradation_cost_per_mwh` | Cost per MWh of throughput, representing battery wear |
 | `initial_soc_pct` | State of charge at the start of each day, as a fraction of capacity |
+| `soc_drift_tolerance` | Maximum allowed SOC deviation (fraction of capacity) from the DA schedule before intraday rebalancing triggers |
 
 ## Project Structure
 
 ```
 power-trading/
 ├── configs/                        # YAML experiment configs
-│   └── config.yaml
+│   └── config.yaml     # gitignored — copy from config.example.yaml
 ├── data/
 │   ├── raw/                        # Per-day cached API responses
 │   │   ├── B1770/                  # Imbalance prices (Elexon)
@@ -178,15 +198,23 @@ power-trading/
 ├── artifacts/
 │   └── {strategy}/{run_name}/
 │       ├── features/
-│       │   └── features.parquet    # Engineered features for this run
-│       ├── model/
-│       │   ├── model.joblib        # Serialised XGBoost model
-│       │   └── metadata.json       # Training params, feature list, dates
-│       └── trading/
-│           ├── predictions.csv     # actual_spread, predicted_spread
-│           ├── signals.csv         # auction_time, signal, direction
-│           ├── pnl.csv             # Per-period net PnL (£)
-│           └── metrics.json        # Model + trading performance
+│       │   └── features.parquet    # Engineered features (shared between modes)
+│       ├── virtual/
+│       │   ├── model/
+│       │   │   ├── model.joblib    # Spread-prediction XGBoost model
+│       │   │   └── metadata.json
+│       │   └── trading/
+│       │       ├── predictions.csv # actual_spread, predicted_spread
+│       │       ├── signals.csv     # auction_time, signal, direction
+│       │       ├── pnl.csv         # Per-period net PnL (£)
+│       │       └── metrics.json
+│       └── bess/
+│           ├── model/
+│           │   ├── model.joblib    # DA price-prediction XGBoost model
+│           │   └── metadata.json
+│           └── trading/
+│               ├── pnl.csv         # Daily BESS PnL decomposition
+│               └── metrics.json
 ├── src/
 │   ├── data/                       # download.py, preprocess.py
 │   ├── evaluation/                 # splitter.py (walk-forward)
