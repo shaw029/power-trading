@@ -8,7 +8,7 @@ End-to-end quantitative research framework for virtual and physical trading in t
 
 **2018 validated backtest (Virtual):**
 
-![Virtual Strategy Showcase](notebooks/assets/equity.png)
+![Virtual Strategy Showcase](notebooks/assets/equity_curve.png)
 
 **Battery Dispatch in DA market:**
 
@@ -92,8 +92,8 @@ All notebooks live in `notebooks/`.
 | Notebook | Contents |
 |---|---|
 | `01_da_positioning_backtest.ipynb` | Full tournament sweep: model shootout, hyperparameter calibration under walk-forward discipline, execution stress-testing with transaction costs, and a production tear sheet |
-| `02_hybrid_execution_analysis.ipynb` | Compares four execution archetypes (pure imbalance, pure MID hedge, hybrid passive, hybrid active TP/SL) across return, risk, and tail-exposure metrics |
-| `03_bess_dispatch_analysis.ipynb` | BESS dispatch deep-dive: 3-panel strategy showcase (price → dispatch → SOC), rebalancing impact, PnL waterfall decomposition, and combined equity curve |
+| `02_hybrid_execution_analysis.ipynb` | Hedge ratio optimisation sweep: equity curves and performance tear sheet for four archetype fixed points, risk–reward efficient frontier, full `baseline_hedge_ratio` sweep (0.0–1.0) identifying the Sharpe-optimal ratio, worst drawdown analysis under full imbalance exposure, and a decision framework connecting the sweep to production config |
+| `03_bess_dispatch_analysis.ipynb` | BESS dispatch deep-dive: PnL waterfall decomposition across DA, intraday, and imbalance layers; degradation cost vs. gross revenue timeline; time-of-day SOC heatmap; DA schedule vs. final dispatch rebalancing impact; and dispatch efficiency scatter |
 
 ---
 
