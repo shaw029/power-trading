@@ -29,7 +29,6 @@ def optimize_da_schedule(
 
     initial_soc = asset.capacity_mwh * asset.initial_soc_pct
     prob += soc[0] == initial_soc
-    prob += soc[n_periods] >= initial_soc
 
     for h in periods:
         prob += (

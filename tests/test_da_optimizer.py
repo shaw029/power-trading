@@ -74,13 +74,15 @@ class TestDAOptimizer:
     def test_degradation_cost_prevents_unprofitable_trade(self) -> None:
         prices = [30.0] * 12 + [60.0] * 12
 
+        # Empty battery (SOC=0) so the LP must charge before discharging,
+        # isolating the degradation-prevents-cycling check from inventory liquidation.
         asset_no_deg = BESSAsset(
             capacity_mwh=100.0,
             power_mw=50.0,
             charge_efficiency=0.9,
             discharge_efficiency=0.95,
             degradation_cost_per_mwh=0.0,
-            initial_soc_pct=0.5,
+            initial_soc_pct=0.0,
         )
         schedule_no_deg = optimize_da_schedule(prices, asset_no_deg)
         activity_no_deg = sum(abs(mw) for mw in schedule_no_deg)
@@ -92,7 +94,7 @@ class TestDAOptimizer:
             charge_efficiency=0.9,
             discharge_efficiency=0.95,
             degradation_cost_per_mwh=15.0,
-            initial_soc_pct=0.5,
+            initial_soc_pct=0.0,
         )
         schedule_with_deg = optimize_da_schedule(prices, asset_with_deg)
         activity_with_deg = sum(abs(mw) for mw in schedule_with_deg)
@@ -105,7 +107,7 @@ class TestDAOptimizer:
         revenue = sum(schedule[h] * prices[h] for h in range(24))
         assert revenue > 0, "Optimizer should generate positive revenue"
 
-    def test_terminal_soc_is_not_less_than_initial(self, battery: BESSAsset) -> None:
+    def test_terminal_soc_is_non_negative(self, battery: BESSAsset) -> None:
         prices = [10.0] * 12 + [90.0] * 12
         schedule = optimize_da_schedule(prices, battery)
 
@@ -116,10 +118,7 @@ class TestDAOptimizer:
             else:
                 soc += (-dispatch) * battery.charge_efficiency
 
-        initial_soc = battery.capacity_mwh * battery.initial_soc_pct
-        assert soc >= initial_soc - 1e-6, (
-            f"Final SOC {soc:.4f} must not be less than initial SOC {initial_soc:.4f}"
-        )
+        assert soc >= -1e-6, f"Final SOC {soc:.4f} must not be negative"
 
     def test_solver_failure_returns_zero_dispatch(self, battery: BESSAsset) -> None:
         prices = [40.0] * 24
@@ -151,7 +150,7 @@ class TestDAOptimizer:
         net_dispatch = sum(schedule)
         assert net_dispatch < 0, "Should net charge when all prices are negative (paid to consume)"
 
-    def test_terminal_soc_equals_initial(self, battery: BESSAsset) -> None:
+    def test_terminal_soc_within_bounds(self, battery: BESSAsset) -> None:
         prices = [15.0, 85.0, 20.0, 90.0, 10.0, 80.0] * 4
         schedule = optimize_da_schedule(prices, battery)
 
@@ -165,5 +164,5 @@ class TestDAOptimizer:
             else:
                 soc += (-dispatch) * battery.charge_efficiency
 
-        initial_soc = battery.capacity_mwh * battery.initial_soc_pct
-        assert soc == pytest.approx(initial_soc, abs=1e-3)
+        assert soc >= -1e-6, f"Final SOC {soc:.4f} must not be negative"
+        assert soc <= battery.capacity_mwh + 1e-6, f"Final SOC {soc:.4f} must not exceed capacity"

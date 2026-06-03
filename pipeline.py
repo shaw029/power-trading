@@ -388,6 +388,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     source_resolution_h = mode_result.iloc[0]
 
     daily_results = []
+    prev_soc_pct: float | None = None
     for date, day_df in prices.groupby(prices.index.date):
         n_periods = len(day_df)
         if n_periods not in valid_period_counts:
@@ -407,7 +408,8 @@ def _run_bess_pipeline(config: dict) -> dict:
         if forecast is None:
             continue
 
-        asset.reset()
+        carry_soc = prev_soc_pct if prev_soc_pct is not None else bess_cfg["initial_soc_pct"]
+        asset.reset(soc_pct=carry_soc)
         da_prices = day_df["day_ahead_price"].tolist()
         schedule = optimize_da_schedule(da_price_forecast=forecast, asset=asset, duration_h=duration_h)
         result = run_intraday_session(
@@ -419,6 +421,7 @@ def _run_bess_pipeline(config: dict) -> dict:
             config=bess_cfg,
             imbalance_sell_prices=day_df["system_sell_price"].tolist(),
         )
+        prev_soc_pct = asset.soc_pct
         daily_results.append({
             "date": date,
             "da_revenue": result["da_revenue"],

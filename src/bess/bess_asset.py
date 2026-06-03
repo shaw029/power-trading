@@ -78,6 +78,8 @@ class BESSAsset:
         new_soc = self._soc_mwh - drawn_mwh
         return new_soc >= 0 or math.isclose(new_soc, 0.0, abs_tol=_SOC_TOL)
 
-    def reset(self) -> None:
+    def reset(self, soc_pct: float | None = None) -> None:
+        if soc_pct is not None:
+            self.initial_soc_pct = soc_pct
         self._soc_mwh = self.initial_soc_pct * self.capacity_mwh
         self._degradation_cost = 0.0
