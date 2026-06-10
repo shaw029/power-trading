@@ -420,7 +420,7 @@ def render_bess(prices: pd.DataFrame):
     st.sidebar.markdown("### Asset Parameters")
     capacity = st.sidebar.slider("Battery Capacity (MWh)", 20, 500, 100, step=10)
     power = st.sidebar.slider("Max Power (MW)", 10, 200, 50, step=5)
-    degradation = st.sidebar.slider("Degradation Cost (£/MWh)", 0.0, 30.0, 8.50, step=0.50)
+    degradation = st.sidebar.slider("Degradation Cost (£/MWh)", 0.0, 30.0, 5.00, step=0.50)
     charge_eff = st.sidebar.slider("Charge Efficiency", 0.70, 1.00, 0.94, step=0.01)
     discharge_eff = st.sidebar.slider("Discharge Efficiency", 0.70, 1.00, 0.94, step=0.01)
     initial_soc = st.sidebar.slider("Initial SOC (%)", 0, 100, 50, step=5)

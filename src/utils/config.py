@@ -108,7 +108,7 @@ _BESS_DEFAULTS = {
     "power_mw": 50.0,
     "charge_efficiency": 0.94,
     "discharge_efficiency": 0.94,
-    "degradation_cost_per_mwh": 8.50,
+    "degradation_cost_per_mwh": 5.00,
     "initial_soc_pct": 0.50,
     "min_soc_pct": 0.10,
     "max_soc_pct": 0.90,

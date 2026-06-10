@@ -161,7 +161,7 @@ bess:
   power_mw: 50.0                   # max charge/discharge rate (MW)
   charge_efficiency: 0.94          # fraction stored during charging
   discharge_efficiency: 0.94       # fraction delivered during discharge
-  degradation_cost_per_mwh: 8.50   # £/MWh throughput cost for battery wear
+  degradation_cost_per_mwh: 5.00   # £/MWh throughput cost for battery wear
   initial_soc_pct: 0.50            # first-day starting SOC; subsequent days carry over
   min_soc_pct: 0.10                # lower SOC operating bound (never discharge below)
   max_soc_pct: 0.90                # upper SOC operating bound (never charge above)
