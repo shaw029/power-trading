@@ -95,6 +95,11 @@ class BESSAsset:
 
     def reset(self, soc_pct: float | None = None) -> None:
         if soc_pct is not None:
+            if not self.min_soc_pct <= soc_pct <= self.max_soc_pct:
+                raise ValueError(
+                    f"Invalid SOC {soc_pct}: require "
+                    f"{self.min_soc_pct} <= soc <= {self.max_soc_pct}"
+                )
             self.initial_soc_pct = soc_pct
         self._soc_mwh = self.initial_soc_pct * self.capacity_mwh
         self._degradation_cost = 0.0
