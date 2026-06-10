@@ -11,6 +11,7 @@ def optimize_da_schedule(
     da_price_forecast: list[float],
     asset: BESSAsset,
     duration_h: float = 1.0,
+    target_daily_cycles: float | None = None,
 ) -> list[float]:
     n_periods = len(da_price_forecast)
     periods = range(n_periods)
@@ -39,6 +40,9 @@ def optimize_da_schedule(
             - discharge[h] * duration_h / asset.discharge_efficiency
             + charge[h] * duration_h * asset.charge_efficiency
         )
+
+    if target_daily_cycles is not None:
+        prob += pulp.lpSum(discharge[h] for h in periods) <= target_daily_cycles * asset.capacity_mwh
 
     try:
         import highspy  # noqa: F401

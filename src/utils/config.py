@@ -114,6 +114,7 @@ _BESS_DEFAULTS = {
     "max_soc_pct": 0.90,
     "resolution_h": 1.0,
     "soc_drift_tolerance": 0.05,
+    "target_daily_cycles": None,
 }
 
 _FIXED_SOURCE_KEYS = (
