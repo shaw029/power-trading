@@ -38,10 +38,12 @@ VIRTUAL_PREDICTIONS = Path(
     os.environ.get("PT_VIRTUAL_PREDICTIONS", "artifacts/da_positioning/xgb_wf_v1/virtual/trading/predictions.csv")
 )
 CONFIG_PATH = Path(__file__).resolve().parent / "configs" / "config.yaml"
+CONFIG_FALLBACK_PATH = Path(__file__).resolve().parent / "configs" / "config.example.yaml"
 
 
 def _load_config() -> dict:
-    with open(CONFIG_PATH) as f:
+    path = CONFIG_PATH if CONFIG_PATH.exists() else CONFIG_FALLBACK_PATH
+    with open(path) as f:
         return yaml.safe_load(f) or {}
 
 
@@ -86,6 +88,9 @@ def run_bess_simulation(
     charge_efficiency: float = 0.94,
     discharge_efficiency: float = 0.94,
     initial_soc_pct: float = 0.50,
+    min_soc_pct: float = 0.0,
+    max_soc_pct: float = 1.0,
+    target_daily_cycles: float | None = None,
     resolution_h: float = 1.0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     period = pd.Period(month_str, freq="M")
@@ -104,6 +109,8 @@ def run_bess_simulation(
         "discharge_efficiency": discharge_efficiency,
         "degradation_cost_per_mwh": degradation_cost,
         "initial_soc_pct": initial_soc_pct,
+        "min_soc_pct": min_soc_pct,
+        "max_soc_pct": max_soc_pct,
     }
     sim_cfg = {**bess_cfg, "resolution_h": resolution_h}
 
@@ -125,7 +132,10 @@ def run_bess_simulation(
             price_history.append(da_prices)
             continue
         forecast = _naive_da_forecast(price_history, n_hours=len(day_df))
-        schedule = optimize_da_schedule(forecast, asset, duration_h=resolution_h)
+        schedule = optimize_da_schedule(
+            forecast, asset, duration_h=resolution_h,
+            target_daily_cycles=target_daily_cycles,
+        )
 
         asset.reset()
         result = run_intraday_session(
@@ -202,10 +212,18 @@ def chart_price_dispatch(prices_hourly: pd.DataFrame, da_sched_df: pd.DataFrame,
     return fig
 
 
-def chart_soc_tracker(dispatch_df: pd.DataFrame):
+def chart_soc_tracker(
+    dispatch_df: pd.DataFrame,
+    min_soc_pct: float = 0.0,
+    max_soc_pct: float = 1.0,
+    initial_soc_pct: float = 0.50,
+):
     dispatch_df = dispatch_df.copy()
     dispatch_df["timestamp"] = pd.to_datetime(dispatch_df["timestamp"])
     soc = dispatch_df.set_index("timestamp")["soc_after"].sort_index()
+
+    min_pct = min_soc_pct * 100
+    max_pct = max_soc_pct * 100
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -213,11 +231,22 @@ def chart_soc_tracker(dispatch_df: pd.DataFrame):
         mode="lines", name="SOC", line=dict(color="#1f77b4", width=1),
         fill="tozeroy", fillcolor="rgba(31,119,180,0.1)",
     ))
-    fig.add_hline(y=50, line_dash="dash", line_color="grey", annotation_text="Initial SOC (50%)")
+    fig.add_hline(
+        y=initial_soc_pct * 100, line_dash="dash", line_color="grey",
+        annotation_text=f"Initial SOC ({initial_soc_pct * 100:.0f}%)",
+    )
+    fig.add_hline(
+        y=min_pct, line_dash="dot", line_color="#e74c3c",
+        annotation_text=f"Min SOC ({min_pct:.0f}%)", annotation_position="bottom right",
+    )
+    fig.add_hline(
+        y=max_pct, line_dash="dot", line_color="#e74c3c",
+        annotation_text=f"Max SOC ({max_pct:.0f}%)", annotation_position="top right",
+    )
     fig.update_layout(
         title="State of Charge — Selected Month",
         xaxis_title="Date", yaxis_title="SOC (%)",
-        yaxis=dict(range=[0, 105]),
+        yaxis=dict(range=[max(0, min_pct - 10), min(105, max_pct + 10)]),
         template="plotly_white", height=350,
     )
     return fig
@@ -382,6 +411,9 @@ def main():
 
 
 def render_bess(prices: pd.DataFrame):
+    cfg = _load_config()
+    bess_cfg = cfg.get("bess", {})
+
     months = available_months(prices)
     selected_month = st.sidebar.selectbox("Month", months, index=0)
 
@@ -393,9 +425,22 @@ def render_bess(prices: pd.DataFrame):
     discharge_eff = st.sidebar.slider("Discharge Efficiency", 0.70, 1.00, 0.94, step=0.01)
     initial_soc = st.sidebar.slider("Initial SOC (%)", 0, 100, 50, step=5)
 
+    st.sidebar.markdown("### SOC & Throughput Limits")
+    default_min_soc = int(round(bess_cfg.get("min_soc_pct", 0.0) * 100))
+    default_max_soc = int(round(bess_cfg.get("max_soc_pct", 1.0) * 100))
+    min_soc, max_soc = st.sidebar.slider(
+        "SOC Bounds (%)", 0, 100, (default_min_soc, default_max_soc), step=5,
+    )
+    _cfg_cycles = bess_cfg.get("target_daily_cycles")
+    limit_cycles = st.sidebar.checkbox("Limit daily cycles", value=_cfg_cycles is not None)
+    target_daily_cycles = None
+    if limit_cycles:
+        target_daily_cycles = st.sidebar.slider(
+            "Target Daily Cycles", 0.5, 4.0,
+            float(_cfg_cycles) if _cfg_cycles is not None else 1.5, step=0.5,
+        )
+
     if st.sidebar.button("Run Simulation", type="primary"):
-        cfg = _load_config()
-        bess_cfg = cfg["bess"]
         lookback = bess_cfg["price_history_lookback_days"]
         resolution_h = bess_cfg.get("resolution_h", 1.0)
         with st.spinner("Running BESS simulation..."):
@@ -404,6 +449,9 @@ def render_bess(prices: pd.DataFrame):
                 charge_efficiency=charge_eff,
                 discharge_efficiency=discharge_eff,
                 initial_soc_pct=initial_soc / 100.0,
+                min_soc_pct=min_soc / 100.0,
+                max_soc_pct=max_soc / 100.0,
+                target_daily_cycles=target_daily_cycles,
                 lookback_days=lookback,
                 resolution_h=resolution_h,
             )
@@ -412,13 +460,17 @@ def render_bess(prices: pd.DataFrame):
             st.error("No complete 24-hour days found in the selected month.")
             return
 
-        st.session_state["bess_results"] = (results_df, dispatch_df, da_sched_df, selected_month, prices)
+        st.session_state["bess_results"] = (
+            results_df, dispatch_df, da_sched_df, selected_month, prices,
+            {"min_soc_pct": min_soc / 100.0, "max_soc_pct": max_soc / 100.0,
+             "initial_soc_pct": initial_soc / 100.0},
+        )
 
     if "bess_results" not in st.session_state:
         st.info("Configure parameters and click **Run Simulation** to begin.")
         return
 
-    results_df, dispatch_df, da_sched_df, month_str, cached_prices = st.session_state["bess_results"]
+    results_df, dispatch_df, da_sched_df, month_str, cached_prices, soc_bounds = st.session_state["bess_results"]
 
     # KPI row
     total_da = results_df["da_revenue"].sum()
@@ -459,7 +511,15 @@ def render_bess(prices: pd.DataFrame):
             use_container_width=True,
         )
     with col2:
-        st.plotly_chart(chart_soc_tracker(dispatch_df), use_container_width=True)
+        st.plotly_chart(
+            chart_soc_tracker(
+                dispatch_df,
+                min_soc_pct=soc_bounds["min_soc_pct"],
+                max_soc_pct=soc_bounds["max_soc_pct"],
+                initial_soc_pct=soc_bounds["initial_soc_pct"],
+            ),
+            use_container_width=True,
+        )
 
     col3, col4 = st.columns(2)
     with col3:
