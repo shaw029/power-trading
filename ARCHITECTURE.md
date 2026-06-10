@@ -45,11 +45,11 @@ Phase 3 extends the framework beyond virtual trading to physical asset dispatch.
 
 The BESS strategy decomposes the trading day into three settlement layers, each targeting a different liquidity venue:
 
-1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal charge/discharge schedule against an ML-generated DA price *forecast*, maximising `Σ [(discharge_h − charge_h) × forecast_price_h − (discharge_h + charge_h) × degradation_cost_per_mwh] × resolution_h` subject to SOC, power, and efficiency constraints. Degradation cost is included in the primal objective so the solver avoids unprofitable cycling — not applied only as a post-hoc deduction. Revenue is then settled against the *actual* cleared DA price, so forecast quality directly drives PnL. The schedule length adapts to the configured `resolution_h` (BESS config key; e.g. 48 half-hourly periods or 24 hourly).
+1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal charge/discharge schedule against an ML-generated DA price *forecast*, maximising `Σ [(discharge_h − charge_h) × forecast_price_h − (discharge_h + charge_h) × degradation_cost_per_mwh] × resolution_h` subject to SOC, power, efficiency, and optional cycle-cap constraints. Degradation cost is included in the primal objective so the solver avoids unprofitable cycling — not applied only as a post-hoc deduction. Revenue is then settled against the *actual* cleared DA price, so forecast quality directly drives PnL. The schedule length adapts to the configured `resolution_h` (BESS config key; e.g. 48 half-hourly periods or 24 hourly). The LP respects a configurable **SOC operating window** (`min_soc_pct`–`max_soc_pct`, default 10–90%) to protect cell longevity; the usable capacity is therefore `(max_soc_pct − min_soc_pct) × capacity_mwh`. An optional `target_daily_cycles` cap limits total discharge energy per day (`Σ discharge_h × duration_h ≤ target_daily_cycles × capacity_mwh`). The end-of-day SOC is unconstrained — the LP ends wherever it is optimal — and the actual ending SOC is **carried forward** as the starting SOC for the next day's LP, so days are not treated independently.
 
 2. **Intraday (Rules-Based Rebalancing):** During the delivery window, a rules engine adjusts the DA schedule in real time against Market Index Prices:
    - **Rule 1 — DA Dispatch Execution:** Execute the committed schedule; any shortfall from SOC constraints settles at the imbalance price.
-   - **Rule 2 — SOC Drift Rebalance:** If actual SOC drifts more than 5% from the DA-implied trajectory, buy/sell at MID to realign.
+   - **Rule 2 — SOC Drift Rebalance:** If actual SOC drifts more than `soc_drift_tolerance` (default 5% of capacity) from the DA-implied trajectory, buy/sell at MID to realign. All rebalancing respects the `min_soc_pct`/`max_soc_pct` window.
    - **Rule 3 — Spread Improvement:** If spare capacity exists and MID exceeds DA + degradation cost (or the inverse for charging), take the incremental trade.
 
 3. **Imbalance Settlement (Ex-Post):** Any volume that could not be physically delivered or absorbed — because SOC hit a bound — is settled at the system imbalance price (SSP/SBP), appearing as a residual cost or credit.
@@ -64,10 +64,12 @@ The `BESSAsset` dataclass tracks internal state across the trading day:
 | `power_mw` | Maximum charge/discharge rate |
 | `charge_efficiency` | Fraction of energy stored in the battery during charging |
 | `discharge_efficiency` | Fraction of stored energy delivered to the grid during discharge |
-| `degradation_cost_per_mwh` | £/MWh throughput cost representing battery wear |
-| `initial_soc_pct` | Starting state-of-charge as a fraction of capacity |
+| `degradation_cost_per_mwh` | £/MWh throughput cost representing battery wear, applied symmetrically to both charge and discharge volume |
+| `initial_soc_pct` | Starting state-of-charge for the **first day** only; subsequent days inherit the actual end-of-day SOC from the previous day |
+| `min_soc_pct` | Lower SOC operating bound (default 10%) — LP and intraday engine never discharge below this level |
+| `max_soc_pct` | Upper SOC operating bound (default 90%) — LP and intraday engine never charge above this level |
 
-The asset enforces physical feasibility: `charge()` and `discharge()` raise if power or SOC limits are violated, and `can_charge()`/`can_discharge()` allow the intraday manager to test feasibility before acting.
+The asset enforces physical feasibility: `charge()` and `discharge()` raise if power or SOC window limits are violated, and `can_charge()`/`can_discharge()` allow the intraday manager to test feasibility before acting. The effective usable capacity is `(max_soc_pct − min_soc_pct) × capacity_mwh`.
 
 ### PnL Decomposition
 

@@ -159,12 +159,15 @@ The `bess` block defines battery asset parameters (used when `strategy_type: "be
 bess:
   capacity_mwh: 100.0              # total energy storage capacity (MWh)
   power_mw: 50.0                   # max charge/discharge rate (MW)
-  charge_efficiency: 0.94           # fraction stored during charging
+  charge_efficiency: 0.94          # fraction stored during charging
   discharge_efficiency: 0.94       # fraction delivered during discharge
   degradation_cost_per_mwh: 8.50   # £/MWh throughput cost for battery wear
-  initial_soc_pct: 0.50            # starting state-of-charge (0.0–1.0)
+  initial_soc_pct: 0.50            # first-day starting SOC; subsequent days carry over
+  min_soc_pct: 0.10                # lower SOC operating bound (never discharge below)
+  max_soc_pct: 0.90                # upper SOC operating bound (never charge above)
   resolution_h: 1.0                # dispatch interval in hours (1 = hourly)
-  soc_drift_tolerance: 0.05        # max SOC drift before intraday rebalance (0.0–1.0)
+  soc_drift_tolerance: 0.05        # max SOC drift before intraday rebalance (fraction of capacity)
+  target_daily_cycles: 1.5         # max daily discharge energy as a multiple of capacity; null disables
 ```
 
 | Key | Description |
@@ -173,9 +176,12 @@ bess:
 | `power_mw` | Maximum instantaneous power for charge or discharge |
 | `charge_efficiency` | Fraction of energy stored in the battery during charging (0.0–1.0) |
 | `discharge_efficiency` | Fraction of stored energy delivered to the grid during discharge (0.0–1.0) |
-| `degradation_cost_per_mwh` | Cost per MWh of throughput, representing battery wear |
-| `initial_soc_pct` | State of charge at the start of each day, as a fraction of capacity |
-| `soc_drift_tolerance` | Maximum allowed SOC deviation (fraction of capacity) from the DA schedule before intraday rebalancing triggers |
+| `degradation_cost_per_mwh` | Cost per MWh of throughput (charge + discharge), representing battery wear |
+| `initial_soc_pct` | State of charge used on the **first backtest day only**; subsequent days start from the previous day's actual ending SOC |
+| `min_soc_pct` | Lower SOC operating bound as a fraction of capacity. The LP and intraday engine will not discharge below this level |
+| `max_soc_pct` | Upper SOC operating bound as a fraction of capacity. The LP and intraday engine will not charge above this level |
+| `soc_drift_tolerance` | Maximum SOC deviation (fraction of capacity) from the DA-implied trajectory before the intraday rebalancing rule triggers |
+| `target_daily_cycles` | Optional cap on daily discharge energy: `Σ discharge × duration ≤ target_daily_cycles × capacity_mwh`. Set to `null` to disable |
 
 ## Project Structure
 
