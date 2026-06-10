@@ -52,5 +52,7 @@ bess:
   discharge_efficiency: 0.94
   degradation_cost_per_mwh: 8.50
   initial_soc_pct: 0.50
+  min_soc_pct: 0.10
+  max_soc_pct: 0.90
   resolution_h: 1.0
   soc_drift_tolerance: 0.05

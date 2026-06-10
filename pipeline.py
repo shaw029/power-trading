@@ -372,6 +372,8 @@ def _run_bess_pipeline(config: dict) -> dict:
         discharge_efficiency=bess_cfg["discharge_efficiency"],
         degradation_cost_per_mwh=bess_cfg["degradation_cost_per_mwh"],
         initial_soc_pct=bess_cfg["initial_soc_pct"],
+        min_soc_pct=bess_cfg.get("min_soc_pct", 0.0),
+        max_soc_pct=bess_cfg.get("max_soc_pct", 1.0),
     )
 
     # Step 5: Daily BESS simulation using ML forecasts

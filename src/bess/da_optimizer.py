@@ -19,7 +19,9 @@ def optimize_da_schedule(
 
     charge = [pulp.LpVariable(f"charge_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
     discharge = [pulp.LpVariable(f"discharge_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
-    soc = [pulp.LpVariable(f"soc_{h}", lowBound=0, upBound=asset.capacity_mwh) for h in range(n_periods + 1)]
+    min_soc_mwh = asset.min_soc_pct * asset.capacity_mwh
+    max_soc_mwh = asset.max_soc_pct * asset.capacity_mwh
+    soc = [pulp.LpVariable(f"soc_{h}", lowBound=min_soc_mwh, upBound=max_soc_mwh) for h in range(n_periods + 1)]
 
     prob += pulp.lpSum(
         (discharge[h] - charge[h]) * da_price_forecast[h] * duration_h

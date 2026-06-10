@@ -70,11 +70,11 @@ class TestLimitEnforcement:
             battery.discharge(mw=51, duration_h=1.0)
 
     def test_charge_exceeds_capacity(self, battery: BESSAsset) -> None:
-        with pytest.raises(ValueError, match="exceed capacity"):
+        with pytest.raises(ValueError, match="exceed max SOC"):
             battery.charge(mw=50, duration_h=2.0)
 
     def test_discharge_below_zero(self, battery: BESSAsset) -> None:
-        with pytest.raises(ValueError, match="deplete SOC"):
+        with pytest.raises(ValueError, match="breach min SOC"):
             battery.discharge(mw=50, duration_h=1.5)
 
     def test_charge_at_exact_power_limit(self, battery: BESSAsset) -> None:
