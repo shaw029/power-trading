@@ -6,7 +6,8 @@ def _compute_implied_soc(
     initial_soc_mwh: float,
     charge_efficiency: float,
     discharge_efficiency: float,
-    capacity_mwh: float,
+    min_soc_mwh: float,
+    max_soc_mwh: float,
     duration_h: float = 1.0,
 ) -> list[float]:
     soc = [initial_soc_mwh]
@@ -15,7 +16,7 @@ def _compute_implied_soc(
             next_soc = soc[-1] - mw * duration_h / discharge_efficiency
         else:
             next_soc = soc[-1] + abs(mw) * duration_h * charge_efficiency
-        soc.append(max(0.0, min(next_soc, capacity_mwh)))
+        soc.append(max(min_soc_mwh, min(next_soc, max_soc_mwh)))
     return soc
 
 
@@ -41,8 +42,8 @@ def run_intraday_session(
     soc_drift_tolerance = config.get("soc_drift_tolerance", 0.05)
 
     implied_soc = _compute_implied_soc(
-        da_schedule, asset._soc_mwh, asset.charge_efficiency, asset.discharge_efficiency, asset.capacity_mwh,
-        duration_h,
+        da_schedule, asset._soc_mwh, asset.charge_efficiency, asset.discharge_efficiency,
+        asset._min_soc_mwh, asset._max_soc_mwh, duration_h,
     )
 
     da_revenue = 0.0
@@ -61,7 +62,8 @@ def run_intraday_session(
 
         # Rule 1: execute DA schedule dispatch
         if mw > 0:
-            max_mw = max(0.0, min(mw, asset._soc_mwh * asset.discharge_efficiency / duration_h, asset.power_mw))
+            available_mwh = (asset._soc_mwh - asset._min_soc_mwh) * asset.discharge_efficiency
+            max_mw = max(0.0, min(mw, available_mwh / duration_h, asset.power_mw))
             if max_mw > 0:
                 asset.discharge(max_mw, duration_h)
             shortfall = mw - max_mw
@@ -73,7 +75,7 @@ def run_intraday_session(
 
         elif mw < 0:
             target = abs(mw)
-            headroom = asset.capacity_mwh - asset._soc_mwh
+            headroom = asset._max_soc_mwh - asset._soc_mwh
             max_mw = max(
                 0.0,
                 min(

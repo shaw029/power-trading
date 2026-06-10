@@ -11,7 +11,8 @@ class TestComputeImpliedSocClamping:
             initial_soc_mwh=80.0,
             charge_efficiency=0.9,
             discharge_efficiency=0.95,
-            capacity_mwh=100.0,
+            min_soc_mwh=0.0,
+            max_soc_mwh=100.0,
         )
         assert all(s <= 100.0 for s in soc)
         assert soc[-1] == pytest.approx(100.0)
@@ -22,7 +23,8 @@ class TestComputeImpliedSocClamping:
             initial_soc_mwh=20.0,
             charge_efficiency=0.9,
             discharge_efficiency=0.95,
-            capacity_mwh=100.0,
+            min_soc_mwh=0.0,
+            max_soc_mwh=100.0,
         )
         assert all(s >= 0.0 for s in soc)
         assert soc[-1] == pytest.approx(0.0)
