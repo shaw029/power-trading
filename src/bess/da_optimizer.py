@@ -42,7 +42,7 @@ def optimize_da_schedule(
         )
 
     if target_daily_cycles is not None:
-        prob += pulp.lpSum(discharge[h] for h in periods) <= target_daily_cycles * asset.capacity_mwh
+        prob += pulp.lpSum(discharge[h] * duration_h for h in periods) <= target_daily_cycles * asset.capacity_mwh
 
     try:
         import highspy  # noqa: F401

@@ -343,7 +343,7 @@ class TestBESSPipelineIntegration:
 
         captured_forecasts = []
 
-        def capturing_optimize(da_price_forecast, asset, duration_h=1.0):
+        def capturing_optimize(da_price_forecast, asset, duration_h=1.0, target_daily_cycles=None):
             captured_forecasts.append(list(da_price_forecast))
             return [0.0] * len(da_price_forecast)
 

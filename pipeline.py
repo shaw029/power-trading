@@ -413,7 +413,12 @@ def _run_bess_pipeline(config: dict) -> dict:
         carry_soc = prev_soc_pct if prev_soc_pct is not None else bess_cfg["initial_soc_pct"]
         asset.reset(soc_pct=carry_soc)
         da_prices = day_df["day_ahead_price"].tolist()
-        schedule = optimize_da_schedule(da_price_forecast=forecast, asset=asset, duration_h=duration_h)
+        schedule = optimize_da_schedule(
+            da_price_forecast=forecast,
+            asset=asset,
+            duration_h=duration_h,
+            target_daily_cycles=bess_cfg.get("target_daily_cycles"),
+        )
         result = run_intraday_session(
             da_schedule=schedule,
             da_price_actual=da_prices,

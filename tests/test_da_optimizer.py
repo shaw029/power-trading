@@ -150,6 +150,37 @@ class TestDAOptimizer:
         net_dispatch = sum(schedule)
         assert net_dispatch < 0, "Should net charge when all prices are negative (paid to consume)"
 
+    def test_target_daily_cycles_limits_discharge_energy(self, battery: BESSAsset) -> None:
+        # Volatile prices would drive multiple cycles if left unconstrained.
+        prices = [10.0, 90.0] * 12
+        target = 0.5
+        schedule = optimize_da_schedule(prices, battery, target_daily_cycles=target)
+
+        discharge_energy = sum(mw for mw in schedule if mw > 0)
+        assert discharge_energy <= target * battery.capacity_mwh + 1e-6
+
+    def test_target_daily_cycles_constraint_uses_energy_not_power(self, battery: BESSAsset) -> None:
+        # With half-hour periods, summing power (MW) instead of energy (MWh) would
+        # let twice as much energy through. Verify the limit is enforced in MWh.
+        duration_h = 0.5
+        prices = [10.0, 90.0] * 24  # 48 half-hour periods
+        target = 0.5
+        schedule = optimize_da_schedule(
+            prices, battery, duration_h=duration_h, target_daily_cycles=target,
+        )
+
+        discharge_energy = sum(mw * duration_h for mw in schedule if mw > 0)
+        assert discharge_energy <= target * battery.capacity_mwh + 1e-6
+
+    def test_higher_cycle_target_allows_more_throughput(self, battery: BESSAsset) -> None:
+        prices = [10.0, 90.0] * 12
+        tight = optimize_da_schedule(prices, battery, target_daily_cycles=0.25)
+        loose = optimize_da_schedule(prices, battery, target_daily_cycles=1.0)
+
+        tight_energy = sum(mw for mw in tight if mw > 0)
+        loose_energy = sum(mw for mw in loose if mw > 0)
+        assert loose_energy > tight_energy + 1e-6
+
     def test_terminal_soc_within_bounds(self, battery: BESSAsset) -> None:
         prices = [15.0, 85.0, 20.0, 90.0, 10.0, 80.0] * 4
         schedule = optimize_da_schedule(prices, battery)
