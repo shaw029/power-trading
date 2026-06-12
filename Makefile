@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck test check install-hooks
+.PHONY: lint format typecheck test check install-hooks dashboard
 
 lint:
 	flake8 .
@@ -14,6 +14,10 @@ test:
 
 # Run all formatting, static analysis, and tests — mirrors the CI pipeline exactly
 check: format lint typecheck test
+
+# Launch the interactive Streamlit dashboard
+dashboard:
+	streamlit run app.py
 
 # Install the git pre-commit hook (run once after cloning)
 install-hooks:

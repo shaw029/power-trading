@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from plotly.subplots import make_subplots
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -30,13 +31,6 @@ def _naive_da_forecast(price_history, lookback=7, n_hours=24):
 st.set_page_config(page_title="Power Trading Dashboard", layout="wide")
 
 PROCESSED_DATA = Path(os.environ.get("PT_PROCESSED_DATA", "data/processed/processed_data.parquet"))
-VIRTUAL_PNL = Path(os.environ.get("PT_VIRTUAL_PNL", "artifacts/da_positioning/xgb_wf_v1/virtual/trading/pnl.csv"))
-VIRTUAL_SIGNALS = Path(
-    os.environ.get("PT_VIRTUAL_SIGNALS", "artifacts/da_positioning/xgb_wf_v1/virtual/trading/signals.csv")
-)
-VIRTUAL_PREDICTIONS = Path(
-    os.environ.get("PT_VIRTUAL_PREDICTIONS", "artifacts/da_positioning/xgb_wf_v1/virtual/trading/predictions.csv")
-)
 CONFIG_PATH = Path(__file__).resolve().parent / "configs" / "config.yaml"
 CONFIG_FALLBACK_PATH = Path(__file__).resolve().parent / "configs" / "config.example.yaml"
 
@@ -55,20 +49,6 @@ def load_prices() -> pd.DataFrame:
     df["time"] = pd.to_datetime(df["time"], utc=True)
     df = df.set_index("time").sort_index()
     return df
-
-
-@st.cache_data
-def load_virtual_artifacts() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    pnl = pd.read_csv(VIRTUAL_PNL)
-    pnl["time"] = pd.to_datetime(pnl["time"], utc=True)
-
-    signals = pd.read_csv(VIRTUAL_SIGNALS)
-    signals["delivery_time"] = pd.to_datetime(signals["delivery_time"], utc=True)
-
-    predictions = pd.read_csv(VIRTUAL_PREDICTIONS)
-    predictions["time"] = pd.to_datetime(predictions["time"], utc=True)
-
-    return pnl, signals, predictions
 
 
 def available_months(df: pd.DataFrame) -> list[str]:
@@ -287,6 +267,135 @@ def chart_rebalancing(dispatch_df: pd.DataFrame, da_sched_df: pd.DataFrame, samp
     return fig
 
 
+def chart_operation_explorer(
+    prices_hourly: pd.DataFrame,
+    dispatch_df: pd.DataFrame,
+    da_sched_df: pd.DataFrame,
+    min_soc_pct: float = 0.0,
+    max_soc_pct: float = 1.0,
+):
+    """Month-wide operation view with a draggable 24-hour viewport (date rangeslider)."""
+    dispatch = dispatch_df.copy()
+    dispatch["timestamp"] = pd.to_datetime(dispatch["timestamp"])
+    dispatch = dispatch.sort_values("timestamp")
+
+    sched = da_sched_df.copy()
+    sched["timestamp"] = pd.to_datetime(sched["timestamp"])
+    sched_mw = sched.sort_values("timestamp").set_index("timestamp")["da_mw"]
+
+    actual_mw = []
+    decisions = []
+    for _, row in dispatch.iterrows():
+        scheduled = sched_mw.get(row["timestamp"], 0.0)
+        if row["action"] == "discharge":
+            signed = row["mw"]
+            text = f"Discharge {row['mw']:.1f} MW @ £{row['price']:.2f}/MWh"
+        elif row["action"] == "charge":
+            signed = -row["mw"]
+            text = f"Charge {row['mw']:.1f} MW @ £{row['price']:.2f}/MWh"
+        else:
+            signed = 0.0
+            text = "Idle — no DA position"
+        if row["action"] != "idle" and abs(scheduled) - abs(signed) > 1e-6:
+            text += f"<br>Curtailed from {abs(scheduled):.1f} MW scheduled (SOC/power limit)"
+        actual_mw.append(signed)
+        decisions.append(text)
+
+    bar_colors = ["#e74c3c" if mw > 0 else "#2ecc71" if mw < 0 else "#bdc3c7" for mw in actual_mw]
+    times = dispatch["timestamp"]
+
+    # Row 1 is a thin strip that only hosts the rangeslider. Its sole trace is
+    # day-number text, so the slider band renders dates as its background and,
+    # being row 1, the slider sits at the top of the figure.
+    fig = make_subplots(
+        rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.095,
+        subplot_titles=("", "Market Prices", "Dispatch Decisions", "State of Charge"),
+        row_heights=[0.02, 0.327, 0.327, 0.326],
+    )
+
+    day_marks = pd.date_range(
+        times.iloc[0].normalize(), times.iloc[-1].normalize(), freq="D"
+    ) + pd.Timedelta(hours=12)
+    fig.add_trace(go.Scatter(
+        x=day_marks, y=[0] * len(day_marks),
+        mode="text", text=[str(t.day) for t in day_marks],
+        textfont=dict(size=10, color="#7f8c8d"),
+        showlegend=False, hoverinfo="skip",
+    ), row=1, col=1)
+    # Strip y-range excludes the text (y=0) so it only appears inside the
+    # rangeslider band, whose miniature autoranges to the data independently.
+    fig.update_yaxes(visible=False, fixedrange=True, range=[5, 6], row=1, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=prices_hourly.index, y=prices_hourly["day_ahead_price"].values,
+        name="DA Price", line=dict(color="#1f77b4", width=2),
+    ), row=2, col=1)
+    fig.add_trace(go.Scatter(
+        x=prices_hourly.index, y=prices_hourly["mid_price"].values,
+        name="MID Price", line=dict(color="#f39c12", width=1.5),
+    ), row=2, col=1)
+    fig.add_trace(go.Scatter(
+        x=prices_hourly.index, y=prices_hourly["system_buy_price"].values,
+        name="Imbalance (SBP)", line=dict(color="#95a5a6", width=1, dash="dot"),
+    ), row=2, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=sched_mw.index, y=sched_mw.values, name="DA Schedule (LP)",
+        line=dict(color="#1f77b4", width=2, shape="hvh"),
+    ), row=3, col=1)
+    fig.add_trace(go.Bar(
+        x=times, y=actual_mw, name="Final Dispatch",
+        marker_color=bar_colors, opacity=0.7,
+        width=3600 * 1000 * 0.7,  # bar width in ms: 70% of an hour
+        customdata=decisions,
+        hovertemplate="%{x|%d %b %H:%M}<br>%{customdata}<extra></extra>",
+    ), row=3, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=times, y=dispatch["soc_after"].values * 100,
+        name="SOC", mode="lines+markers",
+        line=dict(color="#8e44ad", width=2),
+        marker=dict(size=5, color=bar_colors),
+        customdata=decisions,
+        hovertemplate="%{x|%d %b %H:%M}<br>SOC %{y:.1f}%<br>%{customdata}<extra></extra>",
+    ), row=4, col=1)
+    fig.add_hline(
+        y=min_soc_pct * 100, line_dash="dot", line_color="#e74c3c",
+        annotation_text=f"Min SOC ({min_soc_pct * 100:.0f}%)",
+        annotation_position="bottom right", row=4, col=1,
+    )
+    fig.add_hline(
+        y=max_soc_pct * 100, line_dash="dot", line_color="#e74c3c",
+        annotation_text=f"Max SOC ({max_soc_pct * 100:.0f}%)",
+        annotation_position="top right", row=4, col=1,
+    )
+
+    # Open on the first simulated day; drag the date strip at the top to scroll
+    window_start = times.iloc[0].normalize()
+    window_end = window_start + pd.Timedelta(hours=24)
+    fig.update_xaxes(range=[window_start.isoformat(), window_end.isoformat()])
+    # rangemode "auto" lets the slider miniature autorange onto the date text,
+    # which the strip itself keeps out of view via its [5, 6] y-range
+    fig.update_xaxes(
+        rangeslider=dict(visible=True, thickness=0.05, yaxis=dict(rangemode="auto")),
+        row=1, col=1,
+    )
+    for ann in fig.layout.annotations:
+        if ann.text == "Market Prices":
+            ann.update(y=ann.y - 0.022)
+
+    fig.update_yaxes(title_text="£/MWh", row=2, col=1)
+    fig.update_yaxes(title_text="MW (+ discharge / − charge)", row=3, col=1)
+    fig.update_yaxes(title_text="SOC (%)", range=[0, 105], row=4, col=1)
+    fig.update_layout(
+        template="plotly_white", height=850,
+        legend=dict(x=0, y=1.05, orientation="h"),
+        hovermode="x unified",
+        bargap=0,
+    )
+    return fig
+
+
 def chart_pnl_waterfall(results_df: pd.DataFrame):
     components = [
         ("DA Revenue", results_df["da_revenue"].sum()),
@@ -316,98 +425,11 @@ def chart_pnl_waterfall(results_df: pd.DataFrame):
     return fig
 
 
-# ── Virtual Trading charts ────────────────────────────────────────────────────
-
-def chart_virtual_cumulative_pnl(pnl_df: pd.DataFrame):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=pnl_df["time"], y=pnl_df["cumulative_pnl"],
-        mode="lines", name="Cumulative PnL",
-        line=dict(color="#1f77b4", width=2),
-        fill="tozeroy", fillcolor="rgba(31,119,180,0.1)",
-    ))
-    fig.update_layout(
-        title="Cumulative PnL — Virtual Trading",
-        xaxis_title="Date", yaxis_title="£",
-        template="plotly_white", height=400,
-    )
-    return fig
-
-
-def chart_virtual_signal_distribution(signals_df: pd.DataFrame):
-    counts = signals_df["direction"].value_counts()
-    colors = {"BUY": "#2ecc71", "SELL": "#e74c3c", "NEUTRAL": "#95a5a6"}
-    fig = go.Figure(go.Bar(
-        x=counts.index.tolist(),
-        y=counts.values,
-        marker_color=[colors.get(d, "#999") for d in counts.index],
-    ))
-    fig.update_layout(
-        title="Signal Distribution",
-        xaxis_title="Direction", yaxis_title="Count",
-        template="plotly_white", height=350,
-    )
-    return fig
-
-
-def chart_virtual_daily_pnl(pnl_df: pd.DataFrame):
-    daily = pnl_df.set_index("time").resample("1D")["pnl"].sum().reset_index()
-    daily = daily[daily["pnl"] != 0]
-    colors = ["#2ecc71" if v >= 0 else "#e74c3c" for v in daily["pnl"]]
-    fig = go.Figure(go.Bar(
-        x=daily["time"], y=daily["pnl"], marker_color=colors,
-    ))
-    fig.update_layout(
-        title="Daily PnL — Virtual Trading",
-        xaxis_title="Date", yaxis_title="£",
-        template="plotly_white", height=350,
-    )
-    return fig
-
-
-def chart_virtual_spread_scatter(predictions_df: pd.DataFrame):
-    fig = go.Figure()
-    fig.add_trace(go.Scattergl(
-        x=predictions_df["predicted_spread"],
-        y=predictions_df["actual_spread"],
-        mode="markers",
-        marker=dict(size=3, color="#1f77b4", opacity=0.4),
-        name="Periods",
-    ))
-    spread_range = [
-        min(predictions_df["predicted_spread"].min(), predictions_df["actual_spread"].min()),
-        max(predictions_df["predicted_spread"].max(), predictions_df["actual_spread"].max()),
-    ]
-    fig.add_trace(go.Scatter(
-        x=spread_range, y=spread_range,
-        mode="lines", line=dict(color="grey", dash="dash", width=1),
-        name="Perfect forecast",
-    ))
-    fig.update_layout(
-        title="Predicted vs Actual Spread",
-        xaxis_title="Predicted Spread (£/MWh)",
-        yaxis_title="Actual Spread (£/MWh)",
-        template="plotly_white", height=400,
-    )
-    return fig
-
-
 # ── Main app ──────────────────────────────────────────────────────────────────
 
 def main():
-    st.title("Power Trading Dashboard")
-
-    prices = load_prices()
-
-    strategy = st.sidebar.selectbox(
-        "Strategy",
-        ["Phase 3: Physical BESS", "Phase 2: Virtual Trading"],
-    )
-
-    if strategy == "Phase 3: Physical BESS":
-        render_bess(prices)
-    else:
-        render_virtual(prices)
+    st.title("BESS Dispatch Dashboard")
+    render_bess(load_prices())
 
 
 def render_bess(prices: pd.DataFrame):
@@ -441,7 +463,7 @@ def render_bess(prices: pd.DataFrame):
         )
 
     if st.sidebar.button("Run Simulation", type="primary"):
-        lookback = bess_cfg["price_history_lookback_days"]
+        lookback = bess_cfg.get("price_history_lookback_days", 7)
         resolution_h = bess_cfg.get("resolution_h", 1.0)
         with st.spinner("Running BESS simulation..."):
             results_df, dispatch_df, da_sched_df = run_bess_simulation(
@@ -490,7 +512,10 @@ def render_bess(prices: pd.DataFrame):
     period = pd.Period(month_str, freq="M")
     start = period.start_time.tz_localize("UTC")
     end = period.end_time.tz_localize("UTC")
-    hourly = cached_prices.loc[start:end, ["day_ahead_price"]].resample("1h").mean().dropna()
+    hourly = (
+        cached_prices.loc[start:end, ["day_ahead_price", "mid_price", "system_buy_price"]]
+        .resample("1h").mean().dropna()
+    )
     valid_dates = set(da_sched_df["date"].unique())
     valid_hourly = hourly[[d in valid_dates for d in hourly.index.date]]
     daily_spread = valid_hourly.groupby(valid_hourly.index.date)["day_ahead_price"].apply(
@@ -504,10 +529,7 @@ def render_bess(prices: pd.DataFrame):
     col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(
-            chart_price_dispatch(
-                cached_prices.loc[start:end, ["day_ahead_price"]].resample("1h").mean().dropna(),
-                da_sched_df, sample_date,
-            ),
+            chart_price_dispatch(hourly, da_sched_df, sample_date),
             use_container_width=True,
         )
     with col2:
@@ -530,66 +552,24 @@ def render_bess(prices: pd.DataFrame):
     with col4:
         st.plotly_chart(chart_pnl_waterfall(results_df), use_container_width=True)
 
-
-def render_virtual(prices: pd.DataFrame):
-    if not VIRTUAL_PNL.exists():
-        st.error("Virtual trading artifacts not found. Run the pipeline first.")
-        return
-
-    pnl_raw, signals_raw, predictions_raw = load_virtual_artifacts()
-
-    # Determine available months from the PnL data
-    pnl_raw["_period"] = pnl_raw["time"].dt.to_period("M")
-    avail = sorted(pnl_raw["_period"].unique(), key=str)
-    month_labels = [str(m) for m in avail]
-    selected_month = st.sidebar.selectbox("Month", month_labels, index=0)
-
-    if st.sidebar.button("Run Simulation", type="primary"):
-        st.session_state["virtual_month"] = selected_month
-
-    month = st.session_state.get("virtual_month", selected_month)
-    period = pd.Period(month, freq="M")
-
-    # Filter to selected month
-    pnl_df = pnl_raw[pnl_raw["_period"] == period].copy()
-    pnl_df["cumulative_pnl"] = pnl_df["pnl"].cumsum()
-
-    signals_df = signals_raw[
-        signals_raw["delivery_time"].dt.to_period("M") == period
-    ].copy()
-
-    predictions_df = predictions_raw[
-        predictions_raw["time"].dt.to_period("M") == period
-    ].copy()
-
-    if pnl_df.empty:
-        st.warning("No virtual trading data available for the selected month.")
-        return
-
-    # KPIs
-    total_pnl = pnl_df["pnl"].sum()
-    n_trades = int((signals_df["signal"] != 0).sum())
-    win_periods = int((pnl_df["pnl"] > 0).sum())
-    loss_periods = int((pnl_df["pnl"] < 0).sum())
-    win_rate = win_periods / max(win_periods + loss_periods, 1) * 100
-
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Net PnL", f"£{total_pnl:,.0f}")
-    k2.metric("Active Trades", f"{n_trades}")
-    k3.metric("Win Rate", f"{win_rate:.1f}%")
-    k4.metric("Best Day", f"£{pnl_df.set_index('time').resample('1D')['pnl'].sum().max():,.0f}")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.plotly_chart(chart_virtual_cumulative_pnl(pnl_df), use_container_width=True)
-    with col2:
-        st.plotly_chart(chart_virtual_signal_distribution(signals_df), use_container_width=True)
-
-    col3, col4 = st.columns(2)
-    with col3:
-        st.plotly_chart(chart_virtual_daily_pnl(pnl_df), use_container_width=True)
-    with col4:
-        st.plotly_chart(chart_virtual_spread_scatter(predictions_df), use_container_width=True)
+    # Operation explorer: a 24-hour viewport dragged across the month via the date strip
+    st.markdown("---")
+    st.subheader("Dispatch Explorer")
+    st.caption(
+        "Drag the date strip at the top of the chart to scroll through the month, or "
+        "stretch its handles to view any time span (it opens on the first day). All three "
+        "panels move together: market prices (top), the LP day-ahead plan versus what was "
+        "actually dispatched (middle), and the resulting state of charge (bottom). Hover "
+        "any hour to see the decision taken."
+    )
+    st.plotly_chart(
+        chart_operation_explorer(
+            hourly, dispatch_df, da_sched_df,
+            min_soc_pct=soc_bounds["min_soc_pct"],
+            max_soc_pct=soc_bounds["max_soc_pct"],
+        ),
+        use_container_width=True,
+    )
 
 
 if __name__ == "__main__":

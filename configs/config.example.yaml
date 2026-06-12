@@ -57,3 +57,4 @@ bess:
   resolution_h: 1.0
   soc_drift_tolerance: 0.05
   target_daily_cycles: 1.5   # max average daily cycling target; null disables the limit
+  price_history_lookback_days: 7   # days of DA price history behind the naive forecast

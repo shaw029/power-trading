@@ -103,6 +103,21 @@ All notebooks live in `notebooks/`.
 
 ---
 
+## Interactive Dashboard
+
+A Streamlit dashboard for understanding the BESS dispatch model, month by month, without touching a notebook:
+
+```bash
+make dashboard          # or: streamlit run app.py
+```
+
+Pick a month, tune the asset parameters in the sidebar (capacity, power, efficiencies, SOC bounds, degradation cost, cycle cap), and the dashboard re-runs the full dispatch simulation live from `data/processed/processed_data.parquet`. It shows:
+
+- **Monthly overview** — price/dispatch overlay for the highest-spread day, full-month SOC tracker, DA-schedule-vs-final-dispatch rebalancing impact, and the PnL waterfall (DA revenue → intraday → imbalance → degradation → net).
+- **Dispatch Explorer** — a date scroller that slides a window of any span (one day by default) across the month. Three time-aligned panels show market prices (DA, MID, imbalance), the LP day-ahead plan versus the dispatch actually executed, and the resulting state of charge; hovering any hour reveals the decision taken, including curtailments against SOC or power limits.
+
+---
+
 ## Docs
 
 | Document | Contents |
