@@ -12,6 +12,7 @@ Run with ``make dashboard`` or ``streamlit run dashboard/app.py``.
 """
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -227,6 +228,13 @@ def run_bess_simulation(
             entry["hour"] = entry["period"]
             entry["timestamp"] = day_df.index[entry["period"]]
         all_dispatch_logs.extend(result["dispatch_log"])
+
+        if len(schedule) != len(forecast):
+            warnings.warn(
+                f"Skipping day-ahead schedule for {date}: schedule length "
+                f"{len(schedule)} does not match forecast length {len(forecast)}."
+            )
+            continue
 
         for h, mw in enumerate(schedule):
             all_da_schedules.append({
