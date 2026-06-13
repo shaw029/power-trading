@@ -253,11 +253,18 @@ def chart_operation_explorer(
 
 
 def chart_pnl_waterfall(results_df: pd.DataFrame):
+    """Trader's View PnL waterfall.
+
+    DA revenue is split into the volume physically delivered against the day-ahead
+    schedule and the financial spread captured by netting that schedule at MID
+    (buyback/sellback and alpha override). Physical intraday re-trading, imbalance
+    settlement and degradation then bridge to the net result.
+    """
     components = [
-        ("DA Revenue", results_df["da_revenue"].sum()),
-        ("Financial Netting", results_df["financial_netting_pnl"].sum()),
+        ("Baseline DA Delivery", results_df["da_revenue_delivered"].sum()),
+        ("Financial Spread", results_df["financial_spread_captured"].sum()),
         ("Physical Intraday", results_df["physical_dispatch_pnl"].sum()),
-        ("Imbalance PnL", results_df["imbalance_pnl"].sum()),
+        ("Imbalance Penalty", results_df["imbalance_pnl"].sum()),
         ("Degradation", -results_df["degradation_cost"].sum()),
     ]
     net = sum(v for _, v in components)
@@ -272,11 +279,11 @@ def chart_pnl_waterfall(results_df: pd.DataFrame):
         text=[f"£{v:,.0f}" for v in values],
         increasing=dict(marker_color="#2ecc71"),
         decreasing=dict(marker_color="#e74c3c"),
-        totals=dict(marker_color="#3498db"),
+        totals=dict(marker_color="#2ecc71" if net >= 0 else "#e74c3c"),
         connector_line_color="rgba(0,0,0,0)",
     ))
     fig.update_layout(
-        title="PnL Waterfall — BESS Strategy",
+        title="PnL Waterfall — Trader's View",
         yaxis_title="£", template="plotly_white", height=450,
     )
     return fig

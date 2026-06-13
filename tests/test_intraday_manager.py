@@ -49,7 +49,7 @@ class TestNoRebalance:
             config={"degradation_cost_per_mwh": 5.0},
         )
 
-        assert result["da_revenue"] == pytest.approx(200.0)
+        assert result["da_revenue_delivered"] == pytest.approx(200.0)
         assert result["intraday_pnl"] == pytest.approx(0.0)
         assert result["imbalance_pnl"] == pytest.approx(0.0)
         assert result["total_degradation_cost"] == pytest.approx(100.0)
@@ -75,7 +75,7 @@ class TestSpreadImprovement:
             config={"degradation_cost_per_mwh": 2.0},
         )
 
-        assert result["da_revenue"] == pytest.approx(46.0 * 40.0)
+        assert result["da_revenue_delivered"] == pytest.approx(46.0 * 40.0)
         assert result["intraday_pnl"] == pytest.approx(4.0 * 50.0)
         assert result["imbalance_pnl"] == pytest.approx(0.0)
 
@@ -111,7 +111,7 @@ class TestHalfHourlyResolution:
             config={"degradation_cost_per_mwh": 5.0, "resolution_h": 0.5},
         )
 
-        assert result["da_revenue"] == pytest.approx(10 * 0.5 * 50 + (-10) * 0.5 * 30)
+        assert result["da_revenue_delivered"] == pytest.approx(10 * 0.5 * 50 + (-10) * 0.5 * 30)
         assert result["intraday_pnl"] == pytest.approx(0.0)
         assert result["imbalance_pnl"] == pytest.approx(0.0)
         assert result["total_degradation_cost"] == pytest.approx(5.0 * 5.0 + 5.0 * 5.0)
@@ -138,7 +138,7 @@ class TestImbalanceFallback:
 
         max_mw = 20.0 * 0.95
         shortfall = 30.0 - max_mw
-        assert result["da_revenue"] == pytest.approx(30.0 * 50.0)
+        assert result["da_revenue_delivered"] == pytest.approx(30.0 * 50.0)
         assert result["imbalance_pnl"] == pytest.approx(-shortfall * 60.0)
         assert result["dispatch_log"][0]["mw"] == pytest.approx(max_mw)
 
@@ -160,7 +160,7 @@ class TestImbalanceFallback:
 
         max_charge = 10.0 / 0.9
         shortfall = 40.0 - max_charge
-        assert result["da_revenue"] == pytest.approx(-40.0 * 30.0)
+        assert result["da_revenue_delivered"] == pytest.approx(-40.0 * 30.0)
         assert result["imbalance_pnl"] == pytest.approx(shortfall * 18.0)  # uses SSP=18.0
 
 

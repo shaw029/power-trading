@@ -431,7 +431,7 @@ def _run_bess_pipeline(config: dict) -> dict:
         prev_soc_pct = asset.soc_pct
         daily_results.append({
             "date": date,
-            "da_revenue": result["da_revenue"],
+            "da_revenue": result["da_revenue_delivered"] + result["da_revenue_netted"],
             "intraday_pnl": result["intraday_pnl"],
             "imbalance_pnl": result["imbalance_pnl"],
             "degradation_cost": result["total_degradation_cost"],

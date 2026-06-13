@@ -220,7 +220,9 @@ def run_bess_simulation(
 
         daily_results.append({
             "date": pd.Timestamp(date),
-            "da_revenue": result["da_revenue"],
+            "da_revenue_delivered": result["da_revenue_delivered"],
+            "da_revenue_netted": result["da_revenue_netted"],
+            "financial_spread_captured": result["financial_spread_captured"],
             "financial_netting_pnl": result["financial_netting_pnl"],
             "physical_dispatch_pnl": result["physical_dispatch_pnl"],
             "cycles_saved_mwh": result["cycles_saved_mwh"],
@@ -327,8 +329,8 @@ def render_bess(prices: pd.DataFrame):
         return
 
     # KPI row
-    total_da = results_df["da_revenue"].sum()
-    total_financial = results_df["financial_netting_pnl"].sum()
+    total_da = results_df["da_revenue_delivered"].sum()
+    total_financial = results_df["financial_spread_captured"].sum()
     total_physical = results_df["physical_dispatch_pnl"].sum()
     total_imbalance = results_df["imbalance_pnl"].sum()
     total_degradation = results_df["degradation_cost"].sum()
@@ -336,8 +338,8 @@ def render_bess(prices: pd.DataFrame):
     total_cycles_saved = results_df["cycles_saved_mwh"].sum()
 
     k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
-    k1.metric("DA Revenue", f"£{total_da:,.0f}")
-    k2.metric("Financial Netting", f"£{total_financial:,.0f}")
+    k1.metric("Baseline DA Delivery", f"£{total_da:,.0f}")
+    k2.metric("Financial Spread", f"£{total_financial:,.0f}")
     k3.metric("Physical Intraday", f"£{total_physical:,.0f}")
     k4.metric("Imbalance Penalty", f"£{total_imbalance:,.0f}")
     k5.metric("Degradation Cost", f"£{total_degradation:,.0f}")

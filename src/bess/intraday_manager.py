@@ -70,7 +70,8 @@ def run_intraday_session(
     duration_h = config.get("resolution_h", 1.0)
     degradation_cost = config["degradation_cost_per_mwh"]
 
-    da_revenue = 0.0
+    da_revenue_delivered = 0.0
+    da_revenue_netted = 0.0
     financial_netting_pnl = 0.0
     physical_dispatch_pnl = 0.0
     imbalance_pnl = 0.0
@@ -83,8 +84,6 @@ def run_intraday_session(
         log_mw = 0.0
         log_price = 0.0
         log_netted_mwh = 0.0
-
-        da_revenue += mw * duration_h * da_price_actual[h]
 
         # Forward-looking physical guardrails over the remaining locked DA schedule.
         # Required Reserve (R_h): the minimum SOC to hold at this period so every
@@ -128,6 +127,7 @@ def run_intraday_session(
                 window = da_price_actual[h + 1: h + 1 + offset]
                 if window and mid_prices[h] <= max(window) - margin_buy:
                     financial_netting_pnl -= eligible * duration_h * mid_prices[h]
+                    da_revenue_netted += eligible * duration_h * da_price_actual[h]
                     physical_mw = mw - eligible
                     trade_type = "financial_buyback"
                     log_netted_mwh = eligible * duration_h
@@ -143,6 +143,8 @@ def run_intraday_session(
                 window = da_price_actual[h + 1: h + 1 + offset]
                 if window and mid_prices[h] >= min(window) + margin_sell:
                     financial_netting_pnl += eligible * duration_h * mid_prices[h]
+                    # The netted leg is a scheduled charge — its DA value is a cost.
+                    da_revenue_netted -= eligible * duration_h * da_price_actual[h]
                     physical_mw = mw + eligible
                     trade_type = "financial_sellback"
                     log_netted_mwh = eligible * duration_h
@@ -189,6 +191,9 @@ def run_intraday_session(
                     if deficit > 0:
                         financial_netting_pnl -= deficit * hedge_cost
                         asset._soc_mwh += deficit
+                    # The scheduled DA position is resolved financially, not
+                    # physically delivered — book its DA value as netted.
+                    da_revenue_netted += physical_mw * duration_h * da_price_actual[h]
                     physical_mw = 0.0
                     trade_type = "alpha_override"
                     log_action = "discharge"
@@ -198,7 +203,10 @@ def run_intraday_session(
 
         # Physical Execution: dispatch the un-netted DA volume for this period,
         # clamping it so the resulting SOC stays within
-        # [required_reserve, available_headroom].
+        # [required_reserve, available_headroom]. The DA contract for the
+        # scheduled volume settles regardless of any clamping shortfall (which is
+        # priced separately into imbalance_pnl).
+        da_revenue_delivered += physical_mw * duration_h * da_price_actual[h]
         if physical_mw > 0:
             allowed_mwh = (asset._soc_mwh - required_reserve) * asset.discharge_efficiency
             max_mw = max(0.0, min(physical_mw, allowed_mwh / duration_h, asset.power_mw))
@@ -258,8 +266,12 @@ def run_intraday_session(
         if entry["trade_type"] in ("financial_buyback", "financial_sellback", "alpha_override")
     )
 
+    da_revenue = da_revenue_delivered + da_revenue_netted
+
     return {
-        "da_revenue": da_revenue,
+        "da_revenue_delivered": da_revenue_delivered,
+        "da_revenue_netted": da_revenue_netted,
+        "financial_spread_captured": da_revenue_netted + financial_netting_pnl,
         "intraday_pnl": intraday_pnl,
         "financial_netting_pnl": financial_netting_pnl,
         "physical_dispatch_pnl": physical_dispatch_pnl,
