@@ -39,12 +39,6 @@ def run_intraday_session(
     n_periods = len(da_schedule)
     duration_h = config.get("resolution_h", 1.0)
     degradation_cost = config["degradation_cost_per_mwh"]
-    soc_drift_tolerance = config.get("soc_drift_tolerance", 0.05)
-
-    implied_soc = _compute_implied_soc(
-        da_schedule, asset._soc_mwh, asset.charge_efficiency, asset.discharge_efficiency,
-        asset._min_soc_mwh, asset._max_soc_mwh, duration_h,
-    )
 
     da_revenue = 0.0
     intraday_pnl = 0.0
@@ -60,10 +54,30 @@ def run_intraday_session(
 
         da_revenue += mw * duration_h * da_price_actual[h]
 
-        # Rule 1: execute DA schedule dispatch
+        # Forward-looking physical guardrails over the remaining locked DA schedule.
+        # Required Reserve (R_h): the minimum SOC to hold at this period so every
+        #   future DA discharge can be served without breaching min SOC.
+        # Available Headroom (H_h): the maximum SOC to hold at this period so every
+        #   future DA charge can be absorbed without breaching max SOC.
+        required_reserve = asset._min_soc_mwh
+        available_headroom = asset._max_soc_mwh
+        for future_mw in reversed(da_schedule[h + 1:]):
+            if future_mw > 0:
+                # Future discharge draws energy from the pack.
+                drawn = future_mw * duration_h / asset.discharge_efficiency
+                required_reserve += drawn
+                available_headroom = min(asset._max_soc_mwh, available_headroom + drawn)
+            elif future_mw < 0:
+                # Future charge stores energy into the pack.
+                stored = abs(future_mw) * duration_h * asset.charge_efficiency
+                required_reserve = max(asset._min_soc_mwh, required_reserve - stored)
+                available_headroom -= stored
+
+        # Physical Execution: dispatch the DA schedule for this period, clamping the
+        # volume so the resulting SOC stays within [required_reserve, available_headroom].
         if mw > 0:
-            available_mwh = (asset._soc_mwh - asset._min_soc_mwh) * asset.discharge_efficiency
-            max_mw = max(0.0, min(mw, available_mwh / duration_h, asset.power_mw))
+            allowed_mwh = (asset._soc_mwh - required_reserve) * asset.discharge_efficiency
+            max_mw = max(0.0, min(mw, allowed_mwh / duration_h, asset.power_mw))
             if max_mw > 0:
                 asset.discharge(max_mw, duration_h)
             shortfall = mw - max_mw
@@ -75,15 +89,8 @@ def run_intraday_session(
 
         elif mw < 0:
             target = abs(mw)
-            headroom = asset._max_soc_mwh - asset._soc_mwh
-            max_mw = max(
-                0.0,
-                min(
-                    target,
-                    headroom / (asset.charge_efficiency * duration_h),
-                    asset.power_mw,
-                ),
-            )
+            allowed_mwh = (available_headroom - asset._soc_mwh) / asset.charge_efficiency
+            max_mw = max(0.0, min(target, allowed_mwh / duration_h, asset.power_mw))
             if max_mw > 0:
                 asset.charge(max_mw, duration_h)
             shortfall = target - max_mw
@@ -94,24 +101,6 @@ def run_intraday_session(
             log_action = "charge"
             log_mw = max_mw
             log_price = da_price_actual[h]
-
-        # Rule 2: SOC drift rebalance
-        actual_pct = asset.soc_pct
-        implied_pct = implied_soc[h + 1] / asset.capacity_mwh
-        drift = actual_pct - implied_pct
-
-        if abs(drift) > soc_drift_tolerance:
-            drift_mwh = abs(drift) * asset.capacity_mwh
-            if drift > 0:
-                rebal_mw = min(drift_mwh / duration_h, asset.power_mw)
-                if asset.can_discharge(rebal_mw, duration_h):
-                    asset.discharge(rebal_mw, duration_h)
-                    intraday_pnl += rebal_mw * duration_h * mid_prices[h]
-            else:
-                rebal_mw = min(drift_mwh / duration_h, asset.power_mw)
-                if asset.can_charge(rebal_mw, duration_h):
-                    asset.charge(rebal_mw, duration_h)
-                    intraday_pnl -= rebal_mw * duration_h * mid_prices[h]
 
         # Rule 3: spread improvement
         if mw != 0:
@@ -131,6 +120,8 @@ def run_intraday_session(
             "action": log_action,
             "mw": log_mw,
             "price": log_price,
+            "required_reserve_mwh": required_reserve,
+            "available_headroom_mwh": available_headroom,
             "soc_after": asset.soc_pct,
         })
 

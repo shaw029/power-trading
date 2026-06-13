@@ -56,57 +56,6 @@ class TestNoRebalance:
         assert result["dispatch_log"][2]["action"] == "idle"
 
 
-class TestSOCDrift:
-    def test_drift_triggers_charge_rebalance(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=20, charge_efficiency=0.9,
-            discharge_efficiency=0.95, degradation_cost_per_mwh=1.0, initial_soc_pct=0.5,
-        )
-        result = run_intraday_session(
-            da_schedule=[-30.0],
-            da_price_actual=[40.0],
-            mid_prices=[42.0],
-            imbalance_prices=[38.0],
-            asset=asset,
-            config={"degradation_cost_per_mwh": 5.0},
-        )
-
-        assert result["intraday_pnl"] == pytest.approx(-9.0 * 42.0)
-        assert result["imbalance_pnl"] == pytest.approx(10.0 * 38.0)
-
-    def test_large_drift_tolerance_suppresses_rebalance(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=20, charge_efficiency=0.9,
-            discharge_efficiency=0.95, degradation_cost_per_mwh=1.0, initial_soc_pct=0.5,
-        )
-        result = run_intraday_session(
-            da_schedule=[-30.0],
-            da_price_actual=[40.0],
-            mid_prices=[42.0],
-            imbalance_prices=[38.0],
-            asset=asset,
-            config={"degradation_cost_per_mwh": 5.0, "soc_drift_tolerance": 0.5},
-        )
-
-        assert result["intraday_pnl"] == pytest.approx(0.0)
-
-    def test_small_drift_tolerance_triggers_rebalance(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=20, charge_efficiency=0.9,
-            discharge_efficiency=0.95, degradation_cost_per_mwh=1.0, initial_soc_pct=0.5,
-        )
-        result = run_intraday_session(
-            da_schedule=[-30.0],
-            da_price_actual=[40.0],
-            mid_prices=[42.0],
-            imbalance_prices=[38.0],
-            asset=asset,
-            config={"degradation_cost_per_mwh": 5.0, "soc_drift_tolerance": 0.01},
-        )
-
-        assert result["intraday_pnl"] == pytest.approx(-9.0 * 42.0)
-
-
 class TestSpreadImprovement:
     def test_favorable_mid_triggers_extra_discharge(self):
         asset = BESSAsset(
