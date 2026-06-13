@@ -4,35 +4,56 @@ Each function takes already-sliced simulation frames and returns a Plotly
 figure; they hold no Streamlit or data-loading logic so they can be reused and
 tested in isolation.
 """
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def chart_price_dispatch(prices_hourly: pd.DataFrame, da_sched_df: pd.DataFrame, sample_date):
-    day_prices = prices_hourly.loc[prices_hourly.index.date == sample_date]
-    day_sched = da_sched_df[da_sched_df["date"] == sample_date]
-    hours = list(range(24))
-    da_mw = day_sched["da_mw"].values
+def chart_avg_daily_shape(
+    dispatch_df: pd.DataFrame,
+    prices_hourly: pd.DataFrame,
+    da_sched_df: pd.DataFrame,
+):
+    """Mean dispatch and price by hour-of-day, averaged across the month.
+
+    Reveals the strategy's signature — whether it systematically charges in the
+    cheap hours and discharges in the expensive ones — rather than one day.
+    """
+    d = dispatch_df.copy()
+    d["timestamp"] = pd.to_datetime(d["timestamp"])
+    signed = d["mw"].where(d["action"] == "discharge", -d["mw"])
+    d["signed_mw"] = signed.where(d["action"] != "idle", 0.0)
+    mean_mw = d.groupby(d["timestamp"].dt.hour)["signed_mw"].mean()
+
+    da_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["day_ahead_price"].mean()
+    sched = da_sched_df.copy()
+    sched["hod"] = pd.to_datetime(sched["timestamp"]).dt.hour
+    fc_by_hour = sched.groupby("hod")["da_price_pred"].mean()
+
+    colors = ["#e74c3c" if v > 0 else "#2ecc71" for v in mean_mw.values]
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=hours, y=day_prices["day_ahead_price"].values,
-        name="DA Price", yaxis="y", line=dict(color="#1f77b4", width=2),
-    ))
-
-    colors = ["#e74c3c" if mw > 0 else "#2ecc71" for mw in da_mw]
     fig.add_trace(go.Bar(
-        x=hours, y=da_mw, name="Dispatch MW", yaxis="y2",
-        marker_color=colors, opacity=0.6,
+        x=mean_mw.index, y=mean_mw.values, name="Mean dispatch MW", yaxis="y2",
+        marker_color=colors, opacity=0.5,
     ))
-
+    fig.add_trace(go.Scatter(
+        x=da_by_hour.index, y=da_by_hour.values,
+        name="Mean DA price (actual)", yaxis="y", line=dict(color="#1f77b4", width=2),
+    ))
+    fig.add_trace(go.Scatter(
+        x=fc_by_hour.index, y=fc_by_hour.values,
+        name="Mean DA forecast", yaxis="y",
+        line=dict(color="#7fb3e0", width=1.5, dash="dash"),
+    ))
     fig.update_layout(
-        title=f"Price & Dispatch Overlay — {sample_date}",
+        title="Average Daily Shape — dispatch & price by hour of day",
         xaxis=dict(title="Hour of Day", dtick=1),
         yaxis=dict(title="DA Price (£/MWh)", side="left", title_font=dict(color="#1f77b4")),
-        yaxis2=dict(title="Dispatch (MW)", side="right", overlaying="y", title_font=dict(color="#555")),
+        yaxis2=dict(
+            title="Mean Dispatch (MW, + discharge / − charge)",
+            side="right", overlaying="y", title_font=dict(color="#555"),
+        ),
         legend=dict(x=0, y=1.12, orientation="h"),
         template="plotly_white",
         height=400,
@@ -76,41 +97,6 @@ def chart_soc_tracker(
         xaxis_title="Date", yaxis_title="SOC (%)",
         yaxis=dict(range=[max(0, min_pct - 10), min(105, max_pct + 10)]),
         template="plotly_white", height=350,
-    )
-    return fig
-
-
-def chart_rebalancing(dispatch_df: pd.DataFrame, da_sched_df: pd.DataFrame, sample_date):
-    day_sched = da_sched_df[da_sched_df["date"] == sample_date].sort_values("hour")
-    day_dispatch = dispatch_df[dispatch_df["date"] == sample_date].sort_values("hour")
-    hours = list(range(24))
-
-    da_mw = day_sched["da_mw"].values
-    actual_mw = []
-    for _, row in day_dispatch.iterrows():
-        if row["action"] == "discharge":
-            actual_mw.append(row["mw"])
-        elif row["action"] == "charge":
-            actual_mw.append(-row["mw"])
-        else:
-            actual_mw.append(0.0)
-    actual_mw_arr = np.array(actual_mw)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=hours, y=da_mw, name="DA Schedule (LP)",
-        line=dict(color="#1f77b4", width=2, shape="hvh"),
-    ))
-    fig.add_trace(go.Scatter(
-        x=hours, y=actual_mw_arr, name="Final Dispatch",
-        line=dict(color="#e74c3c", width=2, dash="dash", shape="hvh"),
-    ))
-    fig.update_layout(
-        title=f"Rebalancing Impact — {sample_date}",
-        xaxis=dict(title="Hour of Day", dtick=1),
-        yaxis_title="MW (+ discharge / − charge)",
-        template="plotly_white", height=400,
-        legend=dict(x=0, y=1.12, orientation="h"),
     )
     return fig
 
@@ -205,6 +191,21 @@ def chart_operation_explorer(
         hovertemplate="%{x|%d %b %H:%M}<br>%{customdata}<extra></extra>",
     ), row=3, col=1)
 
+    # Financially netted volume: periods where the DA plan was neutralised at MID
+    # (buyback/sellback or alpha override) without physically moving the battery.
+    netted = dispatch[
+        dispatch["trade_type"].isin(
+            ["financial_buyback", "financial_sellback", "alpha_override"]
+        )
+    ]
+    fig.add_trace(go.Bar(
+        x=netted["timestamp"], y=netted["netted_mwh"],
+        name="Financially Netted Volume",
+        marker_color="#9b59b6", opacity=0.6,
+        width=3600 * 1000 * 0.35,  # narrower than the dispatch bars
+        hovertemplate="%{x|%d %b %H:%M}<br>Financially netted %{y:.1f} MWh<extra></extra>",
+    ), row=3, col=1)
+
     fig.add_trace(go.Scatter(
         x=times, y=dispatch["soc_after"].values * 100,
         name="SOC", mode="lines+markers",
@@ -245,6 +246,7 @@ def chart_operation_explorer(
         template="plotly_white", height=850,
         legend=dict(x=0, y=1.05, orientation="h"),
         hovermode="x unified",
+        barmode="overlay",
         bargap=0,
     )
     return fig
@@ -253,7 +255,8 @@ def chart_operation_explorer(
 def chart_pnl_waterfall(results_df: pd.DataFrame):
     components = [
         ("DA Revenue", results_df["da_revenue"].sum()),
-        ("Intraday PnL", results_df["intraday_pnl"].sum()),
+        ("Financial Netting", results_df["financial_netting_pnl"].sum()),
+        ("Physical Intraday", results_df["physical_dispatch_pnl"].sum()),
         ("Imbalance PnL", results_df["imbalance_pnl"].sum()),
         ("Degradation", -results_df["degradation_cost"].sum()),
     ]

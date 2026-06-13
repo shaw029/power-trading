@@ -27,10 +27,9 @@ from src.bess.intraday_manager import run_intraday_session  # noqa: E402
 from src.features.build_features import build_features  # noqa: E402
 from src.models.train import train_da_price_model, _FEATURE_COLS  # noqa: E402
 from dashboard.charts import (  # noqa: E402
+    chart_avg_daily_shape,
     chart_operation_explorer,
     chart_pnl_waterfall,
-    chart_price_dispatch,
-    chart_rebalancing,
     chart_soc_tracker,
 )
 
@@ -222,7 +221,9 @@ def run_bess_simulation(
         daily_results.append({
             "date": pd.Timestamp(date),
             "da_revenue": result["da_revenue"],
-            "intraday_pnl": result["intraday_pnl"],
+            "financial_netting_pnl": result["financial_netting_pnl"],
+            "physical_dispatch_pnl": result["physical_dispatch_pnl"],
+            "cycles_saved_mwh": result["cycles_saved_mwh"],
             "imbalance_pnl": result["imbalance_pnl"],
             "degradation_cost": result["total_degradation_cost"],
             "net_pnl": result["net_pnl"],
@@ -327,19 +328,22 @@ def render_bess(prices: pd.DataFrame):
 
     # KPI row
     total_da = results_df["da_revenue"].sum()
-    total_intraday = results_df["intraday_pnl"].sum()
+    total_financial = results_df["financial_netting_pnl"].sum()
+    total_physical = results_df["physical_dispatch_pnl"].sum()
     total_imbalance = results_df["imbalance_pnl"].sum()
     total_degradation = results_df["degradation_cost"].sum()
     total_net = results_df["net_pnl"].sum()
+    total_cycles_saved = results_df["cycles_saved_mwh"].sum()
 
-    k1, k2, k3, k4, k5 = st.columns(5)
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
     k1.metric("DA Revenue", f"£{total_da:,.0f}")
-    k2.metric("Intraday PnL", f"£{total_intraday:,.0f}")
-    k3.metric("Imbalance Penalty", f"£{total_imbalance:,.0f}")
-    k4.metric("Degradation Cost", f"£{total_degradation:,.0f}")
-    k5.metric("Net PnL", f"£{total_net:,.0f}")
+    k2.metric("Financial Netting", f"£{total_financial:,.0f}")
+    k3.metric("Physical Intraday", f"£{total_physical:,.0f}")
+    k4.metric("Imbalance Penalty", f"£{total_imbalance:,.0f}")
+    k5.metric("Degradation Cost", f"£{total_degradation:,.0f}")
+    k6.metric("Net PnL", f"£{total_net:,.0f}")
+    k7.metric("Cycles Saved", f"{total_cycles_saved:,.0f} MWh")
 
-    # Pick sample day: highest DA spread
     period = pd.Period(month_str, freq="M")
     start = period.start_time.tz_localize("UTC")
     end = period.end_time.tz_localize("UTC")
@@ -347,21 +351,15 @@ def render_bess(prices: pd.DataFrame):
         prices.loc[start:end, ["day_ahead_price", "mid_price", "system_buy_price"]]
         .resample("1h").mean().dropna()
     )
-    valid_dates = set(da_sched_df["date"].unique())
-    valid_hourly = hourly[[d in valid_dates for d in hourly.index.date]]
-    daily_spread = valid_hourly.groupby(valid_hourly.index.date)["day_ahead_price"].apply(
-        lambda x: x.max() - x.min()
-    )
-    if daily_spread.empty:
+    if hourly.empty:
         st.warning("No valid price data for the selected month.")
         return
-    sample_date = daily_spread.idxmax()
 
     col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(
-            chart_price_dispatch(hourly, da_sched_df, sample_date),
-            use_container_width=True,
+            chart_avg_daily_shape(dispatch_df, hourly, da_sched_df),
+            use_container_width=True, key=f"avg_shape_{month_str}",
         )
     with col2:
         st.plotly_chart(
@@ -371,17 +369,13 @@ def render_bess(prices: pd.DataFrame):
                 max_soc_pct=soc_bounds["max_soc_pct"],
                 initial_soc_pct=soc_bounds["initial_soc_pct"],
             ),
-            use_container_width=True,
+            use_container_width=True, key=f"soc_tracker_{month_str}",
         )
 
-    col3, col4 = st.columns(2)
-    with col3:
-        st.plotly_chart(
-            chart_rebalancing(dispatch_df, da_sched_df, sample_date),
-            use_container_width=True,
-        )
-    with col4:
-        st.plotly_chart(chart_pnl_waterfall(results_df), use_container_width=True)
+    st.plotly_chart(
+        chart_pnl_waterfall(results_df),
+        use_container_width=True, key=f"waterfall_{month_str}",
+    )
 
     # Operation explorer: a 24-hour viewport dragged across the month via the date strip
     st.markdown("---")
@@ -399,7 +393,7 @@ def render_bess(prices: pd.DataFrame):
             min_soc_pct=soc_bounds["min_soc_pct"],
             max_soc_pct=soc_bounds["max_soc_pct"],
         ),
-        use_container_width=True,
+        use_container_width=True, key=f"explorer_{month_str}",
     )
 
 

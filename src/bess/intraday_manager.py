@@ -71,7 +71,8 @@ def run_intraday_session(
     degradation_cost = config["degradation_cost_per_mwh"]
 
     da_revenue = 0.0
-    intraday_pnl = 0.0
+    financial_netting_pnl = 0.0
+    physical_dispatch_pnl = 0.0
     imbalance_pnl = 0.0
     initial_deg = asset.degradation_cost
     dispatch_log: list[dict] = []
@@ -81,6 +82,7 @@ def run_intraday_session(
         log_action = "idle"
         log_mw = 0.0
         log_price = 0.0
+        log_netted_mwh = 0.0
 
         da_revenue += mw * duration_h * da_price_actual[h]
 
@@ -125,9 +127,10 @@ def run_intraday_session(
                 )
                 window = da_price_actual[h + 1: h + 1 + offset]
                 if window and mid_prices[h] <= max(window) - margin_buy:
-                    intraday_pnl -= eligible * duration_h * mid_prices[h]
+                    financial_netting_pnl -= eligible * duration_h * mid_prices[h]
                     physical_mw = mw - eligible
                     trade_type = "financial_buyback"
+                    log_netted_mwh = eligible * duration_h
 
         elif mw < 0:
             eligible = min(abs(mw), asset._soc_mwh - required_reserve)
@@ -139,9 +142,10 @@ def run_intraday_session(
                 )
                 window = da_price_actual[h + 1: h + 1 + offset]
                 if window and mid_prices[h] >= min(window) + margin_sell:
-                    intraday_pnl += eligible * duration_h * mid_prices[h]
+                    financial_netting_pnl += eligible * duration_h * mid_prices[h]
                     physical_mw = mw + eligible
                     trade_type = "financial_sellback"
+                    log_netted_mwh = eligible * duration_h
 
         # Rule 3: High-Conviction Alpha Override.
         # When the MID price is rich enough to clear a hedged hurdle, aggressively
@@ -177,19 +181,20 @@ def run_intraday_session(
                         dump_volume * asset.discharge_efficiency / duration_h,
                     )
                     asset.discharge(released_mw, duration_h)
-                    intraday_pnl += released_mw * duration_h * mid_prices[h]
+                    financial_netting_pnl += released_mw * duration_h * mid_prices[h]
                     # Neutralise the reserve deficit with the forward proxy hedge:
                     # pay its cost now and restore the hedged energy so downstream
                     # periods stay whole and incur no imbalance penalty for it.
                     deficit = max(0.0, required_reserve - asset._soc_mwh)
                     if deficit > 0:
-                        intraday_pnl -= deficit * duration_h * hedge_cost
+                        financial_netting_pnl -= deficit * duration_h * hedge_cost
                         asset._soc_mwh += deficit
                     physical_mw = 0.0
                     trade_type = "alpha_override"
                     log_action = "discharge"
                     log_mw = released_mw
                     log_price = mid_prices[h]
+                    log_netted_mwh = released_mw * duration_h
 
         # Physical Execution: dispatch the un-netted DA volume for this period,
         # clamping it so the resulting SOC stays within
@@ -228,17 +233,18 @@ def run_intraday_session(
                 if mw > 0 and mid_prices[h] > da_price_actual[h] + degradation_cost:
                     if asset.can_discharge(remaining_mw, duration_h):
                         asset.discharge(remaining_mw, duration_h)
-                        intraday_pnl += remaining_mw * duration_h * mid_prices[h]
+                        physical_dispatch_pnl += remaining_mw * duration_h * mid_prices[h]
                 elif mw < 0 and mid_prices[h] < da_price_actual[h] - degradation_cost:
                     if asset.can_charge(remaining_mw, duration_h):
                         asset.charge(remaining_mw, duration_h)
-                        intraday_pnl -= remaining_mw * duration_h * mid_prices[h]
+                        physical_dispatch_pnl -= remaining_mw * duration_h * mid_prices[h]
 
         dispatch_log.append({
             "period": h,
             "action": log_action,
             "trade_type": trade_type,
             "mw": log_mw,
+            "netted_mwh": log_netted_mwh,
             "price": log_price,
             "required_reserve_mwh": required_reserve,
             "available_headroom_mwh": available_headroom,
@@ -246,10 +252,18 @@ def run_intraday_session(
         })
 
     total_degradation = asset.degradation_cost - initial_deg
+    intraday_pnl = financial_netting_pnl + physical_dispatch_pnl
+    cycles_saved_mwh = sum(
+        entry["netted_mwh"] for entry in dispatch_log
+        if entry["trade_type"] in ("financial_buyback", "financial_sellback", "alpha_override")
+    )
 
     return {
         "da_revenue": da_revenue,
         "intraday_pnl": intraday_pnl,
+        "financial_netting_pnl": financial_netting_pnl,
+        "physical_dispatch_pnl": physical_dispatch_pnl,
+        "cycles_saved_mwh": cycles_saved_mwh,
         "imbalance_pnl": imbalance_pnl,
         "total_degradation_cost": total_degradation,
         "net_pnl": da_revenue + intraday_pnl + imbalance_pnl - total_degradation,
