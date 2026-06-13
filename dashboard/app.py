@@ -234,6 +234,7 @@ def run_bess_simulation(
                 "hour": h,
                 "timestamp": day_df.index[h],
                 "da_mw": mw,
+                "da_price_pred": forecast[h],
             })
 
     results_df = pd.DataFrame(daily_results)

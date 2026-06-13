@@ -129,7 +129,9 @@ def chart_operation_explorer(
 
     sched = da_sched_df.copy()
     sched["timestamp"] = pd.to_datetime(sched["timestamp"])
-    sched_mw = sched.sort_values("timestamp").set_index("timestamp")["da_mw"]
+    sched = sched.sort_values("timestamp").set_index("timestamp")
+    sched_mw = sched["da_mw"]
+    da_price_pred = sched["da_price_pred"]
 
     actual_mw = []
     decisions = []
@@ -177,6 +179,10 @@ def chart_operation_explorer(
     fig.add_trace(go.Scatter(
         x=prices_hourly.index, y=prices_hourly["day_ahead_price"].values,
         name="DA Price", line=dict(color="#1f77b4", width=2),
+    ), row=2, col=1)
+    fig.add_trace(go.Scatter(
+        x=da_price_pred.index, y=da_price_pred.values,
+        name="DA Forecast (pred)", line=dict(color="#7fb3e0", width=1.5, dash="dash"),
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
         x=prices_hourly.index, y=prices_hourly["mid_price"].values,
