@@ -20,6 +20,32 @@ def _compute_implied_soc(
     return soc
 
 
+def _find_bottleneck_index(
+    start_soc_mwh: float,
+    future_schedule: list[float],
+    charge_efficiency: float,
+    discharge_efficiency: float,
+    bound_mwh: float,
+    duration_h: float,
+    hitting_ceiling: bool,
+) -> int:
+    """Walk the implied SOC forward over ``future_schedule`` and return the offset of
+    the first period whose SOC reaches ``bound_mwh`` — a ceiling when
+    ``hitting_ceiling`` is True, otherwise a floor. Returns len(future_schedule)
+    when the bound is never reached."""
+    soc = start_soc_mwh
+    for offset, future_mw in enumerate(future_schedule):
+        if future_mw >= 0:
+            soc -= future_mw * duration_h / discharge_efficiency
+        else:
+            soc += abs(future_mw) * duration_h * charge_efficiency
+        if hitting_ceiling and soc >= bound_mwh:
+            return offset
+        if not hitting_ceiling and soc <= bound_mwh:
+            return offset
+    return len(future_schedule)
+
+
 def run_intraday_session(
     da_schedule: list[float],
     da_price_actual: list[float],
@@ -73,22 +99,63 @@ def run_intraday_session(
                 required_reserve = max(asset._min_soc_mwh, required_reserve - stored)
                 available_headroom -= stored
 
-        # Physical Execution: dispatch the DA schedule for this period, clamping the
-        # volume so the resulting SOC stays within [required_reserve, available_headroom].
+        # Rule 2: Constrained Financial Netting.
+        # Capture the DA–MID spread financially — without physically moving the
+        # battery — when the current MID price beats the best future DA price we
+        # could reach while holding the eligible energy (discharge) or headroom
+        # (charge). The netted volume is settled at MID and its net physical
+        # position is zero; only the un-netted remainder is physically dispatched.
+        margin_buy = config.get("margin_buy", 0.0)
+        margin_sell = config.get("margin_sell", 0.0)
+        future_schedule = da_schedule[h + 1:]
+        physical_mw = mw
+        trade_type = "physical_dispatch"
+
         if mw > 0:
+            eligible = min(mw, available_headroom - asset._soc_mwh)
+            if eligible > 0:
+                offset = _find_bottleneck_index(
+                    asset._soc_mwh, future_schedule,
+                    asset.charge_efficiency, asset.discharge_efficiency,
+                    asset._max_soc_mwh, duration_h, hitting_ceiling=True,
+                )
+                window = da_price_actual[h + 1: h + 1 + offset]
+                if window and mid_prices[h] <= max(window) - margin_buy:
+                    intraday_pnl -= eligible * duration_h * mid_prices[h]
+                    physical_mw = mw - eligible
+                    trade_type = "financial_buyback"
+
+        elif mw < 0:
+            eligible = min(abs(mw), asset._soc_mwh - required_reserve)
+            if eligible > 0:
+                offset = _find_bottleneck_index(
+                    asset._soc_mwh, future_schedule,
+                    asset.charge_efficiency, asset.discharge_efficiency,
+                    asset._min_soc_mwh, duration_h, hitting_ceiling=False,
+                )
+                window = da_price_actual[h + 1: h + 1 + offset]
+                if window and mid_prices[h] >= min(window) + margin_sell:
+                    intraday_pnl += eligible * duration_h * mid_prices[h]
+                    physical_mw = mw + eligible
+                    trade_type = "financial_sellback"
+
+        # Physical Execution: dispatch the un-netted DA volume for this period,
+        # clamping it so the resulting SOC stays within
+        # [required_reserve, available_headroom].
+        if physical_mw > 0:
             allowed_mwh = (asset._soc_mwh - required_reserve) * asset.discharge_efficiency
-            max_mw = max(0.0, min(mw, allowed_mwh / duration_h, asset.power_mw))
+            max_mw = max(0.0, min(physical_mw, allowed_mwh / duration_h, asset.power_mw))
             if max_mw > 0:
                 asset.discharge(max_mw, duration_h)
-            shortfall = mw - max_mw
+            shortfall = physical_mw - max_mw
             if shortfall > 0:
                 imbalance_pnl -= shortfall * duration_h * imbalance_prices[h]
             log_action = "discharge"
             log_mw = max_mw
             log_price = da_price_actual[h]
 
-        elif mw < 0:
-            target = abs(mw)
+        elif physical_mw < 0:
+            target = abs(physical_mw)
             allowed_mwh = (available_headroom - asset._soc_mwh) / asset.charge_efficiency
             max_mw = max(0.0, min(target, allowed_mwh / duration_h, asset.power_mw))
             if max_mw > 0:
@@ -118,6 +185,7 @@ def run_intraday_session(
         dispatch_log.append({
             "period": h,
             "action": log_action,
+            "trade_type": trade_type,
             "mw": log_mw,
             "price": log_price,
             "required_reserve_mwh": required_reserve,
