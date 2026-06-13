@@ -274,6 +274,10 @@ class TestFinancialNetting:
         assert result["physical_dispatch_pnl"] == pytest.approx(0.0)
         assert result["intraday_pnl"] == pytest.approx(-900.0)
         assert result["cycles_saved_mwh"] == pytest.approx(20.0)
+        # The netted leg sells the DA volume at its DA price and buys it back at MID;
+        # the captured spread is the DA leg plus the (negative) buyback pnl.
+        assert result["da_revenue_netted"] == pytest.approx(20.0 * 40.0)
+        assert result["financial_spread_captured"] == pytest.approx(20.0 * 40.0 - 20.0 * 45.0)
 
     def test_sellback_when_future_da_below_mid(self):
         # h=0 would charge against a 60 price while a future DA period sits at 40;
@@ -291,6 +295,9 @@ class TestFinancialNetting:
         assert result["dispatch_log"][0]["netted_mwh"] == pytest.approx(20.0)
         assert result["financial_netting_pnl"] == pytest.approx(20.0 * 55.0)
         assert result["cycles_saved_mwh"] == pytest.approx(20.0)
+        # The netted charge leg is a DA cost (negative) bought back by selling at MID.
+        assert result["da_revenue_netted"] == pytest.approx(-20.0 * 60.0)
+        assert result["financial_spread_captured"] == pytest.approx(-20.0 * 60.0 + 20.0 * 55.0)
 
     def test_no_netting_when_mid_above_future_da(self):
         # MID (70) exceeds the best future DA price (60): there is no spread to
@@ -307,6 +314,9 @@ class TestFinancialNetting:
         assert result["dispatch_log"][0]["trade_type"] == "physical_dispatch"
         assert result["financial_netting_pnl"] == pytest.approx(0.0)
         assert result["cycles_saved_mwh"] == pytest.approx(0.0)
+        # Nothing was netted, so there is no netted DA revenue or captured spread.
+        assert result["da_revenue_netted"] == pytest.approx(0.0)
+        assert result["financial_spread_captured"] == pytest.approx(0.0)
 
     def test_margin_buy_blocks_marginal_netting(self):
         # MID (55) clears the future DA (60) by only 5; a larger margin_buy of 10
@@ -353,6 +363,10 @@ class TestAlphaOverride:
         assert log["netted_mwh"] == pytest.approx(50.0)
         assert result["financial_netting_pnl"] == pytest.approx(50.0 * 80.0)
         assert result["cycles_saved_mwh"] == pytest.approx(50.0)
+        # The scheduled DA volume is resolved financially: its DA value books to
+        # netted revenue and joins the dump pnl in the captured spread.
+        assert result["da_revenue_netted"] == pytest.approx(10.0 * 40.0)
+        assert result["financial_spread_captured"] == pytest.approx(10.0 * 40.0 + 50.0 * 80.0)
 
     def test_dump_books_forward_hedge_for_reserve_deficit(self):
         # Dumping at h=0 shorts the h=1 floor: the deficit (60 MWh) is hedged at
