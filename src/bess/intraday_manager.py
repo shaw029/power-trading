@@ -158,7 +158,7 @@ def run_intraday_session(
         if volatility_array is not None and trade_type == "physical_dispatch":
             alpha_threshold = config.get("alpha_threshold", 5.0)
             vol_multiplier = config.get("vol_multiplier", 1.0)
-            dump_volume = min(asset.power_mw, asset._soc_mwh - asset._min_soc_mwh)
+            dump_volume = min(asset.power_mw * duration_h, asset._soc_mwh - asset._min_soc_mwh)
             if dump_volume > 0:
                 hedge_cost = 0.0
                 if asset._soc_mwh - dump_volume < required_reserve:
@@ -187,7 +187,7 @@ def run_intraday_session(
                     # periods stay whole and incur no imbalance penalty for it.
                     deficit = max(0.0, required_reserve - asset._soc_mwh)
                     if deficit > 0:
-                        financial_netting_pnl -= deficit * duration_h * hedge_cost
+                        financial_netting_pnl -= deficit * hedge_cost
                         asset._soc_mwh += deficit
                     physical_mw = 0.0
                     trade_type = "alpha_override"
