@@ -47,10 +47,35 @@ The BESS strategy decomposes the trading day into three settlement layers, each 
 
 1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal charge/discharge schedule against an ML-generated DA price *forecast*, maximising `Σ [(discharge_h − charge_h) × forecast_price_h − (discharge_h + charge_h) × degradation_cost_per_mwh] × resolution_h` subject to SOC, power, efficiency, and optional cycle-cap constraints. Degradation cost is included in the primal objective so the solver avoids unprofitable cycling — not applied only as a post-hoc deduction. Revenue is then settled against the *actual* cleared DA price, so forecast quality directly drives PnL. The schedule length adapts to the configured `resolution_h` (BESS config key; e.g. 48 half-hourly periods or 24 hourly). The LP respects a configurable **SOC operating window** (`min_soc_pct`–`max_soc_pct`, default 10–90%) to protect cell longevity; the usable capacity is therefore `(max_soc_pct − min_soc_pct) × capacity_mwh`. An optional `target_daily_cycles` cap limits total discharge energy per day (`Σ discharge_h × duration_h ≤ target_daily_cycles × capacity_mwh`). The end-of-day SOC is unconstrained — the LP ends wherever it is optimal — and the actual ending SOC is **carried forward** as the starting SOC for the next day's LP, so days are not treated independently.
 
-2. **Intraday (Rules-Based Rebalancing):** During the delivery window, a rules engine adjusts the DA schedule in real time against Market Index Prices:
-   - **Rule 1 — DA Dispatch Execution:** Execute the committed schedule; any shortfall from SOC constraints settles at the imbalance price.
-   - **Rule 2 — SOC Drift Rebalance:** If actual SOC drifts more than `soc_drift_tolerance` (default 5% of capacity) from the DA-implied trajectory, buy/sell at MID to realign. All rebalancing respects the `min_soc_pct`/`max_soc_pct` window.
-   - **Rule 3 — Spread Improvement:** If spare capacity exists and MID exceeds DA + degradation cost (or the inverse for charging), take the incremental trade.
+2. **Intraday (Rules-Based Rebalancing — Ledger & Reserve):** During the delivery window, a rules engine adjusts the DA schedule in real time against Market Index Prices (MID). The engine is built on a *ledger-and-reserve* model: rather than tracking SOC drift against a single implied trajectory, it computes — for every period — exactly how much energy must be **reserved** to honour every remaining locked DA commitment, and how much spare energy or headroom is therefore free to monetise financially. The three rules below run in order per period `h`.
+
+   - **Rule 1 — Physical Guardrails.** Before any trade, the engine derives two forward-looking bounds from the *remaining* locked DA schedule `da_schedule[h+1:]`. Both are accumulated by walking the future commitments and converting each one to its SOC impact through the asset's round-trip efficiencies:
+     - **Required Reserve `R_h`** — the minimum SOC the pack must hold at the *end* of period `h` so that every future scheduled **discharge** can still be served without breaching `min_soc`. Starting from `min_soc_mwh`, each future discharge `d` adds the energy it will draw, `d × duration_h / discharge_efficiency`; each future charge `c` releases reserve, subtracting `|c| × duration_h × charge_efficiency` (floored at `min_soc_mwh`).
+     - **Available Headroom `H_h`** — the maximum SOC the pack may hold at the end of period `h` so that every future scheduled **charge** can still be absorbed without breaching `max_soc`. Starting from `max_soc_mwh`, each future charge subtracts the energy it will store; each future discharge adds it back (capped at `max_soc_mwh`).
+
+     All physical execution in the period is then clamped so the resulting SOC stays inside `[R_h, H_h]`. Any DA volume that cannot be delivered or absorbed inside this band settles at the imbalance price (SBP for an undelivered discharge — the BESS is short; SSP for an unabsorbed charge — the BESS is long).
+
+   - **Rule 2 — Constrained Financial Netting.** The engine looks to capture the DA–MID spread *financially* — booking the trade at MID without physically cycling the battery, hence **zero degradation**. Only energy that is free of the Rule 1 guardrails is eligible: for a scheduled discharge the eligible volume is `min(mw, H_h − SOC)`; for a scheduled charge it is `min(|mw|, SOC − R_h)`. The benefit is bounded by a **bottleneck** in the forward DA curve: walking the implied SOC forward over `da_schedule[h+1:]`, `t_ceiling` is the first future period at which SOC would hit `max_soc` (for a discharge netting) and `t_floor` the first at which it would hit `min_soc` (for a charge netting). The future-DA window the netting is benchmarked against is therefore `da_price_actual[h+1 : t_ceiling]` (or `… : t_floor`) — only as far ahead as the pack can physically hold the position.
+     - For a **discharge** period, the engine nets (a `financial_buyback`) when `mid_prices[h] ≤ max(window) − margin_buy`: MID is cheap enough today that buying the position back now and re-selling into the higher locked future DA price is accretive.
+     - For a **charge** period, the engine nets (a `financial_sellback`) when `mid_prices[h] ≥ min(window) + margin_sell`: MID is rich enough today to sell the position forward against the cheaper locked future DA price.
+
+     The netted MWh is settled at MID and carries a net-zero physical position; only the un-netted remainder is physically dispatched under Rule 1's clamp. Netted volume is reported as `cycles_saved_mwh` — throughput monetised without wear.
+
+   - **Rule 3 — High-Conviction Alpha Override.** When MID is exceptionally rich, the engine will aggressively dump available discharge energy *now* even if doing so eats into the Required Reserve `R_h`. The resulting reserve deficit is a naked short on a future floor period, so it is covered by a **proxy forward hedge** rather than left to settle at imbalance. The hedge is priced off the bottleneck floor period `t_floor`:
+
+     ```
+     hedge_cost = da_price_actual[t_floor] + vol_multiplier × volatility[h]
+     ```
+
+     i.e. the locked future DA price at which the short must be re-covered, plus a volatility buffer (`vol_multiplier × volatility[h]`) to account for execution uncertainty. The override fires only when the net edge clears the conviction floor:
+
+     ```
+     mid_prices[h] − hedge_cost − degradation_cost > alpha_threshold
+     ```
+
+     On trigger, the dumped energy is sold at MID, the hedge cost is booked immediately, and the hedged energy is restored to the pack so downstream periods stay whole and incur **no** imbalance penalty for the deficit. The rule is skipped entirely when no `volatility_array` is supplied (`alpha_threshold` defaults to 5.0 £/MWh, `vol_multiplier` to 1.0).
+
+   > **No lookahead bias.** The guardrail, bottleneck, and hedge calculations all benchmark against `da_price_actual[h+1:]` — the **locked future Day-Ahead prices**, which cleared at the D-1 11:00 auction and are fully known before the delivery window opens. They are *not* live intraday market prices. Using the already-settled DA curve to decide how much energy to reserve or net is information the trader genuinely holds at execution time, so the engine takes no forward-looking peek at unrealised prices.
 
 3. **Imbalance Settlement (Ex-Post):** Any volume that could not be physically delivered or absorbed — because SOC hit a bound — is settled at the system imbalance price (SSP/SBP), appearing as a residual cost or credit.
 
@@ -78,6 +103,8 @@ Net PnL for each day is decomposed into four components:
 ```
 net_pnl = da_revenue + intraday_pnl + imbalance_pnl − degradation_cost
 ```
+
+The `intraday_pnl` term itself splits into `financial_netting_pnl` (the zero-degradation MID-vs-DA capture from Rules 2 and 3) and `physical_dispatch_pnl` (the Rule 4 spread-improvement trades that actually cycle the pack). The intraday engine also reports `cycles_saved_mwh` — the throughput resolved financially without battery wear.
 
 This decomposition lets the analyst attribute value to each settlement layer independently — see `notebooks/03_bess_dispatch_analysis.ipynb` for the full waterfall.
 
