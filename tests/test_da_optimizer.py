@@ -56,6 +56,38 @@ class TestDAOptimizer:
             assert soc >= -1e-6, f"SOC went negative at hour {h}"
             assert soc <= battery.capacity_mwh + 1e-6, f"SOC exceeded capacity at hour {h}"
 
+    def test_schedule_strictly_feasible_against_bounds(self) -> None:
+        # LP solvers satisfy SOC bounds only to within their feasibility tolerance,
+        # so the raw solution can overshoot the strict [min, max] band by a sliver.
+        # The returned schedule is projected to be exactly executable; verify the
+        # implied trajectory never breaches the bounds beyond float noise, even with
+        # non-trivial min/max SOC limits that the solver likes to sit against.
+        import random
+
+        random.seed(0)
+        for _ in range(50):
+            asset = BESSAsset(
+                capacity_mwh=20.0,
+                power_mw=10.0,
+                charge_efficiency=0.92,
+                discharge_efficiency=0.92,
+                degradation_cost_per_mwh=2.0,
+                initial_soc_pct=random.uniform(0.1, 0.9),
+                min_soc_pct=0.05,
+                max_soc_pct=0.95,
+            )
+            prices = [random.uniform(-50, 200) for _ in range(24)]
+            schedule = optimize_da_schedule(prices, asset, duration_h=1.0)
+
+            soc = asset.initial_soc_pct * asset.capacity_mwh
+            for h, mw in enumerate(schedule):
+                if mw > 0:
+                    soc -= mw / asset.discharge_efficiency
+                else:
+                    soc += (-mw) * asset.charge_efficiency
+                assert soc >= asset._min_soc_mwh - 1e-9, f"min SOC breached at hour {h}"
+                assert soc <= asset._max_soc_mwh + 1e-9, f"max SOC breached at hour {h}"
+
     def test_flat_prices_no_trade(self) -> None:
         empty_battery = BESSAsset(
             capacity_mwh=100.0,
