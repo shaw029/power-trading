@@ -4,7 +4,7 @@ lint:
 	flake8 .
 
 format:
-	black src/ tests/ main.py pipeline.py app.py
+	black src/ tests/ main.py pipeline.py dashboard/
 
 typecheck:
 	mypy .
@@ -17,7 +17,7 @@ check: format lint typecheck test
 
 # Launch the interactive Streamlit dashboard
 dashboard:
-	streamlit run app.py
+	streamlit run dashboard/app.py
 
 # Install the git pre-commit hook (run once after cloning)
 install-hooks:

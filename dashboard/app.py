@@ -1,0 +1,400 @@
+"""Streamlit dashboard for debugging the BESS dispatch model.
+
+The pipeline only persists aggregate BESS results (daily PnL and summary
+metrics), which show how much the battery earned but not why it acted as it
+did. This app closes that gap: it faithfully replays the same strategy the
+pipeline runs — the walk-forward ML day-ahead forecast, the LP schedule, and
+the intraday rules engine with continuous state-of-charge carry-over — and
+surfaces the per-hour decision trail (prices, schedule vs. actual dispatch,
+SOC, curtailments) so the model's behaviour can be inspected and debugged.
+
+Run with ``make dashboard`` or ``streamlit run dashboard/app.py``.
+"""
+import os
+import sys
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+import yaml
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.bess.bess_asset import BESSAsset  # noqa: E402
+from src.bess.da_optimizer import optimize_da_schedule  # noqa: E402
+from src.bess.intraday_manager import run_intraday_session  # noqa: E402
+from src.features.build_features import build_features  # noqa: E402
+from src.models.train import train_da_price_model, _FEATURE_COLS  # noqa: E402
+from dashboard.charts import (  # noqa: E402
+    chart_operation_explorer,
+    chart_pnl_waterfall,
+    chart_price_dispatch,
+    chart_rebalancing,
+    chart_soc_tracker,
+)
+
+st.set_page_config(page_title="Power Trading Dashboard", layout="wide")
+
+PROCESSED_DATA = Path(
+    os.environ.get("PT_PROCESSED_DATA", PROJECT_ROOT / "data/processed/processed_data.parquet")
+)
+FEATURES_CACHE = Path(
+    os.environ.get("PT_FEATURES", PROJECT_ROOT / "artifacts/da_positioning/xgb_wf_v1/features/features.parquet")
+)
+CONFIG_PATH = PROJECT_ROOT / "configs" / "config.yaml"
+CONFIG_FALLBACK_PATH = PROJECT_ROOT / "configs" / "config.example.yaml"
+
+
+def _load_config() -> dict:
+    path = CONFIG_PATH if CONFIG_PATH.exists() else CONFIG_FALLBACK_PATH
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+
+# ── Data loading (cached) ────────────────────────────────────────────────────
+
+@st.cache_data
+def load_prices() -> pd.DataFrame:
+    df = pd.read_parquet(PROCESSED_DATA)
+    df["time"] = pd.to_datetime(df["time"], utc=True)
+    df = df.set_index("time").sort_index()
+    return df
+
+
+@st.cache_data(show_spinner="Training the DA price model (one-time per session)…")
+def load_da_price_forecast(model_cfg: dict, val_cfg: dict) -> pd.Series:
+    """The exact day-ahead price forecast the BESS pipeline schedules against.
+
+    Mirrors pipeline._run_bess_pipeline: walk-forward training fixes which dates
+    are out-of-sample, then the *last* fitted fold (``da_model``) predicts every
+    OOS day's features. Built once and cached; returns a UTC-indexed series at
+    the source resolution covering only out-of-sample dates.
+    """
+    if not FEATURES_CACHE.exists():
+        FEATURES_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        raw = pd.read_parquet(PROCESSED_DATA)
+        build_features(raw, save_path=FEATURES_CACHE)
+
+    da_model, predictions_df, _ = train_da_price_model(
+        features_path=str(FEATURES_CACHE),
+        model_type=model_cfg.get("type", "xgboost"),
+        model_params=model_cfg.get("hyperparameters"),
+        validation_type=val_cfg.get("type", "walk_forward"),
+        wf_train_days=val_cfg.get("train_days", 200),
+        wf_test_days=val_cfg.get("test_days", 30),
+        wf_step_days=val_cfg.get("step_days", 30),
+    )
+
+    oos_dates = set(
+        pd.to_datetime(predictions_df["time"], utc=True)
+        .dt.tz_convert("Europe/London").dt.date
+    )
+    features_df = pd.read_parquet(FEATURES_CACHE)
+    features_df["time"] = pd.to_datetime(features_df["time"], utc=True)
+    london_date = features_df["time"].dt.tz_convert("Europe/London").dt.date
+    feature_cols = [c for c in _FEATURE_COLS if c in features_df.columns]
+
+    oos_rows = features_df[london_date.isin(oos_dates)]
+    X = oos_rows[feature_cols].dropna()
+    forecast = pd.Series(
+        da_model.predict(X), index=oos_rows.loc[X.index, "time"]
+    ).sort_index()
+    forecast.index.name = "time"
+    return forecast
+
+
+def available_months(forecast: pd.Series) -> list[str]:
+    """Months the dashboard can simulate — only those with out-of-sample
+    forecast coverage, since the LP schedules against the ML prediction."""
+    months = forecast.index.to_period("M").unique().sort_values()
+    return [str(m) for m in months]
+
+
+def _slice_month(df: pd.DataFrame, period: pd.Period) -> pd.DataFrame:
+    """Filter a per-day or per-period frame (with a ``date`` column) to one month."""
+    if df.empty:
+        return df
+    return df[pd.to_datetime(df["date"]).dt.to_period("M") == period]
+
+
+# ── BESS simulation ──────────────────────────────────────────────────────────
+
+@st.cache_data(show_spinner="Running BESS dispatch over the out-of-sample period…")
+def run_bess_simulation(
+    capacity_mwh: float,
+    power_mw: float,
+    degradation_cost: float,
+    charge_efficiency: float,
+    discharge_efficiency: float,
+    initial_soc_pct: float,
+    min_soc_pct: float,
+    max_soc_pct: float,
+    target_daily_cycles: float | None,
+    resolution_h: float,
+    soc_drift_tolerance: float,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Replay the BESS strategy exactly as pipeline._run_bess_pipeline does.
+
+    One asset, one continuous SOC chain across every out-of-sample day: each
+    day starts from the previous day's *actual* ending SOC (the first from
+    ``initial_soc_pct``), the LP schedules against the ML forecast, the intraday
+    rules engine settles against actual DA/MID/imbalance prices, and shortfalls
+    use SBP (short) / SSP (long). Cached on the asset parameters so toggling the
+    month only re-slices; changing a slider re-runs. Covers the full OOS range —
+    callers slice the month they want.
+    """
+    prices = load_prices()
+    cfg = _load_config()
+    da_forecast = load_da_price_forecast(cfg.get("model", {}), cfg.get("validation", {}))
+
+    combined = prices[
+        ["day_ahead_price", "mid_price", "system_buy_price", "system_sell_price"]
+    ].copy()
+    combined["da_price_pred"] = da_forecast.reindex(combined.index)
+
+    resample_freq = f"{int(resolution_h * 3600)}s"
+    periods_per_day = int(24 / resolution_h)
+    hourly = combined.resample(resample_freq).mean().dropna(
+        subset=["day_ahead_price", "mid_price", "system_buy_price", "system_sell_price"]
+    )
+
+    asset_kwargs = {
+        "capacity_mwh": capacity_mwh,
+        "power_mw": power_mw,
+        "charge_efficiency": charge_efficiency,
+        "discharge_efficiency": discharge_efficiency,
+        "degradation_cost_per_mwh": degradation_cost,
+        "initial_soc_pct": initial_soc_pct,
+        "min_soc_pct": min_soc_pct,
+        "max_soc_pct": max_soc_pct,
+    }
+    sim_cfg = {
+        "degradation_cost_per_mwh": degradation_cost,
+        "resolution_h": resolution_h,
+        "soc_drift_tolerance": soc_drift_tolerance,
+    }
+
+    daily_results = []
+    all_dispatch_logs = []
+    all_da_schedules = []
+
+    dst_delta = int(1 / resolution_h)
+    valid_period_counts = {periods_per_day - dst_delta, periods_per_day, periods_per_day + dst_delta}
+
+    asset = BESSAsset(**asset_kwargs)
+    prev_soc_pct: float | None = None
+
+    for date, day_df in hourly.groupby(hourly.index.date):
+        if len(day_df) not in valid_period_counts:
+            continue
+
+        forecast = day_df["da_price_pred"].tolist()
+        if any(pd.isna(forecast)):
+            continue  # no ML forecast for this day — outside OOS coverage
+
+        carry_soc = prev_soc_pct if prev_soc_pct is not None else initial_soc_pct
+        carry_soc = min(max(carry_soc, min_soc_pct), max_soc_pct)
+        asset.reset(soc_pct=carry_soc)
+
+        da_prices = day_df["day_ahead_price"].tolist()
+        schedule = optimize_da_schedule(
+            forecast, asset, duration_h=resolution_h,
+            target_daily_cycles=target_daily_cycles,
+        )
+        result = run_intraday_session(
+            da_schedule=schedule,
+            da_price_actual=da_prices,
+            mid_prices=day_df["mid_price"].tolist(),
+            imbalance_prices=day_df["system_buy_price"].tolist(),
+            asset=asset,
+            config=sim_cfg,
+            imbalance_sell_prices=day_df["system_sell_price"].tolist(),
+        )
+        prev_soc_pct = asset.soc_pct
+
+        daily_results.append({
+            "date": pd.Timestamp(date),
+            "da_revenue": result["da_revenue"],
+            "intraday_pnl": result["intraday_pnl"],
+            "imbalance_pnl": result["imbalance_pnl"],
+            "degradation_cost": result["total_degradation_cost"],
+            "net_pnl": result["net_pnl"],
+        })
+
+        for entry in result["dispatch_log"]:
+            entry["date"] = date
+            entry["hour"] = entry["period"]
+            entry["timestamp"] = day_df.index[entry["period"]]
+        all_dispatch_logs.extend(result["dispatch_log"])
+
+        for h, mw in enumerate(schedule):
+            all_da_schedules.append({
+                "date": date,
+                "hour": h,
+                "timestamp": day_df.index[h],
+                "da_mw": mw,
+            })
+
+    results_df = pd.DataFrame(daily_results)
+    dispatch_df = pd.DataFrame(all_dispatch_logs)
+    da_sched_df = pd.DataFrame(all_da_schedules)
+
+    return results_df, dispatch_df, da_sched_df
+
+
+# ── Main app ──────────────────────────────────────────────────────────────────
+
+def main():
+    st.title("BESS Dispatch Dashboard")
+    render_bess(load_prices())
+
+
+def render_bess(prices: pd.DataFrame):
+    cfg = _load_config()
+    bess_cfg = cfg.get("bess", {})
+
+    da_forecast = load_da_price_forecast(cfg.get("model", {}), cfg.get("validation", {}))
+    months = available_months(da_forecast)
+    if not months:
+        st.error("No out-of-sample forecast available. Check the model/validation config.")
+        return
+    selected_month = st.sidebar.selectbox("Month", months, index=0)
+    st.sidebar.caption("Months are limited to the model's out-of-sample (walk-forward) range.")
+
+    st.sidebar.markdown("### Asset Parameters")
+    capacity = st.sidebar.slider("Battery Capacity (MWh)", 20, 500, 100, step=10)
+    power = st.sidebar.slider("Max Power (MW)", 10, 200, 50, step=5)
+    degradation = st.sidebar.slider("Degradation Cost (£/MWh)", 0.0, 30.0, 5.00, step=0.50)
+    charge_eff = st.sidebar.slider("Charge Efficiency", 0.70, 1.00, 0.94, step=0.01)
+    discharge_eff = st.sidebar.slider("Discharge Efficiency", 0.70, 1.00, 0.94, step=0.01)
+    initial_soc = st.sidebar.slider("Initial SOC (%)", 0, 100, 50, step=5)
+
+    st.sidebar.markdown("### SOC & Throughput Limits")
+    default_min_soc = int(round(bess_cfg.get("min_soc_pct", 0.0) * 100))
+    default_max_soc = int(round(bess_cfg.get("max_soc_pct", 1.0) * 100))
+    min_soc, max_soc = st.sidebar.slider(
+        "SOC Bounds (%)", 0, 100, (default_min_soc, default_max_soc), step=5,
+    )
+    _cfg_cycles = bess_cfg.get("target_daily_cycles")
+    limit_cycles = st.sidebar.checkbox("Limit daily cycles", value=_cfg_cycles is not None)
+    target_daily_cycles = None
+    if limit_cycles:
+        target_daily_cycles = st.sidebar.slider(
+            "Target Daily Cycles", 0.5, 4.0,
+            float(_cfg_cycles) if _cfg_cycles is not None else 1.5, step=0.5,
+        )
+
+    # The simulation runs over the whole out-of-sample period and is cached on
+    # the asset parameters: changing a slider re-runs it, switching month just
+    # re-slices the cached result below.
+    full_results, full_dispatch, full_sched = run_bess_simulation(
+        capacity_mwh=capacity,
+        power_mw=power,
+        degradation_cost=degradation,
+        charge_efficiency=charge_eff,
+        discharge_efficiency=discharge_eff,
+        initial_soc_pct=initial_soc / 100.0,
+        min_soc_pct=min_soc / 100.0,
+        max_soc_pct=max_soc / 100.0,
+        target_daily_cycles=target_daily_cycles,
+        resolution_h=bess_cfg.get("resolution_h", 1.0),
+        soc_drift_tolerance=bess_cfg.get("soc_drift_tolerance", 0.05),
+    )
+
+    soc_bounds = {
+        "min_soc_pct": min_soc / 100.0,
+        "max_soc_pct": max_soc / 100.0,
+        "initial_soc_pct": initial_soc / 100.0,
+    }
+
+    month_period = pd.Period(selected_month, freq="M")
+    results_df = _slice_month(full_results, month_period)
+    dispatch_df = _slice_month(full_dispatch, month_period)
+    da_sched_df = _slice_month(full_sched, month_period)
+    month_str = selected_month
+
+    if results_df.empty:
+        st.warning("No out-of-sample days fall in the selected month.")
+        return
+
+    # KPI row
+    total_da = results_df["da_revenue"].sum()
+    total_intraday = results_df["intraday_pnl"].sum()
+    total_imbalance = results_df["imbalance_pnl"].sum()
+    total_degradation = results_df["degradation_cost"].sum()
+    total_net = results_df["net_pnl"].sum()
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("DA Revenue", f"£{total_da:,.0f}")
+    k2.metric("Intraday PnL", f"£{total_intraday:,.0f}")
+    k3.metric("Imbalance Penalty", f"£{total_imbalance:,.0f}")
+    k4.metric("Degradation Cost", f"£{total_degradation:,.0f}")
+    k5.metric("Net PnL", f"£{total_net:,.0f}")
+
+    # Pick sample day: highest DA spread
+    period = pd.Period(month_str, freq="M")
+    start = period.start_time.tz_localize("UTC")
+    end = period.end_time.tz_localize("UTC")
+    hourly = (
+        prices.loc[start:end, ["day_ahead_price", "mid_price", "system_buy_price"]]
+        .resample("1h").mean().dropna()
+    )
+    valid_dates = set(da_sched_df["date"].unique())
+    valid_hourly = hourly[[d in valid_dates for d in hourly.index.date]]
+    daily_spread = valid_hourly.groupby(valid_hourly.index.date)["day_ahead_price"].apply(
+        lambda x: x.max() - x.min()
+    )
+    if daily_spread.empty:
+        st.warning("No valid price data for the selected month.")
+        return
+    sample_date = daily_spread.idxmax()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.plotly_chart(
+            chart_price_dispatch(hourly, da_sched_df, sample_date),
+            use_container_width=True,
+        )
+    with col2:
+        st.plotly_chart(
+            chart_soc_tracker(
+                dispatch_df,
+                min_soc_pct=soc_bounds["min_soc_pct"],
+                max_soc_pct=soc_bounds["max_soc_pct"],
+                initial_soc_pct=soc_bounds["initial_soc_pct"],
+            ),
+            use_container_width=True,
+        )
+
+    col3, col4 = st.columns(2)
+    with col3:
+        st.plotly_chart(
+            chart_rebalancing(dispatch_df, da_sched_df, sample_date),
+            use_container_width=True,
+        )
+    with col4:
+        st.plotly_chart(chart_pnl_waterfall(results_df), use_container_width=True)
+
+    # Operation explorer: a 24-hour viewport dragged across the month via the date strip
+    st.markdown("---")
+    st.subheader("Dispatch Explorer")
+    st.caption(
+        "Drag the date strip at the top of the chart to scroll through the month, or "
+        "stretch its handles to view any time span (it opens on the first day). All three "
+        "panels move together: market prices (top), the LP day-ahead plan versus what was "
+        "actually dispatched (middle), and the resulting state of charge (bottom). Hover "
+        "any hour to see the decision taken."
+    )
+    st.plotly_chart(
+        chart_operation_explorer(
+            hourly, dispatch_df, da_sched_df,
+            min_soc_pct=soc_bounds["min_soc_pct"],
+            max_soc_pct=soc_bounds["max_soc_pct"],
+        ),
+        use_container_width=True,
+    )
+
+
+if __name__ == "__main__":
+    main()

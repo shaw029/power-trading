@@ -57,13 +57,12 @@ python main.py --config configs/config.yaml
 
 ### BESS Strategy
 
-- Day-Ahead schedule solved via linear programming (PuLP/HiGHS) to maximise charge/discharge revenue against an ML DA price forecast
-- SOC operating window (default 10–90%) protects cell longevity; optional `target_daily_cycles` cap limits daily throughput
-- End-of-day SOC carries forward to the next day — the LP never artificially resets to a fixed starting level
-- Intraday session applies three rules: execute DA dispatch, SOC drift rebalance against MID, and spread-improvement trades when MID beats DA + degradation cost
-- Separate charge and discharge efficiencies model asymmetric conversion losses realistically
-- DA schedule is optimised against an ML price forecast; revenue settles against actual cleared DA prices
-- State-of-charge tracking and cycle degradation costs are enforced throughout
+- Day-Ahead schedule solved via linear programming (PuLP/HiGHS) against an ML DA price forecast; revenue then settles against the actual cleared DA price, so forecast quality drives PnL
+- SOC operating window (default 10–90%) protects cell longevity, with an optional `target_daily_cycles` throughput cap; degradation cost is priced into the LP objective, not just deducted after the fact
+- End-of-day SOC carries forward as the next day's starting level — days are not treated independently
+- Intraday rules engine rebalances against MID: execute the DA schedule, correct SOC drift, and capture spread improvements when MID beats DA + degradation cost; undeliverable volume settles at the imbalance price
+
+→ Full commercial model, asset state machine, and PnL decomposition in [ARCHITECTURE.md](ARCHITECTURE.md#5-phase-3-physical-asset-bess-optimisation).
 
 ```bash
 # Virtual strategy (default)
@@ -105,16 +104,16 @@ All notebooks live in `notebooks/`.
 
 ## Interactive Dashboard
 
-A Streamlit dashboard for understanding the BESS dispatch model, month by month, without touching a notebook:
+The pipeline reports the BESS strategy as aggregate numbers — daily PnL and summary metrics — which tell you *how much* the battery made but not *why* it acted as it did. The dashboard closes that gap: it faithfully replays the exact strategy the pipeline runs and exposes the per-hour decision trail, so you can see why it charged or discharged at each settlement period, how SOC evolved across the month, where the price forecast misled it, and where it hit imbalance or SOC/power limits. It is a model-debugging tool, not a live trading interface.
 
 ```bash
-make dashboard          # or: streamlit run app.py
+make dashboard          # or: streamlit run dashboard/app.py
 ```
 
-Pick a month, tune the asset parameters in the sidebar (capacity, power, efficiencies, SOC bounds, degradation cost, cycle cap), and the dashboard re-runs the full dispatch simulation live from `data/processed/processed_data.parquet`. It shows:
+- **Monthly overview** — price/dispatch overlay, full-month SOC tracker, DA-schedule-vs-final-dispatch rebalancing, and the PnL waterfall (DA → intraday → imbalance → degradation → net).
+- **Dispatch Explorer** — a date scroller that slides a window of any span across the month; three time-aligned panels show prices (DA, MID, imbalance), the LP plan vs. actual dispatch, and SOC, with the per-hour decision (including curtailments) on hover.
 
-- **Monthly overview** — price/dispatch overlay for the highest-spread day, full-month SOC tracker, DA-schedule-vs-final-dispatch rebalancing impact, and the PnL waterfall (DA revenue → intraday → imbalance → degradation → net).
-- **Dispatch Explorer** — a date scroller that slides a window of any span (one day by default) across the month. Three time-aligned panels show market prices (DA, MID, imbalance), the LP day-ahead plan versus the dispatch actually executed, and the resulting state of charge; hovering any hour reveals the decision taken, including curtailments against SOC or power limits.
+→ How it mirrors the pipeline, the out-of-sample month limitation, and usage notes are in [DEVELOPMENT.md](DEVELOPMENT.md#dashboard).
 
 ---
 
@@ -124,7 +123,7 @@ Pick a month, tune the asset parameters in the sidebar (capacity, power, efficie
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Strategy design, market rationale, signal logic, and BESS commercial model |
 | [DATA_SOURCES.md](DATA_SOURCES.md) | Seven datasets across three APIs, CSV fallbacks, and per-day caching |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Environment setup, VS Code launch configs, and project structure |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Environment setup, config reference, project structure, the dashboard, and VS Code launch configs |
 
 ---
 

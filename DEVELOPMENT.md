@@ -168,7 +168,6 @@ bess:
   resolution_h: 1.0                # dispatch interval in hours (1 = hourly)
   soc_drift_tolerance: 0.05        # max SOC drift before intraday rebalance (fraction of capacity)
   target_daily_cycles: 1.5         # max daily discharge energy as a multiple of capacity; null disables
-  price_history_lookback_days: 7   # days of DA price history behind the naive forecast (dashboard)
 ```
 
 | Key | Description |
@@ -183,7 +182,6 @@ bess:
 | `max_soc_pct` | Upper SOC operating bound as a fraction of capacity. The LP and intraday engine will not charge above this level |
 | `soc_drift_tolerance` | Maximum SOC deviation (fraction of capacity) from the DA-implied trajectory before the intraday rebalancing rule triggers |
 | `target_daily_cycles` | Optional cap on daily discharge energy: `Σ discharge × duration ≤ target_daily_cycles × capacity_mwh`. Set to `null` to disable |
-| `price_history_lookback_days` | Days of trailing DA prices averaged into the naive forecast used by the Streamlit dashboard (default 7) |
 
 ## Project Structure
 
@@ -234,11 +232,25 @@ power-trading/
 │   │   └── intraday_manager.py     # Rules-based intraday rebalancing
 │   └── utils/                      # config.py
 ├── tests/
-├── app.py                          # Streamlit dashboard (make dashboard)
+├── dashboard/                      # Streamlit dashboard (make dashboard)
+│   ├── app.py                      # data loading, pipeline-mirroring sim, layout
+│   └── charts.py                   # Plotly chart builders
 ├── pipeline.py                     # End-to-end orchestrator
 ├── main.py                         # CLI entry point
 └── requirements.txt
 ```
+
+## Dashboard
+
+`make dashboard` (or `streamlit run dashboard/app.py`) launches the BESS dispatch debugger — see the README for what it's *for*. Code lives in `dashboard/`: `app.py` (data loading, the simulation, and layout) and `charts.py` (Plotly builders). Paths are anchored to the repo root, so it runs from any working directory.
+
+It replays the strategy exactly as `pipeline.py` does, so what you see matches real model output:
+
+- the Day-Ahead schedule is optimised against the same walk-forward ML price forecast (trained once per session and cached);
+- the intraday rules engine settles against actual DA/MID/imbalance prices with SBP/SSP shortfall pricing;
+- state of charge carries continuously across days — each day starts from the previous day's actual ending SOC.
+
+Because scheduling against an in-sample forecast would be leakage, the selectable months are limited to the model's out-of-sample (walk-forward) range. Changing an asset parameter (capacity, power, efficiencies, SOC bounds, degradation, cycle cap) re-runs the whole out-of-sample period and is cached on those parameters; switching month just re-slices the cached result. Override the data and feature locations with the `PT_PROCESSED_DATA` and `PT_FEATURES` environment variables.
 
 ## VS Code
 
