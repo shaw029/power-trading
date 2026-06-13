@@ -145,7 +145,7 @@ def chart_operation_explorer(
     # being row 1, the slider sits at the top of the figure.
     fig = make_subplots(
         rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.095,
-        subplot_titles=("", "Market Prices", "Dispatch Decisions", "State of Charge"),
+        subplot_titles=("", "Market Prices", "Decision Delta", "State of Charge"),
         row_heights=[0.02, 0.327, 0.327, 0.326],
     )
 
@@ -179,31 +179,38 @@ def chart_operation_explorer(
         name="Imbalance (SBP)", line=dict(color="#95a5a6", width=1, dash="dot"),
     ), row=2, col=1)
 
-    fig.add_trace(go.Scatter(
-        x=sched_mw.index, y=sched_mw.values, name="DA Schedule (LP)",
-        line=dict(color="#1f77b4", width=2, shape="hvh"),
-    ), row=3, col=1)
-    fig.add_trace(go.Bar(
-        x=times, y=actual_mw, name="Final Dispatch",
-        marker_color=bar_colors, opacity=0.7,
-        width=3600 * 1000 * 0.7,  # bar width in ms: 70% of an hour
-        customdata=decisions,
-        hovertemplate="%{x|%d %b %H:%M}<br>%{customdata}<extra></extra>",
-    ), row=3, col=1)
+    # Decision Delta: the locked DA plan transformed into the final physical
+    # position by each intraday rule. Four grouped bars per settlement period —
+    # the original DA commitment, the signed volume deltas applied by Rule 2
+    # (Financial Hedge) and Rule 3 (Alpha Override), and the resulting dispatch.
+    hour_ms = 3600 * 1000
+    bar_w = hour_ms * 0.175  # 4 bars span 70% of the hour, centred on the period
+    soc_impact = (dispatch["soc_after"] - dispatch["soc_before"]) * 100
+    delta_custom = list(zip(dispatch["rule_label"], soc_impact))
+    delta_hover = (
+        "%{x|%d %b %H:%M}<br>%{customdata[0]}"
+        "<br>Δ %{y:.1f} MW<br>SOC impact %{customdata[1]:+.1f} pp<extra></extra>"
+    )
 
-    # Financially netted volume: periods where the DA plan was neutralised at MID
-    # (buyback/sellback or alpha override) without physically moving the battery.
-    netted = dispatch[
-        dispatch["trade_type"].isin(
-            ["financial_buyback", "financial_sellback", "alpha_override"]
-        )
-    ]
     fig.add_trace(go.Bar(
-        x=netted["timestamp"], y=netted["netted_mwh"],
-        name="Financially Netted Volume",
-        marker_color="#9b59b6", opacity=0.6,
-        width=3600 * 1000 * 0.35,  # narrower than the dispatch bars
-        hovertemplate="%{x|%d %b %H:%M}<br>Financially netted %{y:.1f} MWh<extra></extra>",
+        x=times, y=dispatch["da_mw"].values, name="DA Plan",
+        marker_color="#1f3b6d", offset=-2 * bar_w, width=bar_w,
+        hovertemplate="%{x|%d %b %H:%M}<br>DA Plan %{y:.1f} MW<extra></extra>",
+    ), row=3, col=1)
+    fig.add_trace(go.Bar(
+        x=times, y=dispatch["netting_mw"].values, name="Financial Hedge",
+        marker_color="#7fb3e0", offset=-bar_w, width=bar_w,
+        customdata=delta_custom, hovertemplate=delta_hover,
+    ), row=3, col=1)
+    fig.add_trace(go.Bar(
+        x=times, y=dispatch["override_mw"].values, name="Alpha Override",
+        marker_color="#f39c12", offset=0.0, width=bar_w,
+        customdata=delta_custom, hovertemplate=delta_hover,
+    ), row=3, col=1)
+    fig.add_trace(go.Bar(
+        x=times, y=dispatch["final_mw"].values, name="Final Dispatch",
+        marker_color="#1e8449", offset=bar_w, width=bar_w,
+        hovertemplate="%{x|%d %b %H:%M}<br>Final Dispatch %{y:.1f} MW<extra></extra>",
     ), row=3, col=1)
 
     fig.add_trace(go.Scatter(

@@ -85,6 +85,16 @@ def run_intraday_session(
         log_price = 0.0
         log_netted_mwh = 0.0
 
+        # Decision-delta tracking: how the locked DA plan is transformed into the
+        # final physical position by each rule. da_mw is the original commitment;
+        # netting_mw/override_mw are the signed volume deltas applied when Rules 2
+        # and 3 fire (0.0 otherwise); final_mw is the resulting physical position.
+        da_mw = mw
+        netting_mw = 0.0
+        override_mw = 0.0
+        rule_label = "Rule 4: Physical Dispatch"
+        soc_before = asset.soc_pct
+
         # Forward-looking physical guardrails over the remaining locked DA schedule.
         # Required Reserve (R_h): the minimum SOC to hold at this period so every
         #   future DA discharge can be served without breaching min SOC.
@@ -129,6 +139,8 @@ def run_intraday_session(
                     financial_netting_pnl -= eligible * duration_h * mid_prices[h]
                     da_revenue_netted += eligible * duration_h * da_price_actual[h]
                     physical_mw = mw - eligible
+                    netting_mw = physical_mw - mw  # volume removed from physical
+                    rule_label = f"Rule 2: Buy-Back at £{mid_prices[h]:.2f}/MWh"
                     trade_type = "financial_buyback"
                     log_netted_mwh = eligible * duration_h
 
@@ -146,6 +158,8 @@ def run_intraday_session(
                     # The netted leg is a scheduled charge — its DA value is a cost.
                     da_revenue_netted -= eligible * duration_h * da_price_actual[h]
                     physical_mw = mw + eligible
+                    netting_mw = physical_mw - mw  # volume removed from physical
+                    rule_label = f"Rule 2: Sell-Back at £{mid_prices[h]:.2f}/MWh"
                     trade_type = "financial_sellback"
                     log_netted_mwh = eligible * duration_h
 
@@ -194,6 +208,8 @@ def run_intraday_session(
                     # The scheduled DA position is resolved financially, not
                     # physically delivered — book its DA value as netted.
                     da_revenue_netted += physical_mw * duration_h * da_price_actual[h]
+                    override_mw = -physical_mw  # entire DA volume resolved off-physical
+                    rule_label = f"Rule 3: Alpha Override at £{mid_prices[h]:.2f}/MWh"
                     physical_mw = 0.0
                     trade_type = "alpha_override"
                     log_action = "discharge"
@@ -254,8 +270,14 @@ def run_intraday_session(
             "mw": log_mw,
             "netted_mwh": log_netted_mwh,
             "price": log_price,
+            "da_mw": da_mw,
+            "netting_mw": netting_mw,
+            "override_mw": override_mw,
+            "final_mw": physical_mw,
+            "rule_label": rule_label,
             "required_reserve_mwh": required_reserve,
             "available_headroom_mwh": available_headroom,
+            "soc_before": soc_before,
             "soc_after": asset.soc_pct,
         })
 
