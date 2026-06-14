@@ -9,32 +9,28 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def chart_avg_daily_shape(
-    dispatch_df: pd.DataFrame,
-    prices_hourly: pd.DataFrame,
+def chart_da_commitment_shape(
     da_sched_df: pd.DataFrame,
+    prices_hourly: pd.DataFrame,
 ):
-    """Mean dispatch and price by hour-of-day, averaged across the month.
+    """Mean day-ahead committed dispatch and DA price by hour-of-day.
 
-    Reveals the strategy's signature — whether it systematically charges in the
-    cheap hours and discharges in the expensive ones — rather than one day.
+    The planning layer: what the LP locked in against its forecast, before any
+    intraday adjustment. Bars are the committed MW (+ discharge / − charge);
+    the lines compare the realised DA price against the forecast the schedule
+    was optimised on, so forecast bias by hour is visible at a glance.
     """
-    d = dispatch_df.copy()
-    d["timestamp"] = pd.to_datetime(d["timestamp"])
-    signed = d["mw"].where(d["action"] == "discharge", -d["mw"])
-    d["signed_mw"] = signed.where(d["action"] != "idle", 0.0)
-    mean_mw = d.groupby(d["timestamp"].dt.hour)["signed_mw"].mean()
-
-    da_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["day_ahead_price"].mean()
     sched = da_sched_df.copy()
     sched["hod"] = pd.to_datetime(sched["timestamp"]).dt.hour
+    mean_mw = sched.groupby("hod")["da_mw"].mean()
     fc_by_hour = sched.groupby("hod")["da_price_pred"].mean()
+    da_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["day_ahead_price"].mean()
 
     colors = ["#e74c3c" if v > 0 else "#2ecc71" for v in mean_mw.values]
 
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=mean_mw.index, y=mean_mw.values, name="Mean dispatch MW", yaxis="y2",
+        x=mean_mw.index, y=mean_mw.values, name="Mean DA commitment MW", yaxis="y2",
         marker_color=colors, opacity=0.5,
     ))
     fig.add_trace(go.Scatter(
@@ -47,13 +43,76 @@ def chart_avg_daily_shape(
         line=dict(color="#7fb3e0", width=1.5, dash="dash"),
     ))
     fig.update_layout(
-        title="Average Daily Shape — dispatch & price by hour of day",
+        title="DA Commitment Shape — committed dispatch & DA price by hour",
         xaxis=dict(title="Hour of Day", dtick=1),
         yaxis=dict(title="DA Price (£/MWh)", side="left", title_font=dict(color="#1f77b4")),
+        yaxis2=dict(
+            title="Mean DA Commitment (MW, + discharge / − charge)",
+            side="right", overlaying="y", title_font=dict(color="#555"),
+        ),
+        legend=dict(x=0, y=1.12, orientation="h"),
+        template="plotly_white",
+        height=400,
+    )
+    return fig
+
+
+def chart_realized_shape(
+    dispatch_df: pd.DataFrame,
+    prices_hourly: pd.DataFrame,
+    da_sched_df: pd.DataFrame,
+):
+    """Mean realised physical dispatch and execution prices by hour-of-day.
+
+    The execution layer: what the battery physically did after the intraday
+    engine reshaped the committed schedule against MID. Faint ghost bars are the
+    DA commitment, so the gap to the solid bars is the volume the intraday rules
+    settled financially (buyback / sellback) rather than physically moving the
+    pack. Lines show realised DA against MID — the spread the intraday rules
+    trade.
+    """
+    d = dispatch_df.copy()
+    d["timestamp"] = pd.to_datetime(d["timestamp"])
+    signed = d["mw"].where(d["action"] == "discharge", -d["mw"])
+    d["signed_mw"] = signed.where(d["action"] != "idle", 0.0)
+    mean_mw = d.groupby(d["timestamp"].dt.hour)["signed_mw"].mean()
+
+    sched = da_sched_df.copy()
+    sched["hod"] = pd.to_datetime(sched["timestamp"]).dt.hour
+    da_commit = sched.groupby("hod")["da_mw"].mean()
+
+    da_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["day_ahead_price"].mean()
+    mid_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["mid_price"].mean()
+
+    colors = ["#e74c3c" if v > 0 else "#2ecc71" for v in mean_mw.values]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=da_commit.index, y=da_commit.values, name="DA commitment (ghost)", yaxis="y2",
+        marker_color="#999999", opacity=0.25,
+    ))
+    fig.add_trace(go.Bar(
+        x=mean_mw.index, y=mean_mw.values, name="Mean realised dispatch MW", yaxis="y2",
+        marker_color=colors, opacity=0.65,
+    ))
+    fig.add_trace(go.Scatter(
+        x=da_by_hour.index, y=da_by_hour.values,
+        name="Mean DA price (actual)", yaxis="y", line=dict(color="#1f77b4", width=2),
+    ))
+    fig.add_trace(go.Scatter(
+        x=mid_by_hour.index, y=mid_by_hour.values,
+        name="Mean MID price", yaxis="y",
+        line=dict(color="#9467bd", width=2),
+    ))
+    fig.update_layout(
+        title="Realised Dispatch Shape — physical dispatch & execution price by hour",
+        xaxis=dict(title="Hour of Day", dtick=1),
+        yaxis=dict(title="Price (£/MWh)", side="left"),
         yaxis2=dict(
             title="Mean Dispatch (MW, + discharge / − charge)",
             side="right", overlaying="y", title_font=dict(color="#555"),
         ),
+        barmode="overlay",
         legend=dict(x=0, y=1.12, orientation="h"),
         template="plotly_white",
         height=400,
@@ -116,36 +175,45 @@ def chart_operation_explorer(
     sched = da_sched_df.copy()
     sched["timestamp"] = pd.to_datetime(sched["timestamp"])
     sched = sched.sort_values("timestamp").set_index("timestamp")
-    sched_mw = sched["da_mw"]
     da_price_pred = sched["da_price_pred"]
 
-    actual_mw = []
-    decisions = []
-    for _, row in dispatch.iterrows():
-        scheduled = sched_mw.get(row["timestamp"], 0.0)
-        if row["action"] == "discharge":
-            signed = row["mw"]
-            text = f"Discharge {row['mw']:.1f} MW @ £{row['price']:.2f}/MWh"
-        elif row["action"] == "charge":
-            signed = -row["mw"]
-            text = f"Charge {row['mw']:.1f} MW @ £{row['price']:.2f}/MWh"
-        else:
-            signed = 0.0
-            text = "Idle — no DA position"
-        if row["action"] != "idle" and abs(scheduled) - abs(signed) > 1e-6:
-            text += f"<br>Curtailed from {abs(scheduled):.1f} MW scheduled (SOC/power limit)"
-        actual_mw.append(signed)
-        decisions.append(text)
-
-    bar_colors = ["#e74c3c" if mw > 0 else "#2ecc71" if mw < 0 else "#bdc3c7" for mw in actual_mw]
     times = dispatch["timestamp"]
+    da_price_map = prices_hourly["day_ahead_price"]
+    mid_map = prices_hourly["mid_price"]
+
+    # Build the trade tape. The DA leg is the day-ahead commitment itself (always
+    # shown when da_mw != 0, regardless of how it was later resolved); the intraday
+    # leg is the rule's trade, shown in its true buy/sell direction. Buy = ▲,
+    # Sell = ▼; venue = colour (DA blue, Intraday/MID green).
+    buy_da_x, buy_da_y, sell_da_x, sell_da_y = [], [], [], []
+    buy_id_x, buy_id_y, sell_id_x, sell_id_y = [], [], [], []
+    for _, row in dispatch.iterrows():
+        ts = row["timestamp"]
+        da_p = da_price_map.get(ts)
+        mid_p = mid_map.get(ts)
+        da_v = row["da_mw"]
+        label = row["rule_label"]
+        if da_p is not None:
+            if da_v > 1e-6:         # committed to discharge → sold on DA
+                sell_da_x.append(ts)
+                sell_da_y.append(da_p)
+            elif da_v < -1e-6:      # committed to charge → bought on DA
+                buy_da_x.append(ts)
+                buy_da_y.append(da_p)
+        if mid_p is not None:
+            if "Buy-Back" in label:          # bought the discharge back at MID
+                buy_id_x.append(ts)
+                buy_id_y.append(mid_p)
+            elif "Sell-Back" in label or "Alpha" in label:  # sold at MID
+                sell_id_x.append(ts)
+                sell_id_y.append(mid_p)
 
     # Row 1 is a thin strip that only hosts the rangeslider. Its sole trace is
     # day-number text, so the slider band renders dates as its background and,
     # being row 1, the slider sits at the top of the figure.
     fig = make_subplots(
         rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.095,
-        subplot_titles=("", "Market Prices", "Decision Delta", "State of Charge"),
+        subplot_titles=("", "Market Prices & Trades", "Traded Volume — DA vs Intraday", "State of Charge"),
         row_heights=[0.02, 0.327, 0.327, 0.326],
     )
 
@@ -168,58 +236,71 @@ def chart_operation_explorer(
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
         x=da_price_pred.index, y=da_price_pred.values,
-        name="DA Forecast (pred)", line=dict(color="#7fb3e0", width=1.5, dash="dash"),
+        name="DA Forecast", line=dict(color="#7fb3e0", width=1.2, dash="dash"),
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
         x=prices_hourly.index, y=prices_hourly["mid_price"].values,
-        name="MID Price", line=dict(color="#f39c12", width=1.5),
+        name="MID Price", line=dict(color="#27ae60", width=1.6),
+    ), row=2, col=1)
+
+    # Trade markers sit on the price line of the venue they executed on:
+    # DA (blue) and Intraday/MID (green); ▲ = buy (charge), ▼ = sell (discharge).
+    da_mk = dict(color="#1f3b6d", line=dict(width=0.5, color="white"))
+    id_mk = dict(color="#1e8449", line=dict(width=0.5, color="white"))
+    fig.add_trace(go.Scatter(
+        x=buy_da_x, y=buy_da_y, mode="markers", name="Buy on DA",
+        marker=dict(symbol="triangle-up", size=11, **da_mk),
+        hovertemplate="Buy (charge) on DA @ £%{y:.1f}<extra></extra>",
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
-        x=prices_hourly.index, y=prices_hourly["system_buy_price"].values,
-        name="Imbalance (SBP)", line=dict(color="#95a5a6", width=1, dash="dot"),
+        x=sell_da_x, y=sell_da_y, mode="markers", name="Sell on DA",
+        marker=dict(symbol="triangle-down", size=11, **da_mk),
+        hovertemplate="Sell (discharge) on DA @ £%{y:.1f}<extra></extra>",
+    ), row=2, col=1)
+    fig.add_trace(go.Scatter(
+        x=buy_id_x, y=buy_id_y, mode="markers", name="Buy on Intraday",
+        marker=dict(symbol="triangle-up", size=11, **id_mk),
+        hovertemplate="Buy-back on Intraday @ £%{y:.1f}<extra></extra>",
+    ), row=2, col=1)
+    fig.add_trace(go.Scatter(
+        x=sell_id_x, y=sell_id_y, mode="markers", name="Sell on Intraday",
+        marker=dict(symbol="triangle-down", size=11, **id_mk),
+        hovertemplate="Sell on Intraday @ £%{y:.1f}<extra></extra>",
     ), row=2, col=1)
 
-    # Decision Delta: the locked DA plan transformed into the final physical
-    # position by each intraday rule. Four grouped bars per settlement period —
-    # the original DA commitment, the signed volume deltas applied by Rule 2
-    # (Financial Hedge) and Rule 3 (Alpha Override), and the resulting dispatch.
-    hour_ms = 3600 * 1000
-    bar_w = hour_ms * 0.175  # 4 bars span 70% of the hour, centred on the period
-    soc_impact = (dispatch["soc_after"] - dispatch["soc_before"]) * 100
-    delta_custom = list(zip(dispatch["rule_label"], soc_impact))
-    delta_hover = (
-        "%{x|%d %b %H:%M}<br>%{customdata[0]}"
-        "<br>Δ %{y:.1f} MW<br>SOC impact %{customdata[1]:+.1f} pp<extra></extra>"
-    )
+    # How much, by venue, signed the same way as the markers (+ sell/discharge,
+    # − buy/charge): the blue bar is the full DA commitment; the green bar is the
+    # intraday trade in its true direction — a buyback shows below zero (a buy),
+    # a sellback / alpha dump above zero (a sell).
+    da_vol = dispatch["da_mw"].values
+    intraday_vol = []
+    for _, row in dispatch.iterrows():
+        if "Alpha" in row["rule_label"]:
+            v = row["mw"] if row["action"] == "discharge" else -row["mw"]
+        elif abs(row["netting_mw"]) > 1e-6:
+            v = row["netting_mw"]  # buyback (−, buy) / sellback (+, sell)
+        else:
+            v = 0.0
+        intraday_vol.append(v)
+    da_y = [v if abs(v) > 1e-6 else None for v in da_vol]
+    id_y = [v if abs(v) > 1e-6 else None for v in intraday_vol]
 
     fig.add_trace(go.Bar(
-        x=times, y=dispatch["da_mw"].values, name="DA Plan",
-        marker_color="#1f3b6d", offset=-2 * bar_w, width=bar_w,
-        hovertemplate="%{x|%d %b %H:%M}<br>DA Plan %{y:.1f} MW<extra></extra>",
+        x=times, y=da_y, name="DA trade volume",
+        marker_color="#1f77b4",
+        hovertemplate="DA %{y:+.1f} MW<extra></extra>",
     ), row=3, col=1)
     fig.add_trace(go.Bar(
-        x=times, y=dispatch["netting_mw"].values, name="Financial Hedge",
-        marker_color="#7fb3e0", offset=-bar_w, width=bar_w,
-        customdata=delta_custom, hovertemplate=delta_hover,
-    ), row=3, col=1)
-    fig.add_trace(go.Bar(
-        x=times, y=dispatch["override_mw"].values, name="Alpha Override",
-        marker_color="#f39c12", offset=0.0, width=bar_w,
-        customdata=delta_custom, hovertemplate=delta_hover,
-    ), row=3, col=1)
-    fig.add_trace(go.Bar(
-        x=times, y=dispatch["final_mw"].values, name="Final Dispatch",
-        marker_color="#1e8449", offset=bar_w, width=bar_w,
-        hovertemplate="%{x|%d %b %H:%M}<br>Final Dispatch %{y:.1f} MW<extra></extra>",
+        x=times, y=id_y, name="Intraday trade volume",
+        marker_color="#27ae60",
+        hovertemplate="Intraday %{y:+.1f} MW<extra></extra>",
     ), row=3, col=1)
 
     fig.add_trace(go.Scatter(
         x=times, y=dispatch["soc_after"].values * 100,
-        name="SOC", mode="lines+markers",
-        line=dict(color="#8e44ad", width=2),
-        marker=dict(size=5, color=bar_colors),
-        customdata=decisions,
-        hovertemplate="%{x|%d %b %H:%M}<br>SOC %{y:.1f}%<br>%{customdata}<extra></extra>",
+        name="SOC", mode="lines",
+        line=dict(color="#34495e", width=2),
+        hovertemplate="SOC %{y:.1f}%<extra></extra>",
     ), row=4, col=1)
     fig.add_hline(
         y=min_soc_pct * 100, line_dash="dot", line_color="#e74c3c",
@@ -253,8 +334,8 @@ def chart_operation_explorer(
         template="plotly_white", height=850,
         legend=dict(x=0, y=1.05, orientation="h"),
         hovermode="x unified",
-        barmode="overlay",
-        bargap=0,
+        barmode="relative",
+        bargap=0.2,
     )
     return fig
 

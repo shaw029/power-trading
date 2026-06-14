@@ -174,7 +174,13 @@ def run_intraday_session(
         if volatility_array is not None and trade_type == "physical_dispatch":
             alpha_threshold = config.get("alpha_threshold", 5.0)
             vol_multiplier = config.get("vol_multiplier", 1.0)
-            dump_volume = min(asset.power_mw * duration_h, asset._soc_mwh - asset._min_soc_mwh)
+            # dump_volume is pack energy; the power limit is on terminal output, so
+            # the matching pack draw over the period is power_mw·dt / discharge_eff.
+            # Without the efficiency term the dump under-draws the pack and leaves
+            # SOC above H_h, overflowing a later DA charge (Rule 3 may break R_h but
+            # not the headroom guardrail).
+            max_pack_draw = asset.power_mw * duration_h / asset.discharge_efficiency
+            dump_volume = min(max_pack_draw, asset._soc_mwh - asset._min_soc_mwh)
             if dump_volume > 0:
                 hedge_cost = 0.0
                 if asset._soc_mwh - dump_volume < required_reserve:
@@ -250,18 +256,26 @@ def run_intraday_session(
             log_mw = max_mw
             log_price = da_price_actual[h]
 
-        # Rule 4: spread improvement
+        # Rule 4: spread improvement — opportunistically trade the leftover power
+        # capacity at MID, but clamp to the forward guardrails (required_reserve /
+        # available_headroom), not just the absolute SOC bounds. Otherwise this
+        # spends energy (or headroom) the locked DA schedule still needs to serve
+        # future periods, which would surface as an imbalance shortfall later.
         if mw != 0:
             remaining_mw = asset.power_mw - abs(mw)
             if remaining_mw > 0:
                 if mw > 0 and mid_prices[h] > da_price_actual[h] + degradation_cost:
-                    if asset.can_discharge(remaining_mw, duration_h):
-                        asset.discharge(remaining_mw, duration_h)
-                        physical_dispatch_pnl += remaining_mw * duration_h * mid_prices[h]
+                    allowed_mwh = (asset._soc_mwh - required_reserve) * asset.discharge_efficiency
+                    extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
+                    if extra_mw > 0:
+                        asset.discharge(extra_mw, duration_h)
+                        physical_dispatch_pnl += extra_mw * duration_h * mid_prices[h]
                 elif mw < 0 and mid_prices[h] < da_price_actual[h] - degradation_cost:
-                    if asset.can_charge(remaining_mw, duration_h):
-                        asset.charge(remaining_mw, duration_h)
-                        physical_dispatch_pnl -= remaining_mw * duration_h * mid_prices[h]
+                    allowed_mwh = (available_headroom - asset._soc_mwh) / asset.charge_efficiency
+                    extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
+                    if extra_mw > 0:
+                        asset.charge(extra_mw, duration_h)
+                        physical_dispatch_pnl -= extra_mw * duration_h * mid_prices[h]
 
         dispatch_log.append({
             "period": h,

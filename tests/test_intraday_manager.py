@@ -418,3 +418,44 @@ class TestAlphaOverride:
 
         assert result["dispatch_log"][0]["trade_type"] == "physical_dispatch"
         assert result["financial_netting_pnl"] == pytest.approx(0.0)
+
+
+class TestGuardrailsPreventImbalance:
+    """A strictly-feasible DA schedule must settle with zero imbalance, even with
+    every intraday rule firing. Rule 4 stays within R_h/H_h, and Rule 3 may break
+    R_h but covers the deficit with its hedge — so no rule can leave an uncovered
+    shortfall that spills into imbalance."""
+
+    def test_all_rules_yield_zero_imbalance(self):
+        import random
+
+        from src.bess.da_optimizer import optimize_da_schedule
+
+        random.seed(7)
+        worst = 0.0
+        for _ in range(200):
+            asset = BESSAsset(
+                capacity_mwh=20.0, power_mw=10.0,
+                charge_efficiency=0.92, discharge_efficiency=0.92,
+                degradation_cost_per_mwh=2.0,
+                initial_soc_pct=random.uniform(0.1, 0.9),
+                min_soc_pct=0.05, max_soc_pct=0.95,
+            )
+            fc = [random.uniform(-50, 200) for _ in range(24)]
+            sched = optimize_da_schedule(fc, asset, duration_h=1.0)
+            asset.reset()
+            mid = [f + random.uniform(-60, 60) for f in fc]
+            vol = [abs(random.uniform(5, 40)) for _ in range(24)]
+            result = run_intraday_session(
+                da_schedule=sched, da_price_actual=fc, mid_prices=mid,
+                imbalance_prices=[abs(f) + 20 for f in fc], asset=asset,
+                config={
+                    "degradation_cost_per_mwh": 2.0, "resolution_h": 1.0,
+                    "margin_buy": 2.0, "margin_sell": 2.0,
+                    "alpha_threshold": 5.0, "vol_multiplier": 1.0,
+                },
+                imbalance_sell_prices=[f - 10 for f in fc],
+                volatility_array=vol,
+            )
+            worst = max(worst, abs(result["imbalance_pnl"]))
+        assert worst < 1e-6, f"feasible schedule leaked imbalance: {worst}"

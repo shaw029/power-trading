@@ -27,9 +27,10 @@ from src.bess.intraday_manager import run_intraday_session  # noqa: E402
 from src.features.build_features import build_features  # noqa: E402
 from src.models.train import train_da_price_model, _FEATURE_COLS  # noqa: E402
 from dashboard.charts import (  # noqa: E402
-    chart_avg_daily_shape,
+    chart_da_commitment_shape,
     chart_operation_explorer,
     chart_pnl_waterfall,
+    chart_realized_shape,
     chart_soc_tracker,
 )
 
@@ -357,13 +358,13 @@ def render_bess(prices: pd.DataFrame):
         st.warning("No valid price data for the selected month.")
         return
 
-    col1, col2 = st.columns(2)
-    with col1:
+    top_left, top_right = st.columns(2)
+    with top_left:
         st.plotly_chart(
-            chart_avg_daily_shape(dispatch_df, hourly, da_sched_df),
-            use_container_width=True, key=f"avg_shape_{month_str}",
+            chart_realized_shape(dispatch_df, hourly, da_sched_df),
+            use_container_width=True, key=f"realized_shape_{month_str}",
         )
-    with col2:
+    with top_right:
         st.plotly_chart(
             chart_soc_tracker(
                 dispatch_df,
@@ -374,10 +375,17 @@ def render_bess(prices: pd.DataFrame):
             use_container_width=True, key=f"soc_tracker_{month_str}",
         )
 
-    st.plotly_chart(
-        chart_pnl_waterfall(results_df),
-        use_container_width=True, key=f"waterfall_{month_str}",
-    )
+    bottom_left, bottom_right = st.columns(2)
+    with bottom_left:
+        st.plotly_chart(
+            chart_da_commitment_shape(da_sched_df, hourly),
+            use_container_width=True, key=f"da_commit_shape_{month_str}",
+        )
+    with bottom_right:
+        st.plotly_chart(
+            chart_pnl_waterfall(results_df),
+            use_container_width=True, key=f"waterfall_{month_str}",
+        )
 
     # Operation explorer: a 24-hour viewport dragged across the month via the date strip
     st.markdown("---")
