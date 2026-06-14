@@ -8,6 +8,17 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+# Shared palette. "da"/"intraday" give the frozen benchmark and the netting alpha
+# their own identity in the waterfall; the remaining buckets fall back to the
+# existing green (gain) / red (cost) scheme.
+COLORS = {
+    "da": "#1f77b4",
+    "intraday": "#2ecc71",
+    "gain": "#2ecc71",
+    "cost": "#e74c3c",
+    "net": "#2c3e50",
+}
+
 
 def chart_da_commitment_shape(
     da_sched_df: pd.DataFrame,
@@ -373,38 +384,67 @@ def chart_operation_explorer(
 
 
 def chart_pnl_waterfall(results_df: pd.DataFrame):
-    """Trader's View PnL waterfall.
+    """Trader's Alpha PnL waterfall.
 
-    DA revenue is split into the volume physically delivered against the day-ahead
-    schedule and the financial spread captured by netting that schedule at MID
-    (Rule 2 buyback/sellback). Physical intraday re-trading, imbalance settlement
-    and degradation then bridge to the net result.
+    The frozen day-ahead schedule is the benchmark; the two intraday rules are
+    additive alpha layers on top of it (Rule 2 financial netting, Rule 4 physical
+    arbitrage), execution friction is isolated into its own deduction, and
+    imbalance settlement and degradation bridge to the net result. The bars sum
+    exactly to Net PnL.
     """
+    benchmark = results_df["benchmark_da_revenue"].sum()
+    rule2 = results_df["rule2_alpha"].sum()
+    rule4 = results_df["rule4_alpha"].sum()
+    execution = results_df["execution_costs_paid"].sum()
+    imbalance = results_df["imbalance_pnl"].sum()
+    degradation = results_df["degradation_cost"].sum()
+
+    # (label, signed value, bar colour). DA Benchmark and Rule 2 carry their own
+    # palette identity; the rest are coloured by whether they add or cost.
     components = [
-        ("Baseline DA Delivery", results_df["da_revenue_delivered"].sum()),
-        ("Financial Spread", results_df["financial_spread_captured"].sum()),
-        ("Physical Intraday", results_df["physical_dispatch_pnl"].sum()),
-        ("Imbalance Penalty", results_df["imbalance_pnl"].sum()),
-        ("Degradation", -results_df["degradation_cost"].sum()),
+        ("DA Benchmark", benchmark, COLORS["da"]),
+        ("Rule 2 Netting Alpha", rule2, COLORS["intraday"]),
+        ("Rule 4 Physical Alpha", rule4, COLORS["gain"] if rule4 >= 0 else COLORS["cost"]),
+        ("Execution Costs", -execution, COLORS["cost"]),
+        ("Imbalance Penalty", imbalance, COLORS["gain"] if imbalance >= 0 else COLORS["cost"]),
+        ("Degradation", -degradation, COLORS["cost"]),
     ]
-    net = sum(v for _, v in components)
+    net = sum(v for _, v, _ in components)
+
+    # Floating bars: each relative bar starts where the running total sits (for a
+    # decrease it hangs down from the prior top), and the final total bar grows
+    # from zero.
+    bottoms, running = [], 0.0
+    for _, v, _ in components:
+        bottoms.append(running if v >= 0 else running + v)
+        running += v
+    bottoms.append(0.0)
 
     labels = [c[0] for c in components] + ["Net PnL"]
     values = [c[1] for c in components] + [net]
-    measures = ["relative"] * len(components) + ["total"]
+    bar_colors = [c[2] for c in components] + [COLORS["gain"] if net >= 0 else COLORS["cost"]]
 
-    fig = go.Figure(go.Waterfall(
-        x=labels, y=values, measure=measures,
-        textposition="outside",
-        text=[f"£{v:,.0f}" for v in values],
-        increasing=dict(marker_color="#2ecc71"),
-        decreasing=dict(marker_color="#e74c3c"),
-        totals=dict(marker_color="#2ecc71" if net >= 0 else "#e74c3c"),
-        connector_line_color="rgba(0,0,0,0)",
+    fig = go.Figure(go.Bar(
+        x=labels, y=values, base=bottoms,
+        marker_color=bar_colors,
+        text=[f"£{v:,.0f}" for v in values], textposition="outside",
+        hovertemplate="%{x}<br>£%{y:,.0f}<extra></extra>",
     ))
+
+    # Connectors joining each bar's running top to the next bar.
+    running = 0.0
+    for i, (_, v, _) in enumerate(components):
+        top = running + v if v >= 0 else running
+        fig.add_shape(
+            type="line", x0=i + 0.3, x1=i + 0.7, y0=top, y1=top,
+            line=dict(color="#999999", width=0.8),
+        )
+        running += v
+
     fig.update_layout(
-        title="PnL Waterfall — Trader's View",
+        title="PnL Waterfall — Trader's Alpha",
         yaxis_title="£", template="plotly_white", height=450,
+        showlegend=False,
     )
     return fig
 
@@ -413,11 +453,11 @@ def chart_daily_attribution(results_df: pd.DataFrame):
     """Daily PnL attribution across the selected month.
 
     The waterfall shows *what* made the money over the whole month; this shows
-    *when*. Each day stacks its positive returns above zero (DA delivery,
-    financial spread, physical intraday, positive imbalance) and its costs below
-    (degradation, negative imbalance) via barmode='relative', so you can see at a
+    *when*. Each day stacks its positive returns above zero (DA benchmark, the two
+    alpha layers, positive imbalance) and its costs below (execution friction,
+    degradation, negative imbalance) via barmode='relative', so you can see at a
     glance whether the month earned steadily or on a handful of volatile days.
-    The black line is each day's net PnL.
+    The black line is each day's net PnL, which the stacked buckets sum to.
     """
     df = results_df.copy()
     df["date"] = pd.to_datetime(df["date"])
@@ -425,9 +465,10 @@ def chart_daily_attribution(results_df: pd.DataFrame):
     x = df["date"]
 
     components = [
-        ("Baseline DA", df["da_revenue_delivered"], "#1f77b4"),
-        ("Financial Spread", df["financial_spread_captured"], "#2ecc71"),
-        ("Physical Intraday", df["physical_dispatch_pnl"], "#9b59b6"),
+        ("DA Benchmark", df["benchmark_da_revenue"], COLORS["da"]),
+        ("Rule 2 Alpha", df["rule2_alpha"], COLORS["intraday"]),
+        ("Rule 4 Alpha", df["rule4_alpha"], "#9b59b6"),
+        ("Execution Costs", -df["execution_costs_paid"], "#7f8c8d"),
         ("Imbalance", df["imbalance_pnl"], "#e67e22"),
         ("Degradation", -df["degradation_cost"], "#c0392b"),
     ]
