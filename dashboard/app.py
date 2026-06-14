@@ -176,13 +176,6 @@ def run_bess_simulation(
         "soc_drift_tolerance": soc_drift_tolerance,
     }
 
-    # Per-period MID volatility (trailing ~1-day rolling std, £/MWh) feeds Rule 3's
-    # proxy forward hedge; supplying it enables the alpha override in the sim.
-    vol_window = max(2, periods_per_day)
-    mid_vol = (
-        hourly["mid_price"].rolling(vol_window, min_periods=2).std().bfill().fillna(0.0)
-    )
-
     daily_results = []
     all_dispatch_logs = []
     all_da_schedules = []
@@ -224,7 +217,6 @@ def run_bess_simulation(
             asset=asset,
             config=sim_cfg,
             imbalance_sell_prices=day_df["system_sell_price"].tolist(),
-            volatility_array=mid_vol.loc[day_df.index].tolist(),
         )
         prev_soc_pct = asset.soc_pct
 

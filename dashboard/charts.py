@@ -204,7 +204,7 @@ def chart_operation_explorer(
             if "Buy-Back" in label:          # bought the discharge back at MID
                 buy_id_x.append(ts)
                 buy_id_y.append(mid_p)
-            elif "Sell-Back" in label or "Alpha" in label:  # sold at MID
+            elif "Sell-Back" in label:        # sold the charge back at MID
                 sell_id_x.append(ts)
                 sell_id_y.append(mid_p)
             spread = row.get("spread_mw", 0.0)  # Rule 4 physical extra at MID
@@ -278,16 +278,12 @@ def chart_operation_explorer(
     # How much, by venue, signed the same way as the markers (+ sell/discharge,
     # − buy/charge): the blue bar is the full DA commitment; the green bar is the
     # intraday trade in its true direction — a buyback shows below zero (a buy),
-    # a sellback / alpha dump above zero (a sell).
+    # a sellback above zero (a sell).
     da_vol = dispatch["da_mw"].values
     intraday_vol = []
     for _, row in dispatch.iterrows():
-        if "Alpha" in row["rule_label"]:
-            v = row["mw"] if row["action"] == "discharge" else -row["mw"]
-        elif abs(row["netting_mw"]) > 1e-6:
-            v = row["netting_mw"]  # buyback (−, buy) / sellback (+, sell)
-        else:
-            v = 0.0
+        # Rule 2 netting (buyback −, sellback +) plus Rule 4's physical extra.
+        v = row["netting_mw"] if abs(row["netting_mw"]) > 1e-6 else 0.0
         v += row.get("spread_mw", 0.0)  # Rule 4 physical extra (+ sell / − buy)
         intraday_vol.append(v)
     da_y = [v if abs(v) > 1e-6 else None for v in da_vol]
@@ -353,8 +349,8 @@ def chart_pnl_waterfall(results_df: pd.DataFrame):
 
     DA revenue is split into the volume physically delivered against the day-ahead
     schedule and the financial spread captured by netting that schedule at MID
-    (buyback/sellback and alpha override). Physical intraday re-trading, imbalance
-    settlement and degradation then bridge to the net result.
+    (Rule 2 buyback/sellback). Physical intraday re-trading, imbalance settlement
+    and degradation then bridge to the net result.
     """
     components = [
         ("Baseline DA Delivery", results_df["da_revenue_delivered"].sum()),

@@ -334,97 +334,10 @@ class TestFinancialNetting:
         assert result["financial_netting_pnl"] == pytest.approx(0.0)
 
 
-class TestAlphaOverride:
-    """Rule 3: dump discharge volume at a rich MID, hedging any reserve deficit."""
-
-    def _unit_asset(self):
-        return BESSAsset(
-            capacity_mwh=100, power_mw=50, charge_efficiency=1.0,
-            discharge_efficiency=1.0, degradation_cost_per_mwh=0.0, initial_soc_pct=0.5,
-        )
-
-    def test_dump_with_no_reserve_deficit(self):
-        # Single period: a rich MID (80) clears the hurdle and the full available
-        # discharge volume is dumped at MID with no forward hedge needed.
-        result = run_intraday_session(
-            da_schedule=[10.0],
-            da_price_actual=[40.0],
-            mid_prices=[80.0],
-            imbalance_prices=[40.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 0.0},
-            volatility_array=[10.0],
-        )
-
-        log = result["dispatch_log"][0]
-        assert log["trade_type"] == "alpha_override"
-        assert log["action"] == "discharge"
-        assert log["mw"] == pytest.approx(50.0)
-        assert log["netted_mwh"] == pytest.approx(50.0)
-        assert result["financial_netting_pnl"] == pytest.approx(50.0 * 80.0)
-        assert result["cycles_saved_mwh"] == pytest.approx(50.0)
-        # The scheduled DA volume is resolved financially: its DA value books to
-        # netted revenue and joins the dump pnl in the captured spread.
-        assert result["da_revenue_netted"] == pytest.approx(10.0 * 40.0)
-        assert result["financial_spread_captured"] == pytest.approx(10.0 * 40.0 + 50.0 * 80.0)
-
-    def test_dump_books_forward_hedge_for_reserve_deficit(self):
-        # Dumping at h=0 shorts the h=1 floor: the deficit (60 MWh) is hedged at
-        # the future DA price (50) plus a volatility buffer (1 * 10 = 10) = 60.
-        result = run_intraday_session(
-            da_schedule=[10.0, 60.0],
-            da_price_actual=[40.0, 50.0],
-            mid_prices=[90.0, 0.0],
-            imbalance_prices=[0.0, 0.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 0.0},
-            volatility_array=[10.0, 0.0],
-        )
-
-        log = result["dispatch_log"][0]
-        assert log["trade_type"] == "alpha_override"
-        assert log["mw"] == pytest.approx(50.0)
-        # Dump revenue 50*90 minus hedge cost 60 MWh * 60 = 4500 - 3600.
-        assert result["financial_netting_pnl"] == pytest.approx(50.0 * 90.0 - 60.0 * 60.0)
-
-    def test_no_override_when_mid_below_threshold(self):
-        # A thin MID (3) cannot clear the alpha threshold, so the volume is
-        # dispatched physically instead of dumped.
-        result = run_intraday_session(
-            da_schedule=[10.0],
-            da_price_actual=[40.0],
-            mid_prices=[3.0],
-            imbalance_prices=[40.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 0.0},
-            volatility_array=[10.0],
-        )
-
-        assert result["dispatch_log"][0]["trade_type"] == "physical_dispatch"
-        assert result["financial_netting_pnl"] == pytest.approx(0.0)
-
-    def test_alpha_threshold_config_blocks_override(self):
-        # The same rich MID (80) is suppressed when alpha_threshold is raised
-        # above the net edge.
-        result = run_intraday_session(
-            da_schedule=[10.0],
-            da_price_actual=[40.0],
-            mid_prices=[80.0],
-            imbalance_prices=[40.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 0.0, "alpha_threshold": 100.0},
-            volatility_array=[10.0],
-        )
-
-        assert result["dispatch_log"][0]["trade_type"] == "physical_dispatch"
-        assert result["financial_netting_pnl"] == pytest.approx(0.0)
-
-
 class TestGuardrailsPreventImbalance:
-    """A strictly-feasible DA schedule must settle with zero imbalance, even with
-    every intraday rule firing. Rule 4 stays within R_h/H_h, and Rule 3 may break
-    R_h but covers the deficit with its hedge — so no rule can leave an uncovered
-    shortfall that spills into imbalance."""
+    """A strictly-feasible DA schedule must settle with zero imbalance with every
+    intraday rule firing — Rule 2 netting and Rule 4 spread both stay within
+    R_h/H_h, so no rule can leave an uncovered shortfall that spills to imbalance."""
 
     def test_all_rules_yield_zero_imbalance(self):
         import random
@@ -445,17 +358,14 @@ class TestGuardrailsPreventImbalance:
             sched = optimize_da_schedule(fc, asset, duration_h=1.0)
             asset.reset()
             mid = [f + random.uniform(-60, 60) for f in fc]
-            vol = [abs(random.uniform(5, 40)) for _ in range(24)]
             result = run_intraday_session(
                 da_schedule=sched, da_price_actual=fc, mid_prices=mid,
                 imbalance_prices=[abs(f) + 20 for f in fc], asset=asset,
                 config={
                     "degradation_cost_per_mwh": 2.0, "resolution_h": 1.0,
                     "margin_buy": 2.0, "margin_sell": 2.0,
-                    "alpha_threshold": 5.0, "vol_multiplier": 1.0,
                 },
                 imbalance_sell_prices=[f - 10 for f in fc],
-                volatility_array=vol,
             )
             worst = max(worst, abs(result["imbalance_pnl"]))
         assert worst < 1e-6, f"feasible schedule leaked imbalance: {worst}"

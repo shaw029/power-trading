@@ -54,7 +54,6 @@ def run_intraday_session(
     asset: BESSAsset,
     config: dict,
     imbalance_sell_prices: list[float] | None = None,
-    volatility_array: list[float] | None = None,
 ) -> dict:
     """
     imbalance_prices      — SBP (system buy price): cost when the BESS is short
@@ -62,9 +61,6 @@ def run_intraday_session(
     imbalance_sell_prices — SSP (system sell price): credit when the BESS is long
                             (couldn't absorb scheduled charging volume).
                             Defaults to imbalance_prices when not supplied.
-    volatility_array      — per-period MID price volatility used to size the proxy
-                            forward hedge in the alpha override rule. When omitted,
-                            the alpha override rule is skipped.
     """
     n_periods = len(da_schedule)
     duration_h = config.get("resolution_h", 1.0)
@@ -87,11 +83,10 @@ def run_intraday_session(
 
         # Decision-delta tracking: how the locked DA plan is transformed into the
         # final physical position by each rule. da_mw is the original commitment;
-        # netting_mw/override_mw are the signed volume deltas applied when Rules 2
-        # and 3 fire (0.0 otherwise); final_mw is the resulting physical position.
+        # netting_mw is the signed volume Rule 2 nets financially (0.0 otherwise);
+        # spread_mw is Rule 4's extra MID trade; final_mw is the physical position.
         da_mw = mw
         netting_mw = 0.0
-        override_mw = 0.0
         spread_mw = 0.0
         rule_label = "Rule 4: Physical Dispatch"
         soc_before = asset.soc_pct
@@ -164,66 +159,6 @@ def run_intraday_session(
                     trade_type = "financial_sellback"
                     log_netted_mwh = eligible * duration_h
 
-        # Rule 3: High-Conviction Alpha Override.
-        # When the MID price is rich enough to clear a hedged hurdle, aggressively
-        # dump the available discharge volume now — even if it eats into the
-        # forward reserve. Any reserve deficit is a naked short on the future floor
-        # period; it is covered by a proxy forward hedge priced off that period's
-        # DA price plus a volatility buffer. The hedge cost is booked now and the
-        # hedged energy is restored, so the future floor is still served and no
-        # imbalance penalty is charged for the deficit later.
-        if volatility_array is not None and trade_type == "physical_dispatch":
-            alpha_threshold = config.get("alpha_threshold", 5.0)
-            vol_multiplier = config.get("vol_multiplier", 1.0)
-            # dump_volume is pack energy; the power limit is on terminal output, so
-            # the matching pack draw over the period is power_mw·dt / discharge_eff.
-            # Without the efficiency term the dump under-draws the pack and leaves
-            # SOC above H_h, overflowing a later DA charge (Rule 3 may break R_h but
-            # not the headroom guardrail).
-            max_pack_draw = asset.power_mw * duration_h / asset.discharge_efficiency
-            dump_volume = min(max_pack_draw, asset._soc_mwh - asset._min_soc_mwh)
-            if dump_volume > 0:
-                hedge_cost = 0.0
-                if asset._soc_mwh - dump_volume < required_reserve:
-                    # The dump shorts a future floor period — price its proxy hedge.
-                    offset = _find_bottleneck_index(
-                        asset._soc_mwh, future_schedule,
-                        asset.charge_efficiency, asset.discharge_efficiency,
-                        asset._min_soc_mwh, duration_h, hitting_ceiling=False,
-                    )
-                    t_floor = h + 1 + offset
-                    if t_floor < n_periods:
-                        hedge_cost = (
-                            da_price_actual[t_floor]
-                            + vol_multiplier * volatility_array[h]
-                        )
-                if mid_prices[h] - hedge_cost - degradation_cost > alpha_threshold:
-                    # Deliver the dumped pack energy (efficiency-adjusted) at MID.
-                    released_mw = min(
-                        asset.power_mw,
-                        dump_volume * asset.discharge_efficiency / duration_h,
-                    )
-                    asset.discharge(released_mw, duration_h)
-                    financial_netting_pnl += released_mw * duration_h * mid_prices[h]
-                    # Neutralise the reserve deficit with the forward proxy hedge:
-                    # pay its cost now and restore the hedged energy so downstream
-                    # periods stay whole and incur no imbalance penalty for it.
-                    deficit = max(0.0, required_reserve - asset._soc_mwh)
-                    if deficit > 0:
-                        financial_netting_pnl -= deficit * hedge_cost
-                        asset._soc_mwh += deficit
-                    # The scheduled DA position is resolved financially, not
-                    # physically delivered — book its DA value as netted.
-                    da_revenue_netted += physical_mw * duration_h * da_price_actual[h]
-                    override_mw = -physical_mw  # entire DA volume resolved off-physical
-                    rule_label = f"Rule 3: Alpha Override at £{mid_prices[h]:.2f}/MWh"
-                    physical_mw = 0.0
-                    trade_type = "alpha_override"
-                    log_action = "discharge"
-                    log_mw = released_mw
-                    log_price = mid_prices[h]
-                    log_netted_mwh = released_mw * duration_h
-
         # Physical Execution: dispatch the un-netted DA volume for this period,
         # clamping it so the resulting SOC stays within
         # [required_reserve, available_headroom]. The DA contract for the
@@ -266,7 +201,8 @@ def run_intraday_session(
         # It can open a position on idle periods too (mw == 0): there the direction
         # is set purely by MID vs DA. On periods that already hold a DA position it
         # only extends in that same direction (the battery can't charge and
-        # discharge at once).
+        # discharge at once). Reserving abs(mw) also keeps it off the capacity a
+        # buyback deliberately freed (the energy it chose to keep).
         remaining_mw = asset.power_mw - abs(mw)
         if remaining_mw > 0:
             allow_discharge = mw >= 0  # idle or scheduled discharge
@@ -295,7 +231,6 @@ def run_intraday_session(
             "price": log_price,
             "da_mw": da_mw,
             "netting_mw": netting_mw,
-            "override_mw": override_mw,
             "spread_mw": spread_mw,
             "final_mw": physical_mw,
             "rule_label": rule_label,
@@ -309,7 +244,7 @@ def run_intraday_session(
     intraday_pnl = financial_netting_pnl + physical_dispatch_pnl
     cycles_saved_mwh = sum(
         entry["netted_mwh"] for entry in dispatch_log
-        if entry["trade_type"] in ("financial_buyback", "financial_sellback", "alpha_override")
+        if entry["trade_type"] in ("financial_buyback", "financial_sellback")
     )
 
     da_revenue = da_revenue_delivered + da_revenue_netted
