@@ -20,32 +20,6 @@ def _compute_implied_soc(
     return soc
 
 
-def _find_bottleneck_index(
-    start_soc_mwh: float,
-    future_schedule: list[float],
-    charge_efficiency: float,
-    discharge_efficiency: float,
-    bound_mwh: float,
-    duration_h: float,
-    hitting_ceiling: bool,
-) -> int:
-    """Walk the implied SOC forward over ``future_schedule`` and return the offset of
-    the first period whose SOC reaches ``bound_mwh`` — a ceiling when
-    ``hitting_ceiling`` is True, otherwise a floor. Returns len(future_schedule)
-    when the bound is never reached."""
-    soc = start_soc_mwh
-    for offset, future_mw in enumerate(future_schedule):
-        if future_mw >= 0:
-            soc -= future_mw * duration_h / discharge_efficiency
-        else:
-            soc += abs(future_mw) * duration_h * charge_efficiency
-        if hitting_ceiling and soc >= bound_mwh:
-            return offset
-        if not hitting_ceiling and soc <= bound_mwh:
-            return offset
-    return len(future_schedule)
-
-
 def run_intraday_session(
     da_schedule: list[float],
     da_price_actual: list[float],
@@ -55,7 +29,22 @@ def run_intraday_session(
     config: dict,
     imbalance_sell_prices: list[float] | None = None,
 ) -> dict:
-    """
+    """Dynamic Opportunity-Cost intraday engine.
+
+    Each period is processed sequentially through three rules, all bounded by
+    forward-looking physical guardrails derived solely from the already-cleared
+    day-ahead schedule and prices (zero look-ahead onto live market data):
+
+      Rule 1 — Physical Envelope Setup: the Required Reserve (R_h) and Available
+        Headroom (H_h) that intraday actions must respect so the remaining DA
+        commitments can always be served. A live cycle cap freezes the envelope
+        once intraday throughput exhausts the daily budget.
+      Rule 2 — Financial Netting: capture the DA–MID spread without moving the
+        battery when the current MID beats the locked DA price for the period.
+      Rule 4 — Opportunity-Cost Arbitrage: trade physically at MID whenever it
+        beats the best/cheapest reachable future DA price (net of degradation),
+        clamped to the R_h / H_h envelope.
+
     imbalance_prices      — SBP (system buy price): cost when the BESS is short
                             (couldn't deliver scheduled discharge volume).
     imbalance_sell_prices — SSP (system sell price): credit when the BESS is long
@@ -65,108 +54,95 @@ def run_intraday_session(
     n_periods = len(da_schedule)
     duration_h = config.get("resolution_h", 1.0)
     degradation_cost = config["degradation_cost_per_mwh"]
+    margin_buy = config.get("margin_buy", 0.0)
+    margin_sell = config.get("margin_sell", 0.0)
+
+    target_daily_cycles = config.get("target_daily_cycles")
+    cycle_cap_mwh = (
+        target_daily_cycles * asset.capacity_mwh
+        if target_daily_cycles is not None
+        else None
+    )
 
     da_revenue_delivered = 0.0
     da_revenue_netted = 0.0
     financial_netting_pnl = 0.0
     physical_dispatch_pnl = 0.0
     imbalance_pnl = 0.0
+    accumulated_intraday_throughput_mwh = 0.0
     initial_deg = asset.degradation_cost
     dispatch_log: list[dict] = []
 
     for h in range(n_periods):
         mw = da_schedule[h]
+        da_p = da_price_actual[h]
+        mid_p = mid_prices[h]
+        soc_before = asset.soc_pct
+
+        # Decision-delta tracking: how the locked DA plan is transformed into the
+        # final physical position. da_mw is the original commitment; netting_mw is
+        # the signed volume Rule 2 nets financially; spread_mw is Rule 4's physical
+        # arbitrage trade; final_mw is the physically dispatched DA volume.
+        da_mw = mw
+        netting_mw = 0.0
+        spread_mw = 0.0
+        rule_label = "Physical Dispatch"
         log_action = "idle"
         log_mw = 0.0
         log_price = 0.0
         log_netted_mwh = 0.0
+        trade_type = "physical_dispatch" if mw != 0 else "idle"
 
-        # Decision-delta tracking: how the locked DA plan is transformed into the
-        # final physical position by each rule. da_mw is the original commitment;
-        # netting_mw is the signed volume Rule 2 nets financially (0.0 otherwise);
-        # spread_mw is Rule 4's extra MID trade; final_mw is the physical position.
-        da_mw = mw
-        netting_mw = 0.0
-        spread_mw = 0.0
-        rule_label = "Rule 4: Physical Dispatch"
-        soc_before = asset.soc_pct
-
-        # Forward-looking physical guardrails over the remaining locked DA schedule.
-        # Required Reserve (R_h): the minimum SOC to hold at this period so every
-        #   future DA discharge can be served without breaching min SOC.
-        # Available Headroom (H_h): the maximum SOC to hold at this period so every
-        #   future DA charge can be absorbed without breaching max SOC.
-        required_reserve = asset._min_soc_mwh
-        available_headroom = asset._max_soc_mwh
-        for future_mw in reversed(da_schedule[h + 1:]):
-            if future_mw > 0:
-                # Future discharge draws energy from the pack.
-                drawn = future_mw * duration_h / asset.discharge_efficiency
-                required_reserve += drawn
-                available_headroom = min(asset._max_soc_mwh, available_headroom + drawn)
-            elif future_mw < 0:
-                # Future charge stores energy into the pack.
-                stored = abs(future_mw) * duration_h * asset.charge_efficiency
-                required_reserve = max(asset._min_soc_mwh, required_reserve - stored)
-                available_headroom -= stored
-
-        # Rule 2: Constrained Financial Netting.
-        # Capture the DA–MID spread financially — without physically moving the
-        # battery — when the current MID price beats the best future DA price we
-        # could reach while holding the eligible energy (discharge) or headroom
-        # (charge). The netted volume is settled at MID and its net physical
-        # position is zero; only the un-netted remainder is physically dispatched.
-        margin_buy = config.get("margin_buy", 0.0)
-        margin_sell = config.get("margin_sell", 0.0)
+        # ── Rule 1: Physical Envelope Setup ──────────────────────────────────
+        # Required Reserve (R_h): SOC to hold so every remaining DA discharge can
+        #   be served without breaching min SOC (assuming no future charge help).
+        # Available Headroom (H_h): SOC ceiling so every remaining DA charge can
+        #   be absorbed without breaching max SOC (assuming no future discharge).
         future_schedule = da_schedule[h + 1:]
+        future_discharge_mwh = sum(f for f in future_schedule if f > 0) * duration_h
+        future_charge_mwh = sum(-f for f in future_schedule if f < 0) * duration_h
+        required_reserve = asset._min_soc_mwh + future_discharge_mwh / asset.discharge_efficiency
+        available_headroom = asset._max_soc_mwh - future_charge_mwh * asset.charge_efficiency
+        required_reserve = min(required_reserve, asset._max_soc_mwh)
+        available_headroom = max(available_headroom, asset._min_soc_mwh)
+
+        # Cycle cap: once intraday throughput hits the daily budget, freeze the
+        # envelope at the current SOC so no further intraday movement is allowed.
+        if cycle_cap_mwh is not None and accumulated_intraday_throughput_mwh >= cycle_cap_mwh:
+            required_reserve = available_headroom = asset._soc_mwh
+
+        # ── Rule 2: Financial Netting (zero physical movement) ───────────────
+        # Capture the DA–MID spread financially when the MID price beats the
+        # locked DA price for this period; the netted volume settles at MID with
+        # a net-zero physical position, so only un-netted DA volume is dispatched.
         physical_mw = mw
-        trade_type = "physical_dispatch"
+        if mw > 0 and mid_p <= da_p - margin_buy:
+            netted = mw * duration_h
+            financial_netting_pnl -= netted * mid_p     # buy the volume back at MID
+            da_revenue_netted += netted * da_p          # keep the DA sale credit
+            physical_mw = 0.0
+            netting_mw = -mw
+            log_netted_mwh = netted
+            trade_type = "financial_netting"
+            rule_label = f"Rule 2: Buy-Back at £{mid_p:.2f}/MWh"
+        elif mw < 0 and mid_p >= da_p + margin_sell:
+            netted = abs(mw) * duration_h
+            financial_netting_pnl += netted * mid_p     # sell the volume at MID
+            da_revenue_netted -= netted * da_p          # offset the DA charge cost
+            physical_mw = 0.0
+            netting_mw = -mw
+            log_netted_mwh = netted
+            trade_type = "financial_netting"
+            rule_label = f"Rule 2: Sell-Back at £{mid_p:.2f}/MWh"
 
-        if mw > 0:
-            eligible = min(mw, available_headroom - asset._soc_mwh)
-            if eligible > 0:
-                offset = _find_bottleneck_index(
-                    asset._soc_mwh, future_schedule,
-                    asset.charge_efficiency, asset.discharge_efficiency,
-                    asset._max_soc_mwh, duration_h, hitting_ceiling=True,
-                )
-                window = da_price_actual[h + 1: h + 1 + offset]
-                if window and mid_prices[h] <= max(window) - margin_buy:
-                    financial_netting_pnl -= eligible * duration_h * mid_prices[h]
-                    da_revenue_netted += eligible * duration_h * da_price_actual[h]
-                    physical_mw = mw - eligible
-                    netting_mw = physical_mw - mw  # volume removed from physical
-                    rule_label = f"Rule 2: Buy-Back at £{mid_prices[h]:.2f}/MWh"
-                    trade_type = "financial_buyback"
-                    log_netted_mwh = eligible * duration_h
-
-        elif mw < 0:
-            eligible = min(abs(mw), asset._soc_mwh - required_reserve)
-            if eligible > 0:
-                offset = _find_bottleneck_index(
-                    asset._soc_mwh, future_schedule,
-                    asset.charge_efficiency, asset.discharge_efficiency,
-                    asset._min_soc_mwh, duration_h, hitting_ceiling=False,
-                )
-                window = da_price_actual[h + 1: h + 1 + offset]
-                if window and mid_prices[h] >= min(window) + margin_sell:
-                    financial_netting_pnl += eligible * duration_h * mid_prices[h]
-                    # The netted leg is a scheduled charge — its DA value is a cost.
-                    da_revenue_netted -= eligible * duration_h * da_price_actual[h]
-                    physical_mw = mw + eligible
-                    netting_mw = physical_mw - mw  # volume removed from physical
-                    rule_label = f"Rule 2: Sell-Back at £{mid_prices[h]:.2f}/MWh"
-                    trade_type = "financial_sellback"
-                    log_netted_mwh = eligible * duration_h
-
-        # Physical Execution: dispatch the un-netted DA volume for this period,
-        # clamping it so the resulting SOC stays within
-        # [required_reserve, available_headroom]. The DA contract for the
-        # scheduled volume settles regardless of any clamping shortfall (which is
-        # priced separately into imbalance_pnl).
-        da_revenue_delivered += physical_mw * duration_h * da_price_actual[h]
+        # ── Physical execution of the un-netted DA volume ────────────────────
+        # The DA contract settles regardless of any clamping shortfall, which is
+        # priced separately into imbalance_pnl. Base DA execution is bounded only
+        # by the absolute SOC limits; the intraday R_h / H_h envelope is reserved
+        # for Rule 4 so honouring the day-ahead plan is never starved.
+        da_revenue_delivered += physical_mw * duration_h * da_p
         if physical_mw > 0:
-            allowed_mwh = (asset._soc_mwh - required_reserve) * asset.discharge_efficiency
+            allowed_mwh = (asset._soc_mwh - asset._min_soc_mwh) * asset.discharge_efficiency
             max_mw = max(0.0, min(physical_mw, allowed_mwh / duration_h, asset.power_mw))
             if max_mw > 0:
                 asset.discharge(max_mw, duration_h)
@@ -175,11 +151,10 @@ def run_intraday_session(
                 imbalance_pnl -= shortfall * duration_h * imbalance_prices[h]
             log_action = "discharge"
             log_mw = max_mw
-            log_price = da_price_actual[h]
-
+            log_price = da_p
         elif physical_mw < 0:
             target = abs(physical_mw)
-            allowed_mwh = (available_headroom - asset._soc_mwh) / asset.charge_efficiency
+            allowed_mwh = (asset._max_soc_mwh - asset._soc_mwh) / asset.charge_efficiency
             max_mw = max(0.0, min(target, allowed_mwh / duration_h, asset.power_mw))
             if max_mw > 0:
                 asset.charge(max_mw, duration_h)
@@ -190,37 +165,44 @@ def run_intraday_session(
                 imbalance_pnl += shortfall * duration_h * ssp
             log_action = "charge"
             log_mw = max_mw
-            log_price = da_price_actual[h]
+            log_price = da_p
 
-        # Rule 4: spread improvement — opportunistically trade the leftover power
-        # capacity at MID, clamped to the forward guardrails (required_reserve /
-        # available_headroom), not just the absolute SOC bounds. Clamping keeps any
-        # energy or headroom the locked DA schedule still needs, so this never
-        # surfaces as an imbalance shortfall later.
-        #
-        # It can open a position on idle periods too (mw == 0): there the direction
-        # is set purely by MID vs DA. On periods that already hold a DA position it
-        # only extends in that same direction (the battery can't charge and
-        # discharge at once). Reserving abs(mw) also keeps it off the capacity a
-        # buyback deliberately freed (the energy it chose to keep).
-        remaining_mw = asset.power_mw - abs(mw)
-        if remaining_mw > 0:
-            allow_discharge = mw >= 0  # idle or scheduled discharge
-            allow_charge = mw <= 0     # idle or scheduled charge
-            if allow_discharge and mid_prices[h] > da_price_actual[h] + degradation_cost:
+        # ── Rule 4: Opportunity-Cost Arbitrage (physical movement) ───────────
+        # Opportunity cost is the best/cheapest price reachable in the remaining
+        # cleared DA schedule, net of degradation. Trade at MID whenever it beats
+        # that hurdle, using the power left after the DA leg and clamping SOC to
+        # the R_h / H_h envelope so future DA commitments are never breached.
+        future_prices = da_price_actual[h + 1:]
+        if future_prices:
+            oc_discharge = max(future_prices) - degradation_cost
+            oc_charge = min(future_prices) + degradation_cost
+        else:
+            oc_discharge = oc_charge = da_p
+
+        remaining_mw = asset.power_mw - abs(log_mw)
+        if remaining_mw > 1e-9:
+            allow_discharge = physical_mw >= 0  # never reverse a scheduled charge
+            allow_charge = physical_mw <= 0     # never reverse a scheduled discharge
+            if allow_discharge and mid_p > oc_discharge:
                 allowed_mwh = (asset._soc_mwh - required_reserve) * asset.discharge_efficiency
                 extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
                 if extra_mw > 0:
                     asset.discharge(extra_mw, duration_h)
-                    physical_dispatch_pnl += extra_mw * duration_h * mid_prices[h]
-                    spread_mw = extra_mw  # extra discharge sold at MID
-            elif allow_charge and mid_prices[h] < da_price_actual[h] - degradation_cost:
+                    physical_dispatch_pnl += extra_mw * duration_h * mid_p
+                    accumulated_intraday_throughput_mwh += extra_mw * duration_h
+                    spread_mw = extra_mw
+                    trade_type = "opportunity_arb"
+                    rule_label = f"Rule 4: OC Discharge at £{mid_p:.2f}/MWh"
+            elif allow_charge and mid_p < oc_charge:
                 allowed_mwh = (available_headroom - asset._soc_mwh) / asset.charge_efficiency
                 extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
                 if extra_mw > 0:
                     asset.charge(extra_mw, duration_h)
-                    physical_dispatch_pnl -= extra_mw * duration_h * mid_prices[h]
-                    spread_mw = -extra_mw  # extra charge bought at MID
+                    physical_dispatch_pnl -= extra_mw * duration_h * mid_p
+                    accumulated_intraday_throughput_mwh += extra_mw * duration_h
+                    spread_mw = -extra_mw
+                    trade_type = "opportunity_arb"
+                    rule_label = f"Rule 4: OC Charge at £{mid_p:.2f}/MWh"
 
         dispatch_log.append({
             "period": h,
@@ -244,7 +226,7 @@ def run_intraday_session(
     intraday_pnl = financial_netting_pnl + physical_dispatch_pnl
     cycles_saved_mwh = sum(
         entry["netted_mwh"] for entry in dispatch_log
-        if entry["trade_type"] in ("financial_buyback", "financial_sellback")
+        if entry["trade_type"] == "financial_netting"
     )
 
     da_revenue = da_revenue_delivered + da_revenue_netted
@@ -257,6 +239,7 @@ def run_intraday_session(
         "financial_netting_pnl": financial_netting_pnl,
         "physical_dispatch_pnl": physical_dispatch_pnl,
         "cycles_saved_mwh": cycles_saved_mwh,
+        "accumulated_intraday_throughput_mwh": accumulated_intraday_throughput_mwh,
         "imbalance_pnl": imbalance_pnl,
         "total_degradation_cost": total_degradation,
         "net_pnl": da_revenue + intraday_pnl + imbalance_pnl - total_degradation,

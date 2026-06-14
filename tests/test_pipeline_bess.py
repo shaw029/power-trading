@@ -121,6 +121,7 @@ def _setup_bess_mocks(da, tmp_path, monkeypatch):
 EXPECTED_METRIC_KEYS = {
     "total_da_revenue",
     "total_intraday_pnl",
+    "total_intraday_throughput_mwh",
     "total_imbalance_pnl",
     "total_degradation_cost",
     "total_net_pnl",
@@ -167,7 +168,7 @@ class TestBESSPipelineIntegration:
         pnl = pd.read_csv(trading_dir / "pnl.csv")
         assert list(pnl.columns) == [
             "date", "da_revenue", "intraday_pnl",
-            "imbalance_pnl", "degradation_cost", "net_pnl",
+            "imbalance_pnl", "degradation_cost", "intraday_throughput_mwh", "net_pnl",
         ]
         assert len(pnl) == 3
 

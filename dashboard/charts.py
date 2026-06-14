@@ -66,15 +66,18 @@ def chart_realized_shape(
 
     The execution layer: what the battery physically did after the intraday
     engine reshaped the committed schedule against MID. Faint ghost bars are the
-    DA commitment, so the gap to the solid bars is the volume the intraday rules
-    settled financially (buyback / sellback) rather than physically moving the
-    pack. Lines show realised DA against MID — the spread the intraday rules
-    trade.
+    DA commitment, so the gap to the solid bars is the net intraday reshaping —
+    Rule 2 settling volume financially (which shrinks the solid bar) and Rule 4
+    physically trading extra at MID (spread_mw, which moves it). Lines show
+    realised DA against MID — the spread the intraday rules trade.
     """
     d = dispatch_df.copy()
     d["timestamp"] = pd.to_datetime(d["timestamp"])
+    # Physical movement = the DA dispatch (from action/mw) plus Rule 4's extra MID
+    # trade (spread_mw), which is logged separately and leaves action == "idle".
     signed = d["mw"].where(d["action"] == "discharge", -d["mw"])
-    d["signed_mw"] = signed.where(d["action"] != "idle", 0.0)
+    signed = signed.where(d["action"] != "idle", 0.0)
+    d["signed_mw"] = signed + (d["spread_mw"] if "spread_mw" in d else 0.0)
     mean_mw = d.groupby(d["timestamp"].dt.hour)["signed_mw"].mean()
 
     sched = da_sched_df.copy()
@@ -257,22 +260,22 @@ def chart_operation_explorer(
     fig.add_trace(go.Scatter(
         x=buy_da_x, y=buy_da_y, mode="markers", name="Buy on DA",
         marker=dict(symbol="triangle-up", size=11, **da_mk),
-        hovertemplate="Buy (charge) on DA @ £%{y:.1f}<extra></extra>",
+        hovertemplate="%{x|%d %b %H:%M}<br>Buy (charge) on DA @ £%{y:.1f}<extra></extra>",
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
         x=sell_da_x, y=sell_da_y, mode="markers", name="Sell on DA",
         marker=dict(symbol="triangle-down", size=11, **da_mk),
-        hovertemplate="Sell (discharge) on DA @ £%{y:.1f}<extra></extra>",
+        hovertemplate="%{x|%d %b %H:%M}<br>Sell (discharge) on DA @ £%{y:.1f}<extra></extra>",
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
         x=buy_id_x, y=buy_id_y, mode="markers", name="Buy on Intraday",
         marker=dict(symbol="triangle-up", size=11, **id_mk),
-        hovertemplate="Buy-back on Intraday @ £%{y:.1f}<extra></extra>",
+        hovertemplate="%{x|%d %b %H:%M}<br>Buy-back on Intraday @ £%{y:.1f}<extra></extra>",
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
         x=sell_id_x, y=sell_id_y, mode="markers", name="Sell on Intraday",
         marker=dict(symbol="triangle-down", size=11, **id_mk),
-        hovertemplate="Sell on Intraday @ £%{y:.1f}<extra></extra>",
+        hovertemplate="%{x|%d %b %H:%M}<br>Sell on Intraday @ £%{y:.1f}<extra></extra>",
     ), row=2, col=1)
 
     # How much, by venue, signed the same way as the markers (+ sell/discharge,
@@ -292,19 +295,19 @@ def chart_operation_explorer(
     fig.add_trace(go.Bar(
         x=times, y=da_y, name="DA trade volume",
         marker_color="#1f77b4",
-        hovertemplate="DA %{y:+.1f} MW<extra></extra>",
+        hovertemplate="%{x|%d %b %H:%M}<br>DA %{y:+.1f} MW<extra></extra>",
     ), row=3, col=1)
     fig.add_trace(go.Bar(
         x=times, y=id_y, name="Intraday trade volume",
         marker_color="#27ae60",
-        hovertemplate="Intraday %{y:+.1f} MW<extra></extra>",
+        hovertemplate="%{x|%d %b %H:%M}<br>Intraday %{y:+.1f} MW<extra></extra>",
     ), row=3, col=1)
 
     fig.add_trace(go.Scatter(
         x=times, y=dispatch["soc_after"].values * 100,
         name="SOC", mode="lines",
         line=dict(color="#34495e", width=2),
-        hovertemplate="SOC %{y:.1f}%<extra></extra>",
+        hovertemplate="%{x|%d %b %H:%M}<br>SOC %{y:.1f}%<extra></extra>",
     ), row=4, col=1)
     fig.add_hline(
         y=min_soc_pct * 100, line_dash="dot", line_color="#e74c3c",
@@ -337,7 +340,10 @@ def chart_operation_explorer(
     fig.update_layout(
         template="plotly_white", height=850,
         legend=dict(x=0, y=1.05, orientation="h"),
-        hovermode="x unified",
+        # "closest" shows only the point under the cursor, so a trade reads once
+        # (the marker) instead of unified hover restacking the price line, the
+        # marker and the volume bar — which repeated each buy/sell.
+        hovermode="closest",
         barmode="relative",
         bargap=0.2,
     )

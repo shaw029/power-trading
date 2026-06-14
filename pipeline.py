@@ -255,6 +255,7 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
     metrics = {
         "total_da_revenue": float(results_df["da_revenue"].sum()),
         "total_intraday_pnl": float(results_df["intraday_pnl"].sum()),
+        "total_intraday_throughput_mwh": float(results_df["intraday_throughput_mwh"].sum()),
         "total_imbalance_pnl": float(results_df["imbalance_pnl"].sum()),
         "total_degradation_cost": total_degradation,
         "total_net_pnl": float(net.sum()),
@@ -435,6 +436,7 @@ def _run_bess_pipeline(config: dict) -> dict:
             "intraday_pnl": result["intraday_pnl"],
             "imbalance_pnl": result["imbalance_pnl"],
             "degradation_cost": result["total_degradation_cost"],
+            "intraday_throughput_mwh": result["accumulated_intraday_throughput_mwh"],
             "net_pnl": result["net_pnl"],
         })
 
