@@ -198,7 +198,6 @@ def chart_operation_explorer(
         da_p = da_price_map.get(ts)
         mid_p = mid_map.get(ts)
         da_v = row["da_mw"]
-        label = row["rule_label"]
         # The DA leg only exists when there is a day-ahead commitment; pd.notna
         # guards against both a missing price (ts absent from prices_hourly) and a
         # NaN cell. A DA price of 0 is a valid level, not a reason to suppress.
@@ -211,19 +210,26 @@ def chart_operation_explorer(
                 buy_da_y.append(da_p)
         # The intraday leg is independent of the DA leg: Rule 4 fires on DA-idle
         # periods (da_v == 0, da_p possibly missing) and must still plot. It is
-        # gated only on the MID price, where the trade actually executed.
+        # gated only on the MID price, where the trade actually executed. A period
+        # can carry both an intraday leg at once (Rule 2 nets the DA volume, Rule 4
+        # then trades physically), so each is read from its own signed column —
+        # never from rule_label, which Rule 4 overwrites, dropping Rule 2's marker.
         if pd.notna(mid_p):
-            if "Buy-Back" in label:          # bought the discharge back at MID
+            # Rule 2 financial netting: + sold the charge back, − bought the
+            # discharge back (netting_mw = −da_mw).
+            netting = row.get("netting_mw", 0.0)
+            if netting > 1e-6:
+                sell_id_x.append(ts)
+                sell_id_y.append(mid_p)
+            elif netting < -1e-6:
                 buy_id_x.append(ts)
                 buy_id_y.append(mid_p)
-            elif "Sell-Back" in label:        # sold the charge back at MID
+            # Rule 4 physical extra at MID: + extra discharge sold, − extra charge bought.
+            spread = row.get("spread_mw", 0.0)
+            if spread > 1e-6:
                 sell_id_x.append(ts)
                 sell_id_y.append(mid_p)
-            spread = row.get("spread_mw", 0.0)  # Rule 4 physical extra at MID
-            if spread > 1e-6:                # extra discharge sold at MID
-                sell_id_x.append(ts)
-                sell_id_y.append(mid_p)
-            elif spread < -1e-6:             # extra charge bought at MID
+            elif spread < -1e-6:
                 buy_id_x.append(ts)
                 buy_id_y.append(mid_p)
 
@@ -288,18 +294,20 @@ def chart_operation_explorer(
     ), row=2, col=1)
 
     # How much, by venue, signed the same way as the markers (+ sell/discharge,
-    # − buy/charge): the blue bar is the full DA commitment; the green bar is the
-    # intraday trade in its true direction — a buyback shows below zero (a buy),
-    # a sellback above zero (a sell).
+    # − buy/charge): the blue bar is the full DA commitment; the two green bars are
+    # the intraday legs in their true direction. They are kept as separate stacked
+    # traces — not summed — because a period can carry a Rule 2 netting leg and an
+    # opposite Rule 4 physical leg at once (e.g. buy the DA discharge back, then
+    # re-discharge at MID): summed they cancel to ~0 and the bar vanishes even
+    # though both trades, and their markers, are real.
     da_vol = dispatch["da_mw"].values
-    intraday_vol = []
-    for _, row in dispatch.iterrows():
-        # Rule 2 netting (buyback −, sellback +) plus Rule 4's physical extra.
-        v = row["netting_mw"] if abs(row["netting_mw"]) > 1e-6 else 0.0
-        v += row.get("spread_mw", 0.0)  # Rule 4 physical extra (+ sell / − buy)
-        intraday_vol.append(v)
+    netting_vol = dispatch["netting_mw"].values
+    spread_vol = (
+        dispatch["spread_mw"].values if "spread_mw" in dispatch else [0.0] * len(dispatch)
+    )
     da_y = [v if abs(v) > 1e-6 else None for v in da_vol]
-    id_y = [v if abs(v) > 1e-6 else None for v in intraday_vol]
+    netting_y = [v if abs(v) > 1e-6 else None for v in netting_vol]
+    spread_y = [v if abs(v) > 1e-6 else None for v in spread_vol]
 
     fig.add_trace(go.Bar(
         x=times, y=da_y, name="DA trade volume",
@@ -307,9 +315,14 @@ def chart_operation_explorer(
         hovertemplate="%{x|%d %b %H:%M}<br>DA %{y:+.1f} MW<extra></extra>",
     ), row=3, col=1)
     fig.add_trace(go.Bar(
-        x=times, y=id_y, name="Intraday trade volume",
+        x=times, y=spread_y, name="Intraday physical (MID)",
         marker_color="#27ae60",
-        hovertemplate="%{x|%d %b %H:%M}<br>Intraday %{y:+.1f} MW<extra></extra>",
+        hovertemplate="%{x|%d %b %H:%M}<br>Intraday physical %{y:+.1f} MW<extra></extra>",
+    ), row=3, col=1)
+    fig.add_trace(go.Bar(
+        x=times, y=netting_y, name="Intraday netting (financial)",
+        marker_color="#82c99a",
+        hovertemplate="%{x|%d %b %H:%M}<br>Intraday netting %{y:+.1f} MW<extra></extra>",
     ), row=3, col=1)
 
     fig.add_trace(go.Scatter(
