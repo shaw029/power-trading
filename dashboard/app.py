@@ -236,8 +236,7 @@ def run_bess_simulation(
             "imbalance_pnl": result["imbalance_pnl"],
             "degradation_cost": result["total_degradation_cost"],
             "benchmark_da_revenue": result["benchmark_da_revenue"],
-            "rule2_alpha": result["rule2_alpha"],
-            "rule4_alpha": result["rule4_alpha"],
+            "intraday_da_improvement": result["intraday_da_improvement"],
             "execution_costs_paid": result["execution_costs_paid"],
             "net_pnl": result["net_pnl"],
         })
@@ -339,26 +338,24 @@ def render_bess(prices: pd.DataFrame):
         st.warning("No out-of-sample days fall in the selected month.")
         return
 
-    # KPI row — Trader's Alpha view: frozen DA benchmark, the two intraday alpha
-    # layers, then execution friction and the settlement/cost buckets.
+    # KPI row — Trader's ledger view: frozen DA benchmark, the consolidated
+    # intraday improvement, then execution friction and the settlement/cost buckets.
     total_benchmark = results_df["benchmark_da_revenue"].sum()
-    total_rule2 = results_df["rule2_alpha"].sum()
-    total_rule4 = results_df["rule4_alpha"].sum()
+    total_intraday = results_df["intraday_da_improvement"].sum()
     total_execution = results_df["execution_costs_paid"].sum()
     total_imbalance = results_df["imbalance_pnl"].sum()
     total_degradation = results_df["degradation_cost"].sum()
     total_net = results_df["net_pnl"].sum()
     total_cycles_saved = results_df["cycles_saved_mwh"].sum()
 
-    k1, k2, k3, k4, k5, k6, k7, k8 = st.columns(8)
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
     k1.metric("DA Benchmark", f"£{total_benchmark:,.0f}")
-    k2.metric("Rule 2 Alpha", f"£{total_rule2:,.0f}")
-    k3.metric("Rule 4 Alpha", f"£{total_rule4:,.0f}")
-    k4.metric("Execution Friction", f"-£{total_execution:,.0f}")
-    k5.metric("Imbalance Penalty", f"£{total_imbalance:,.0f}")
-    k6.metric("Degradation Cost", f"£{total_degradation:,.0f}")
-    k7.metric("Net PnL", f"£{total_net:,.0f}")
-    k8.metric("Cycles Saved", f"{total_cycles_saved:,.0f} MWh")
+    k2.metric("Intraday DA Improvement", f"£{total_intraday:,.0f}")
+    k3.metric("Execution Friction", f"-£{total_execution:,.0f}")
+    k4.metric("Imbalance Penalty", f"£{total_imbalance:,.0f}")
+    k5.metric("Degradation Cost", f"£{total_degradation:,.0f}")
+    k6.metric("Net PnL", f"£{total_net:,.0f}")
+    k7.metric("Cycles Saved", f"{total_cycles_saved:,.0f} MWh")
 
     period = pd.Period(month_str, freq="M")
     start = period.start_time.tz_localize("UTC")

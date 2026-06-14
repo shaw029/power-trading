@@ -74,18 +74,21 @@ def run_intraday_session(
     initial_deg = asset.degradation_cost
     dispatch_log: list[dict] = []
 
-    # ── Trader's Alpha ledger ────────────────────────────────────────────────
-    # The frozen day-ahead schedule is the benchmark; each intraday rule is an
-    # additive alpha layer on top of it and execution friction is its own bucket,
-    # so DA Benchmark + Rule 2 + Rule 4 − Execution + Imbalance − Degradation ties
-    # back exactly to Net PnL.
-    #   benchmark_da_revenue — DA schedule value actually delivered against the
-    #     frozen plan (the netted volume's spread is broken out as Rule 2 Alpha,
-    #     so the DA credit is never counted in both the benchmark and the spread).
-    #   rule2_alpha          — gross DA–MID spread captured by Rule 2 netting.
-    #   execution_costs_paid — slippage paid on every Rule 2 / Rule 4 traded MWh.
-    benchmark_da_revenue = 0.0
-    rule2_alpha = 0.0
+    # ── Trader's ledger ──────────────────────────────────────────────────────
+    # The frozen day-ahead schedule is the benchmark a trader is measured
+    # against; everything the intraday rules add on top is consolidated into a
+    # single improvement bucket, with execution friction broken out separately,
+    # so DA Benchmark + Intraday DA Improvement − Execution + Imbalance −
+    # Degradation ties back exactly to Net PnL.
+    #   benchmark_da_revenue    — value of the planned LP schedule settled at the
+    #     actual DA prices, frozen up front before any intraday action is taken.
+    #   intraday_da_improvement — Rule 2 financial netting plus Rule 4 physical
+    #     arbitrage, the cash the intraday engine adds on top of the benchmark.
+    #   execution_costs_paid    — slippage paid on every Rule 2 / Rule 4 traded MWh.
+    benchmark_da_revenue = sum(
+        mw * duration_h * p for mw, p in zip(da_schedule, da_price_actual)
+    )
+    intraday_da_improvement = 0.0
     execution_costs_paid = 0.0
 
     for h in range(n_periods):
@@ -135,7 +138,7 @@ def run_intraday_session(
             netted = mw * duration_h
             financial_netting_pnl -= netted * mid_p     # buy the volume back at MID
             da_revenue_netted += netted * da_p          # keep the DA sale credit
-            rule2_alpha += netted * abs(da_p - mid_p)   # gross spread captured
+            intraday_da_improvement -= netted * mid_p   # netting leg (benchmark holds the DA credit)
             physical_mw = 0.0
             netting_mw = -mw
             log_netted_mwh = netted
@@ -145,7 +148,7 @@ def run_intraday_session(
             netted = abs(mw) * duration_h
             financial_netting_pnl += netted * mid_p     # sell the volume at MID
             da_revenue_netted -= netted * da_p          # offset the DA charge cost
-            rule2_alpha += netted * abs(da_p - mid_p)   # gross spread captured
+            intraday_da_improvement += netted * mid_p   # netting leg (benchmark holds the DA charge)
             physical_mw = 0.0
             netting_mw = -mw
             log_netted_mwh = netted
@@ -158,7 +161,6 @@ def run_intraday_session(
         # by the absolute SOC limits; the intraday R_h / H_h envelope is reserved
         # for Rule 4 so honouring the day-ahead plan is never starved.
         da_revenue_delivered += physical_mw * duration_h * da_p
-        benchmark_da_revenue += physical_mw * duration_h * da_p
         if physical_mw > 0:
             allowed_mwh = (asset._soc_mwh - asset._min_soc_mwh) * asset.discharge_efficiency
             max_mw = max(0.0, min(physical_mw, allowed_mwh / duration_h, asset.power_mw))
@@ -211,6 +213,7 @@ def run_intraday_session(
                 if extra_mw > 0:
                     asset.discharge(extra_mw, duration_h)
                     physical_dispatch_pnl += extra_mw * duration_h * mid_p
+                    intraday_da_improvement += extra_mw * duration_h * mid_p
                     accumulated_intraday_throughput_mwh += extra_mw * duration_h
                     spread_mw = extra_mw
                     trade_type = "opportunity_arb"
@@ -221,6 +224,7 @@ def run_intraday_session(
                 if extra_mw > 0:
                     asset.charge(extra_mw, duration_h)
                     physical_dispatch_pnl -= extra_mw * duration_h * mid_p
+                    intraday_da_improvement -= extra_mw * duration_h * mid_p
                     accumulated_intraday_throughput_mwh += extra_mw * duration_h
                     spread_mw = -extra_mw
                     trade_type = "opportunity_arb"
@@ -270,11 +274,10 @@ def run_intraday_session(
         "accumulated_intraday_throughput_mwh": accumulated_intraday_throughput_mwh,
         "imbalance_pnl": imbalance_pnl,
         "total_degradation_cost": total_degradation,
-        # Trader's Alpha buckets — sum to net_pnl with imbalance and degradation:
-        # benchmark + rule2 + rule4 − execution + imbalance − degradation.
+        # Trader's ledger buckets — sum to net_pnl with imbalance and degradation:
+        # benchmark + intraday improvement − execution + imbalance − degradation.
         "benchmark_da_revenue": benchmark_da_revenue,
-        "rule2_alpha": rule2_alpha,
-        "rule4_alpha": physical_dispatch_pnl,  # gross of execution costs
+        "intraday_da_improvement": intraday_da_improvement,
         "execution_costs_paid": execution_costs_paid,
         "net_pnl": da_revenue + intraday_pnl + imbalance_pnl - total_degradation - execution_costs_paid,
         "dispatch_log": dispatch_log,
