@@ -195,9 +195,11 @@ def run_intraday_session(
             oc_discharge = max(future_prices) - degradation_cost
             oc_charge = min(future_prices) + degradation_cost
         else:
-            # Final period: opportunity cost falls back to current DA price
-            oc_discharge = da_p - degradation_cost
-            oc_charge = da_p + degradation_cost
+            # Final period: No future DA position exists.
+            # To justify a standalone cycle, MID must beat the current DA price
+            # by MORE than the cost of degradation.
+            oc_discharge = da_p + degradation_cost
+            oc_charge = da_p - degradation_cost
 
         remaining_mw = asset.power_mw - abs(log_mw)
         if remaining_mw > 1e-9:
