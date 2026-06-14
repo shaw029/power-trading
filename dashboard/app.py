@@ -174,6 +174,11 @@ def run_bess_simulation(
         "degradation_cost_per_mwh": degradation_cost,
         "resolution_h": resolution_h,
         "soc_drift_tolerance": soc_drift_tolerance,
+        # The intraday engine reads target_daily_cycles from its config to freeze
+        # the physical envelope once intraday throughput exhausts the daily budget.
+        # Without this passthrough the cycle cap never engaged intraday, even with
+        # "Limit daily cycles" set (the LP got it directly via optimize_da_schedule).
+        "target_daily_cycles": target_daily_cycles,
     }
 
     daily_results = []

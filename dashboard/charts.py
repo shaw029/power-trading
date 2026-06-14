@@ -75,9 +75,12 @@ def chart_realized_shape(
     d["timestamp"] = pd.to_datetime(d["timestamp"])
     # Physical movement = the DA dispatch (from action/mw) plus Rule 4's extra MID
     # trade (spread_mw), which is logged separately and leaves action == "idle".
+    # On DA-idle hours the DA leg is 0 and the whole realised bar is the Rule 4
+    # spread, so it must not be suppressed; fillna guards a missing/NaN spread.
     signed = d["mw"].where(d["action"] == "discharge", -d["mw"])
     signed = signed.where(d["action"] != "idle", 0.0)
-    d["signed_mw"] = signed + (d["spread_mw"] if "spread_mw" in d else 0.0)
+    spread = d["spread_mw"].fillna(0.0) if "spread_mw" in d else 0.0
+    d["signed_mw"] = signed + spread
     mean_mw = d.groupby(d["timestamp"].dt.hour)["signed_mw"].mean()
 
     sched = da_sched_df.copy()
@@ -196,14 +199,20 @@ def chart_operation_explorer(
         mid_p = mid_map.get(ts)
         da_v = row["da_mw"]
         label = row["rule_label"]
-        if da_p is not None:
+        # The DA leg only exists when there is a day-ahead commitment; pd.notna
+        # guards against both a missing price (ts absent from prices_hourly) and a
+        # NaN cell. A DA price of 0 is a valid level, not a reason to suppress.
+        if pd.notna(da_p):
             if da_v > 1e-6:         # committed to discharge → sold on DA
                 sell_da_x.append(ts)
                 sell_da_y.append(da_p)
             elif da_v < -1e-6:      # committed to charge → bought on DA
                 buy_da_x.append(ts)
                 buy_da_y.append(da_p)
-        if mid_p is not None:
+        # The intraday leg is independent of the DA leg: Rule 4 fires on DA-idle
+        # periods (da_v == 0, da_p possibly missing) and must still plot. It is
+        # gated only on the MID price, where the trade actually executed.
+        if pd.notna(mid_p):
             if "Buy-Back" in label:          # bought the discharge back at MID
                 buy_id_x.append(ts)
                 buy_id_y.append(mid_p)
