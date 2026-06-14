@@ -207,6 +207,13 @@ def chart_operation_explorer(
             elif "Sell-Back" in label or "Alpha" in label:  # sold at MID
                 sell_id_x.append(ts)
                 sell_id_y.append(mid_p)
+            spread = row.get("spread_mw", 0.0)  # Rule 4 physical extra at MID
+            if spread > 1e-6:                # extra discharge sold at MID
+                sell_id_x.append(ts)
+                sell_id_y.append(mid_p)
+            elif spread < -1e-6:             # extra charge bought at MID
+                buy_id_x.append(ts)
+                buy_id_y.append(mid_p)
 
     # Row 1 is a thin strip that only hosts the rangeslider. Its sole trace is
     # day-number text, so the slider band renders dates as its background and,
@@ -281,6 +288,7 @@ def chart_operation_explorer(
             v = row["netting_mw"]  # buyback (−, buy) / sellback (+, sell)
         else:
             v = 0.0
+        v += row.get("spread_mw", 0.0)  # Rule 4 physical extra (+ sell / − buy)
         intraday_vol.append(v)
     da_y = [v if abs(v) > 1e-6 else None for v in da_vol]
     id_y = [v if abs(v) > 1e-6 else None for v in intraday_vol]
@@ -373,5 +381,50 @@ def chart_pnl_waterfall(results_df: pd.DataFrame):
     fig.update_layout(
         title="PnL Waterfall — Trader's View",
         yaxis_title="£", template="plotly_white", height=450,
+    )
+    return fig
+
+
+def chart_daily_attribution(results_df: pd.DataFrame):
+    """Daily PnL attribution across the selected month.
+
+    The waterfall shows *what* made the money over the whole month; this shows
+    *when*. Each day stacks its positive returns above zero (DA delivery,
+    financial spread, physical intraday, positive imbalance) and its costs below
+    (degradation, negative imbalance) via barmode='relative', so you can see at a
+    glance whether the month earned steadily or on a handful of volatile days.
+    The black line is each day's net PnL.
+    """
+    df = results_df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date")
+    x = df["date"]
+
+    components = [
+        ("Baseline DA", df["da_revenue_delivered"], "#1f77b4"),
+        ("Financial Spread", df["financial_spread_captured"], "#2ecc71"),
+        ("Physical Intraday", df["physical_dispatch_pnl"], "#9b59b6"),
+        ("Imbalance", df["imbalance_pnl"], "#e67e22"),
+        ("Degradation", -df["degradation_cost"], "#c0392b"),
+    ]
+
+    fig = go.Figure()
+    for name, y, color in components:
+        fig.add_trace(go.Bar(
+            x=x, y=y, name=name, marker_color=color,
+            hovertemplate="%{x|%d %b}<br>" + name + " £%{y:,.0f}<extra></extra>",
+        ))
+    fig.add_trace(go.Scatter(
+        x=x, y=df["net_pnl"], name="Net PnL", mode="lines+markers",
+        line=dict(color="#2c3e50", width=2), marker=dict(size=5),
+        hovertemplate="%{x|%d %b}<br>Net £%{y:,.0f}<extra></extra>",
+    ))
+    fig.update_layout(
+        title="Daily PnL Attribution — selected month",
+        xaxis_title="Date", yaxis_title="PnL (£)",
+        barmode="relative", bargap=0.15,
+        template="plotly_white", height=380,
+        legend=dict(orientation="h", x=0, y=1.12),
+        hovermode="x unified",
     )
     return fig

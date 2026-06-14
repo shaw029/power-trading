@@ -92,6 +92,7 @@ def run_intraday_session(
         da_mw = mw
         netting_mw = 0.0
         override_mw = 0.0
+        spread_mw = 0.0
         rule_label = "Rule 4: Physical Dispatch"
         soc_before = asset.soc_pct
 
@@ -257,25 +258,33 @@ def run_intraday_session(
             log_price = da_price_actual[h]
 
         # Rule 4: spread improvement — opportunistically trade the leftover power
-        # capacity at MID, but clamp to the forward guardrails (required_reserve /
-        # available_headroom), not just the absolute SOC bounds. Otherwise this
-        # spends energy (or headroom) the locked DA schedule still needs to serve
-        # future periods, which would surface as an imbalance shortfall later.
-        if mw != 0:
-            remaining_mw = asset.power_mw - abs(mw)
-            if remaining_mw > 0:
-                if mw > 0 and mid_prices[h] > da_price_actual[h] + degradation_cost:
-                    allowed_mwh = (asset._soc_mwh - required_reserve) * asset.discharge_efficiency
-                    extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
-                    if extra_mw > 0:
-                        asset.discharge(extra_mw, duration_h)
-                        physical_dispatch_pnl += extra_mw * duration_h * mid_prices[h]
-                elif mw < 0 and mid_prices[h] < da_price_actual[h] - degradation_cost:
-                    allowed_mwh = (available_headroom - asset._soc_mwh) / asset.charge_efficiency
-                    extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
-                    if extra_mw > 0:
-                        asset.charge(extra_mw, duration_h)
-                        physical_dispatch_pnl -= extra_mw * duration_h * mid_prices[h]
+        # capacity at MID, clamped to the forward guardrails (required_reserve /
+        # available_headroom), not just the absolute SOC bounds. Clamping keeps any
+        # energy or headroom the locked DA schedule still needs, so this never
+        # surfaces as an imbalance shortfall later.
+        #
+        # It can open a position on idle periods too (mw == 0): there the direction
+        # is set purely by MID vs DA. On periods that already hold a DA position it
+        # only extends in that same direction (the battery can't charge and
+        # discharge at once).
+        remaining_mw = asset.power_mw - abs(mw)
+        if remaining_mw > 0:
+            allow_discharge = mw >= 0  # idle or scheduled discharge
+            allow_charge = mw <= 0     # idle or scheduled charge
+            if allow_discharge and mid_prices[h] > da_price_actual[h] + degradation_cost:
+                allowed_mwh = (asset._soc_mwh - required_reserve) * asset.discharge_efficiency
+                extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
+                if extra_mw > 0:
+                    asset.discharge(extra_mw, duration_h)
+                    physical_dispatch_pnl += extra_mw * duration_h * mid_prices[h]
+                    spread_mw = extra_mw  # extra discharge sold at MID
+            elif allow_charge and mid_prices[h] < da_price_actual[h] - degradation_cost:
+                allowed_mwh = (available_headroom - asset._soc_mwh) / asset.charge_efficiency
+                extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
+                if extra_mw > 0:
+                    asset.charge(extra_mw, duration_h)
+                    physical_dispatch_pnl -= extra_mw * duration_h * mid_prices[h]
+                    spread_mw = -extra_mw  # extra charge bought at MID
 
         dispatch_log.append({
             "period": h,
@@ -287,6 +296,7 @@ def run_intraday_session(
             "da_mw": da_mw,
             "netting_mw": netting_mw,
             "override_mw": override_mw,
+            "spread_mw": spread_mw,
             "final_mw": physical_mw,
             "rule_label": rule_label,
             "required_reserve_mwh": required_reserve,

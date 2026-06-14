@@ -28,6 +28,7 @@ from src.features.build_features import build_features  # noqa: E402
 from src.models.train import train_da_price_model, _FEATURE_COLS  # noqa: E402
 from dashboard.charts import (  # noqa: E402
     chart_da_commitment_shape,
+    chart_daily_attribution,
     chart_operation_explorer,
     chart_pnl_waterfall,
     chart_realized_shape,
@@ -175,6 +176,13 @@ def run_bess_simulation(
         "soc_drift_tolerance": soc_drift_tolerance,
     }
 
+    # Per-period MID volatility (trailing ~1-day rolling std, £/MWh) feeds Rule 3's
+    # proxy forward hedge; supplying it enables the alpha override in the sim.
+    vol_window = max(2, periods_per_day)
+    mid_vol = (
+        hourly["mid_price"].rolling(vol_window, min_periods=2).std().bfill().fillna(0.0)
+    )
+
     daily_results = []
     all_dispatch_logs = []
     all_da_schedules = []
@@ -216,6 +224,7 @@ def run_bess_simulation(
             asset=asset,
             config=sim_cfg,
             imbalance_sell_prices=day_df["system_sell_price"].tolist(),
+            volatility_array=mid_vol.loc[day_df.index].tolist(),
         )
         prev_soc_pct = asset.soc_pct
 
@@ -386,6 +395,19 @@ def render_bess(prices: pd.DataFrame):
             chart_pnl_waterfall(results_df),
             use_container_width=True, key=f"waterfall_{month_str}",
         )
+
+    # Daily attribution: monthly variance view — what each day earned, by source
+    st.markdown("---")
+    st.subheader("Daily PnL Attribution")
+    st.caption(
+        "Each bar is a day's PnL broken into its sources (returns above zero, costs "
+        "below); the black line is daily net. Shows whether the month earned steadily "
+        "or on a handful of volatile days."
+    )
+    st.plotly_chart(
+        chart_daily_attribution(results_df),
+        use_container_width=True, key=f"daily_attr_{month_str}",
+    )
 
     # Operation explorer: a 24-hour viewport dragged across the month via the date strip
     st.markdown("---")
