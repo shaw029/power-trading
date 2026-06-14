@@ -78,16 +78,16 @@ def chart_realized_shape(
     The execution layer: what the battery physically did after the intraday
     engine reshaped the committed schedule against MID. Faint ghost bars are the
     DA commitment, so the gap to the solid bars is the net intraday reshaping —
-    Rule 2 settling volume financially (which shrinks the solid bar) and Rule 4
-    physically trading extra at MID (spread_mw, which moves it). Lines show
-    realised DA against MID — the spread the intraday rules trade.
+    financial netting settling volume financially (which shrinks the solid bar)
+    and the opportunity-cost leg physically trading extra at MID (spread_mw, which
+    moves it). Lines show realised DA against MID — the spread the intraday engine trades.
     """
     d = dispatch_df.copy()
     d["timestamp"] = pd.to_datetime(d["timestamp"])
-    # Physical movement = the DA dispatch (from action/mw) plus Rule 4's extra MID
-    # trade (spread_mw), which is logged separately and leaves action == "idle".
-    # On DA-idle hours the DA leg is 0 and the whole realised bar is the Rule 4
-    # spread, so it must not be suppressed; fillna guards a missing/NaN spread.
+    # Physical movement = the DA dispatch (from action/mw) plus the opportunity-cost
+    # leg's extra MID trade (spread_mw), which is logged separately and leaves
+    # action == "idle". On DA-idle hours the DA leg is 0 and the whole realised bar is
+    # the opportunity-cost spread, so it must not be suppressed; fillna guards a missing/NaN spread.
     signed = d["mw"].where(d["action"] == "discharge", -d["mw"])
     signed = signed.where(d["action"] != "idle", 0.0)
     spread = d["spread_mw"].fillna(0.0) if "spread_mw" in d else 0.0
@@ -219,14 +219,15 @@ def chart_operation_explorer(
             elif da_v < -1e-6:      # committed to charge → bought on DA
                 buy_da_x.append(ts)
                 buy_da_y.append(da_p)
-        # The intraday leg is independent of the DA leg: Rule 4 fires on DA-idle
-        # periods (da_v == 0, da_p possibly missing) and must still plot. It is
-        # gated only on the MID price, where the trade actually executed. A period
-        # can carry both an intraday leg at once (Rule 2 nets the DA volume, Rule 4
-        # then trades physically), so each is read from its own signed column —
-        # never from rule_label, which Rule 4 overwrites, dropping Rule 2's marker.
+        # The intraday leg is independent of the DA leg: the opportunity-cost leg
+        # fires on DA-idle periods (da_v == 0, da_p possibly missing) and must still
+        # plot. It is gated only on the MID price, where the trade actually executed.
+        # A period can carry both intraday legs at once (financial netting nets the DA
+        # volume, the opportunity-cost leg then trades physically), so each is read from
+        # its own signed column — never from rule_label, which the opportunity-cost leg
+        # overwrites, dropping the netting marker.
         if pd.notna(mid_p):
-            # Rule 2 financial netting: + sold the charge back, − bought the
+            # Financial netting: + sold the charge back, − bought the
             # discharge back (netting_mw = −da_mw).
             netting = row.get("netting_mw", 0.0)
             if netting > 1e-6:
@@ -235,7 +236,7 @@ def chart_operation_explorer(
             elif netting < -1e-6:
                 buy_id_x.append(ts)
                 buy_id_y.append(mid_p)
-            # Rule 4 physical extra at MID: + extra discharge sold, − extra charge bought.
+            # Opportunity-cost physical extra at MID: + extra discharge sold, − extra charge bought.
             spread = row.get("spread_mw", 0.0)
             if spread > 1e-6:
                 sell_id_x.append(ts)
@@ -307,8 +308,8 @@ def chart_operation_explorer(
     # How much, by venue, signed the same way as the markers (+ sell/discharge,
     # − buy/charge): the blue bar is the full DA commitment; the two green bars are
     # the intraday legs in their true direction. They are kept as separate stacked
-    # traces — not summed — because a period can carry a Rule 2 netting leg and an
-    # opposite Rule 4 physical leg at once (e.g. buy the DA discharge back, then
+    # traces — not summed — because a period can carry a financial-netting leg and an
+    # opposite opportunity-cost physical leg at once (e.g. buy the DA discharge back, then
     # re-discharge at MID): summed they cancel to ~0 and the bar vanishes even
     # though both trades, and their markers, are real.
     da_vol = dispatch["da_mw"].values

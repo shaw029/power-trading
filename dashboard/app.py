@@ -134,6 +134,9 @@ def run_bess_simulation(
     target_daily_cycles: float | None,
     resolution_h: float,
     soc_drift_tolerance: float,
+    slippage: float = 0.50,
+    margin_buy: float = 0.0,
+    margin_sell: float = 0.0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Replay the BESS strategy exactly as pipeline._run_bess_pipeline does.
 
@@ -179,6 +182,11 @@ def run_bess_simulation(
         # Without this passthrough the cycle cap never engaged intraday, even with
         # "Limit daily cycles" set (the LP got it directly via optimize_da_schedule).
         "target_daily_cycles": target_daily_cycles,
+        # Netting hurdles and the per-MWh execution-cost buffer, mirroring the
+        # pipeline config so the dashboard replays the exact intraday economics.
+        "margin_buy": margin_buy,
+        "margin_sell": margin_sell,
+        "execution": {"slippage": slippage},
     }
 
     daily_results = []
@@ -305,6 +313,21 @@ def render_bess(prices: pd.DataFrame):
             float(_cfg_cycles) if _cfg_cycles is not None else 1.5, step=0.5,
         )
 
+    st.sidebar.markdown("### Intraday Rule Levers")
+    netting_margin = st.sidebar.slider(
+        "Netting Margin (£/MWh)", 0.0, 50.0,
+        float(bess_cfg.get("margin_buy", 0.0)), step=1.0,
+        help="Extra spread MID must beat the period's DA price by before financial "
+             "netting fires (applied to both buy-back and sell-back). Higher = less "
+             "netting; turn it up to suppress the infeasibility-driven imbalance.",
+    )
+    slippage = st.sidebar.slider(
+        "Execution Buffer / Slippage (£/MWh)", 0.0, 10.0,
+        float(cfg.get("execution", {}).get("slippage", 0.50)), step=0.50,
+        help="Per-MWh execution cost. Also widens the no-trade deadzone on BOTH "
+             "intraday legs, so a higher buffer makes the engine trade less often.",
+    )
+
     # The simulation runs over the whole out-of-sample period and is cached on
     # the asset parameters: changing a slider re-runs it, switching month just
     # re-slices the cached result below.
@@ -320,6 +343,9 @@ def render_bess(prices: pd.DataFrame):
         target_daily_cycles=target_daily_cycles,
         resolution_h=bess_cfg.get("resolution_h", 1.0),
         soc_drift_tolerance=bess_cfg.get("soc_drift_tolerance", 0.05),
+        slippage=slippage,
+        margin_buy=netting_margin,
+        margin_sell=netting_margin,
     )
 
     soc_bounds = {

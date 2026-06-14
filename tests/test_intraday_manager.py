@@ -38,7 +38,7 @@ class TestBaseExecution:
     chosen so MID sits inside the no-netting / no-arbitrage window each period.
     On the final period (no future DA position) the opportunity-cost hurdle is a
     neutral deadzone around the current DA price — MID must beat it by more than
-    degradation for Rule 4 to trade — so a flat MID == DA leaves the battery idle."""
+    degradation for the opportunity-cost leg to trade — so a flat MID == DA leaves the battery idle."""
 
     def test_clean_execution(self):
         asset = BESSAsset(
@@ -56,7 +56,7 @@ class TestBaseExecution:
 
         # h0 discharges 10 MWh and h1 charges 10 MWh as a clean DA dispatch. On
         # the final period the deadzone hurdles are oc_discharge = da_p + deg = 45
-        # and oc_charge = da_p - deg = 35, so MID 40 falls inside and Rule 4 stays
+        # and oc_charge = da_p - deg = 35, so MID 40 falls inside and the opportunity-cost leg stays
         # idle: no intraday PnL, no extra throughput, degradation only on the DA legs.
         assert result["da_revenue_delivered"] == pytest.approx(10 * 50 - 10 * 60)
         assert result["intraday_pnl"] == pytest.approx(0.0)
@@ -121,7 +121,7 @@ class TestForwardGuardrails:
 
 
 class TestOpportunityArbitrage:
-    """Rule 4: physical MID trade when MID beats the best/cheapest reachable
+    """Opportunity-cost arbitrage: physical MID trade when MID beats the best/cheapest reachable
     future DA price net of degradation, clamped to the R_h / H_h envelope."""
 
     def _unit_asset(self, soc=0.5):
@@ -178,12 +178,27 @@ class TestOpportunityArbitrage:
         assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(20.0)
         assert result["imbalance_pnl"] == pytest.approx(0.0)
 
-    def test_degradation_shifts_threshold(self):
-        # OC_discharge = max(future) - degradation = 50 - 10 = 40; MID 45 clears it.
+    def test_degradation_widens_no_trade_deadzone(self):
+        # OC_discharge = max(future) + degradation = 50 + 10 = 60: a standalone
+        # intraday cycle must beat the best reachable future price by MORE than the
+        # wear it incurs. MID 45 is below the future reference, so it must NOT trade
+        # — discharging here would lock in a worse price and still pay degradation.
         result = run_intraday_session(
             da_schedule=[0.0, 0.0],
             da_price_actual=[40.0, 50.0],
             mid_prices=[45.0, 50.0],
+            imbalance_prices=[40.0, 50.0],
+            asset=self._unit_asset(),
+            config={"degradation_cost_per_mwh": 10.0},
+        )
+        assert result["dispatch_log"][0]["trade_type"] != "opportunity_arb"
+        assert result["dispatch_log"][0]["spread_mw"] == pytest.approx(0.0)
+
+        # A MID that clears max(future) + degradation (+ the exec buffer) does trade.
+        result = run_intraday_session(
+            da_schedule=[0.0, 0.0],
+            da_price_actual=[40.0, 50.0],
+            mid_prices=[62.0, 50.0],   # 62 > 50 + 10 + 0.5 → discharge
             imbalance_prices=[40.0, 50.0],
             asset=self._unit_asset(),
             config={"degradation_cost_per_mwh": 10.0},
@@ -193,7 +208,7 @@ class TestOpportunityArbitrage:
 
 
 class TestFinancialNetting:
-    """Rule 2: capture the DA-MID spread financially without moving the battery."""
+    """Financial netting: capture the DA-MID spread financially without moving the battery."""
 
     def test_buyback_when_mid_below_da(self):
         # Final period at full SOC: the buyback nets the discharge, and the OC
@@ -372,9 +387,9 @@ class TestHalfHourlyResolution:
 
 
 class TestGuardrailsPreventImbalance:
-    """With netting disabled (huge margins), base DA execution plus Rule 4 must
-    settle a feasible schedule with zero imbalance: Rule 4 always stays inside the
-    R_h / H_h envelope, so it can never starve a future DA commitment."""
+    """With netting disabled (huge margins), base DA execution plus the opportunity-cost
+    leg must settle a feasible schedule with zero imbalance: that leg always stays inside
+    the R_h / H_h envelope, so it can never starve a future DA commitment."""
 
     def test_arbitrage_never_leaks_imbalance(self):
         import random

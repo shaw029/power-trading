@@ -108,7 +108,7 @@ strategy_type: "virtual"   # "virtual" (default) | "bess"
 ```
 
 - **`virtual`** — ML-driven DA positioning with hybrid intraday execution (Phases 1 & 2).
-- **`bess`** — Physical battery dispatch: LP Day-Ahead scheduling, rules-based intraday rebalancing, and imbalance settlement (Phase 3).
+- **`bess`** — Physical battery dispatch: LP Day-Ahead scheduling, an opportunity-cost intraday engine, and imbalance settlement (Phase 3).
 
 ### Signal Config
 
@@ -166,8 +166,10 @@ bess:
   min_soc_pct: 0.10                # lower SOC operating bound (never discharge below)
   max_soc_pct: 0.90                # upper SOC operating bound (never charge above)
   resolution_h: 1.0                # dispatch interval in hours (1 = hourly)
-  soc_drift_tolerance: 0.05        # max SOC drift before intraday rebalance (fraction of capacity)
-  target_daily_cycles: 1.5         # max daily discharge energy as a multiple of capacity; null disables
+  soc_drift_tolerance: 0.05        # legacy; retained in defaults but unused by the opportunity-cost engine
+  target_daily_cycles: 1.5         # cycle cap: max intraday throughput as a multiple of capacity; null disables
+  margin_buy: 0.0                  # optional extra hurdle (£/MWh) on the financial-netting buy-back
+  margin_sell: 0.0                 # optional extra hurdle (£/MWh) on the financial-netting sell-back
 ```
 
 | Key | Description |
@@ -180,8 +182,9 @@ bess:
 | `initial_soc_pct` | State of charge used on the **first backtest day only**; subsequent days start from the previous day's actual ending SOC |
 | `min_soc_pct` | Lower SOC operating bound as a fraction of capacity. The LP and intraday engine will not discharge below this level |
 | `max_soc_pct` | Upper SOC operating bound as a fraction of capacity. The LP and intraday engine will not charge above this level |
-| `soc_drift_tolerance` | Maximum SOC deviation (fraction of capacity) from the DA-implied trajectory before the intraday rebalancing rule triggers |
-| `target_daily_cycles` | Optional cap on daily discharge energy: `Σ discharge × duration ≤ target_daily_cycles × capacity_mwh`. Set to `null` to disable |
+| `soc_drift_tolerance` | **Legacy.** A leftover from the earlier drift-rebalancing engine; still present in the config defaults but **not read** by the current opportunity-cost intraday engine |
+| `target_daily_cycles` | Cap on throughput as a multiple of capacity. Bounds the LP (`Σ discharge × duration ≤ target_daily_cycles × capacity_mwh`) and arms the intraday **cycle cap**, which freezes the physical envelope once accumulated intraday throughput reaches the budget. Set to `null` to disable |
+| `margin_buy` / `margin_sell` | Optional extra hurdles (£/MWh, default 0) the MID must clear, on top of the execution buffer, before the financial-netting leg books a buy-back (`margin_buy`) or sell-back (`margin_sell`) |
 
 ## Project Structure
 
@@ -229,7 +232,7 @@ power-trading/
 │   ├── bess/                       # BESS strategy modules
 │   │   ├── bess_asset.py           # BESSAsset state-machine dataclass
 │   │   ├── da_optimizer.py         # LP Day-Ahead schedule (PuLP/HiGHS)
-│   │   └── intraday_manager.py     # Rules-based intraday rebalancing
+│   │   └── intraday_manager.py     # Opportunity-cost intraday engine
 │   └── utils/                      # config.py
 ├── tests/
 ├── dashboard/                      # Streamlit dashboard (make dashboard)
@@ -247,7 +250,7 @@ power-trading/
 It replays the strategy exactly as `pipeline.py` does, so what you see matches real model output:
 
 - the Day-Ahead schedule is optimised against the same walk-forward ML price forecast (trained once per session and cached);
-- the intraday rules engine settles against actual DA/MID/imbalance prices with SBP/SSP shortfall pricing;
+- the opportunity-cost intraday engine settles against actual DA/MID/imbalance prices with SBP/SSP shortfall pricing;
 - state of charge carries continuously across days — each day starts from the previous day's actual ending SOC.
 
 Because scheduling against an in-sample forecast would be leakage, the selectable months are limited to the model's out-of-sample (walk-forward) range. Changing an asset parameter (capacity, power, efficiencies, SOC bounds, degradation, cycle cap) re-runs the whole out-of-sample period and is cached on those parameters; switching month just re-slices the cached result. Override the data and feature locations with the `PT_PROCESSED_DATA` and `PT_FEATURES` environment variables.

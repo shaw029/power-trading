@@ -29,21 +29,22 @@ def run_intraday_session(
     config: dict,
     imbalance_sell_prices: list[float] | None = None,
 ) -> dict:
-    """Dynamic Opportunity-Cost intraday engine.
+    """Dynamic Opportunity-Cost intraday engine — Two-Step Spread Capture.
 
-    Each period is processed sequentially through three rules, all bounded by
-    forward-looking physical guardrails derived solely from the already-cleared
-    day-ahead schedule and prices (zero look-ahead onto live market data):
+    Each period is processed sequentially, bounded by forward-looking physical
+    guardrails derived solely from the already-cleared day-ahead schedule and
+    prices (zero look-ahead onto live market data):
 
-      Rule 1 — Physical Envelope Setup: the Required Reserve (R_h) and Available
+      Step 1 — Physical Envelope: the Required Reserve (R_h) and Available
         Headroom (H_h) that intraday actions must respect so the remaining DA
         commitments can always be served. A live cycle cap freezes the envelope
         once intraday throughput exhausts the daily budget.
-      Rule 2 — Financial Netting: capture the DA–MID spread without moving the
-        battery when the current MID beats the locked DA price for the period.
-      Rule 4 — Opportunity-Cost Arbitrage: trade physically at MID whenever it
-        beats the best/cheapest reachable future DA price (net of degradation),
-        clamped to the R_h / H_h envelope.
+      Step 2 — Intraday DA Improvement, in two complementary legs:
+        - Financial Netting: capture the DA–MID spread without moving the
+          battery when the current MID beats the locked DA price for the period.
+        - Opportunity-Cost Arbitrage: trade physically at MID whenever it beats
+          the best/cheapest reachable future DA price (net of degradation),
+          clamped to the R_h / H_h envelope.
 
     imbalance_prices      — SBP (system buy price): cost when the BESS is short
                             (couldn't deliver scheduled discharge volume).
@@ -82,9 +83,9 @@ def run_intraday_session(
     # Degradation ties back exactly to Net PnL.
     #   benchmark_da_revenue    — value of the planned LP schedule settled at the
     #     actual DA prices, frozen up front before any intraday action is taken.
-    #   intraday_da_improvement — Rule 2 financial netting plus Rule 4 physical
+    #   intraday_da_improvement — Step-2 financial netting plus opportunity-cost
     #     arbitrage, the cash the intraday engine adds on top of the benchmark.
-    #   execution_costs_paid    — slippage paid on every Rule 2 / Rule 4 traded MWh.
+    #   execution_costs_paid    — slippage paid on every netting / arbitrage traded MWh.
     benchmark_da_revenue = sum(
         mw * duration_h * p for mw, p in zip(da_schedule, da_price_actual)
     )
@@ -99,8 +100,8 @@ def run_intraday_session(
 
         # Decision-delta tracking: how the locked DA plan is transformed into the
         # final physical position. da_mw is the original commitment; netting_mw is
-        # the signed volume Rule 2 nets financially; spread_mw is Rule 4's physical
-        # arbitrage trade; final_mw is the physically dispatched DA volume.
+        # the signed volume the financial-netting leg nets; spread_mw is the
+        # opportunity-cost physical trade; final_mw is the physically dispatched DA volume.
         da_mw = mw
         netting_mw = 0.0
         spread_mw = 0.0
@@ -111,7 +112,7 @@ def run_intraday_session(
         log_netted_mwh = 0.0
         trade_type = "physical_dispatch" if mw != 0 else "idle"
 
-        # ── Rule 1: Physical Envelope Setup ──────────────────────────────────
+        # ── Step 1: Physical Envelope ────────────────────────────────────────
         # Required Reserve (R_h): SOC to hold so every remaining DA discharge can
         #   be served without breaching min SOC (assuming no future charge help).
         # Available Headroom (H_h): SOC ceiling so every remaining DA charge can
@@ -129,7 +130,7 @@ def run_intraday_session(
         if cycle_cap_mwh is not None and accumulated_intraday_throughput_mwh >= cycle_cap_mwh:
             required_reserve = available_headroom = asset._soc_mwh
 
-        # ── Rule 2: Financial Netting (zero physical movement) ───────────────
+        # ── Step 2a: Financial Netting (zero physical movement) ──────────────
         # Capture the DA–MID spread financially when the MID price beats the
         # locked DA price for this period; the netted volume settles at MID with
         # a net-zero physical position, so only un-netted DA volume is dispatched.
@@ -143,7 +144,7 @@ def run_intraday_session(
             netting_mw = -mw
             log_netted_mwh = netted
             trade_type = "financial_netting"
-            rule_label = f"Rule 2: Buy-Back at £{mid_p:.2f}/MWh"
+            rule_label = f"Financial Netting: Buy-Back at £{mid_p:.2f}/MWh"
         elif mw < 0 and mid_p >= da_p + margin_sell + exec_cost:
             netted = abs(mw) * duration_h
             financial_netting_pnl += netted * mid_p     # sell the volume at MID
@@ -153,13 +154,13 @@ def run_intraday_session(
             netting_mw = -mw
             log_netted_mwh = netted
             trade_type = "financial_netting"
-            rule_label = f"Rule 2: Sell-Back at £{mid_p:.2f}/MWh"
+            rule_label = f"Financial Netting: Sell-Back at £{mid_p:.2f}/MWh"
 
         # ── Physical execution of the un-netted DA volume ────────────────────
         # The DA contract settles regardless of any clamping shortfall, which is
         # priced separately into imbalance_pnl. Base DA execution is bounded only
         # by the absolute SOC limits; the intraday R_h / H_h envelope is reserved
-        # for Rule 4 so honouring the day-ahead plan is never starved.
+        # for the opportunity-cost leg so honouring the day-ahead plan is never starved.
         da_revenue_delivered += physical_mw * duration_h * da_p
         if physical_mw > 0:
             allowed_mwh = (asset._soc_mwh - asset._min_soc_mwh) * asset.discharge_efficiency
@@ -187,15 +188,20 @@ def run_intraday_session(
             log_mw = max_mw
             log_price = da_p
 
-        # ── Rule 4: Opportunity-Cost Arbitrage (physical movement) ───────────
+        # ── Step 2b: Opportunity-Cost Arbitrage (physical movement) ──────────
         # Opportunity cost is the best/cheapest price reachable in the remaining
         # cleared DA schedule, net of degradation. Trade at MID whenever it beats
         # that hurdle, using the power left after the DA leg and clamping SOC to
         # the R_h / H_h envelope so future DA commitments are never breached.
         future_prices = da_price_actual[h + 1:]
         if future_prices:
-            oc_discharge = max(future_prices) - degradation_cost
-            oc_charge = min(future_prices) + degradation_cost
+            # Opportunity cost = best/cheapest reachable future DA price, and the
+            # standalone intraday cycle must beat it by MORE than the degradation
+            # it incurs: discharge only if mid − δ > max(future) ⇒ mid > max+δ;
+            # charge only if mid + δ < min(future) ⇒ mid < min−δ. (Consistent with
+            # the final-period branch below; the wear widens the no-trade deadzone.)
+            oc_discharge = max(future_prices) + degradation_cost
+            oc_charge = min(future_prices) - degradation_cost
         else:
             # Final period: No future DA position exists.
             # To justify a standalone cycle, MID must beat the current DA price
@@ -217,7 +223,7 @@ def run_intraday_session(
                     accumulated_intraday_throughput_mwh += extra_mw * duration_h
                     spread_mw = extra_mw
                     trade_type = "opportunity_arb"
-                    rule_label = f"Rule 4: OC Discharge at £{mid_p:.2f}/MWh"
+                    rule_label = f"Opportunity-Cost: Discharge at £{mid_p:.2f}/MWh"
             elif allow_charge and mid_p < oc_charge - exec_cost:
                 allowed_mwh = (available_headroom - asset._soc_mwh) / asset.charge_efficiency
                 extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
@@ -228,10 +234,10 @@ def run_intraday_session(
                     accumulated_intraday_throughput_mwh += extra_mw * duration_h
                     spread_mw = -extra_mw
                     trade_type = "opportunity_arb"
-                    rule_label = f"Rule 4: OC Charge at £{mid_p:.2f}/MWh"
+                    rule_label = f"Opportunity-Cost: Charge at £{mid_p:.2f}/MWh"
 
-        # Execution friction on every traded MWh this period — the Rule 2 netting
-        # leg and the Rule 4 physical leg — isolated into its own bucket rather
+        # Execution friction on every traded MWh this period — the financial-netting
+        # leg and the opportunity-cost physical leg — isolated into its own bucket rather
         # than netted into the rule alphas (which stay gross).
         traded_mwh = abs(netting_mw * duration_h) + abs(spread_mw * duration_h)
         execution_costs_paid += traded_mwh * exec_cost

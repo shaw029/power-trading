@@ -57,3 +57,6 @@ bess:
   resolution_h: 1.0
   soc_drift_tolerance: 0.05
   target_daily_cycles: 1.5   # max average daily cycling target; null disables the limit
+  margin_buy: 0.0            # extra hurdle (£/MWh) on the financial-netting buy-back
+  margin_sell: 0.0           # extra hurdle (£/MWh) on the financial-netting sell-back
+  # The intraday execution-cost buffer is reused from the top-level execution.slippage.

@@ -115,6 +115,8 @@ _BESS_DEFAULTS = {
     "resolution_h": 1.0,
     "soc_drift_tolerance": 0.05,
     "target_daily_cycles": None,
+    "margin_buy": 0.0,
+    "margin_sell": 0.0,
 }
 
 _FIXED_SOURCE_KEYS = (
@@ -160,6 +162,15 @@ def validate_config(config: dict) -> dict:
         bess = config.get("bess", {})
         for key, default in _BESS_DEFAULTS.items():
             bess.setdefault(key, default)
+        # The intraday engine reuses the execution slippage as its per-MWh
+        # execution-cost buffer. The pipeline passes the bess block alone to
+        # run_intraday_session, so surface the top-level execution.slippage (or
+        # its default) inside the bess config; without this the engine always
+        # fell back to its hard-coded 0.50 default regardless of the YAML.
+        bess.setdefault("execution", {})
+        bess["execution"].setdefault(
+            "slippage", config.get("execution", {}).get("slippage", 0.50)
+        )
         config["bess"] = bess
 
     # ── data.periods ────────────────────────────────────────────────────
