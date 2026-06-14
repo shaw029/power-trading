@@ -34,8 +34,11 @@ class TestComputeImpliedSocClamping:
 
 
 class TestBaseExecution:
-    """Un-netted DA volume dispatches physically when no rule fires. Prices are
-    chosen so MID sits inside the no-netting / no-arbitrage window each period."""
+    """Un-netted DA volume dispatches physically when no rule fires on the
+    forward-looking periods. Prices are chosen so MID sits inside the
+    no-netting / no-arbitrage window for h0 and h1. On the final period the
+    opportunity-cost hurdle falls back to the current DA price net of
+    degradation, so Rule 4 trades the remaining envelope at MID."""
 
     def test_clean_execution(self):
         asset = BESSAsset(
@@ -45,20 +48,25 @@ class TestBaseExecution:
         result = run_intraday_session(
             da_schedule=[10.0, -10.0, 0.0],
             da_price_actual=[50.0, 60.0, 40.0],
-            mid_prices=[52.0, 50.0, 40.0],   # h0: 50<52<=55; h1: 45<=50<60; h2: ==DA
+            mid_prices=[52.0, 50.0, 40.0],   # h0: 50<52<=55; h1: 45<=50<60
             imbalance_prices=[48.0, 55.0, 40.0],
             asset=asset,
             config={"degradation_cost_per_mwh": 5.0},
         )
 
+        # h0 discharges 10 MWh and h1 charges 10 MWh as a clean DA dispatch.
+        # h1 leaves SOC at 48.4737 MWh; on the final period the opportunity-cost
+        # discharge hurdle is da_p - degradation = 35, so MID 40 clears it and
+        # Rule 4 discharges the full reserve-to-SOC envelope: 48.4737 * 0.95 =
+        # 46.05 MWh at MID 40 = £1842.0.
         assert result["da_revenue_delivered"] == pytest.approx(10 * 50 - 10 * 60)
-        assert result["intraday_pnl"] == pytest.approx(0.0)
+        assert result["intraday_pnl"] == pytest.approx(1842.0)
         assert result["imbalance_pnl"] == pytest.approx(0.0)
-        assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(0.0)
-        assert result["total_degradation_cost"] == pytest.approx(100.0)
+        assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(46.05)
+        assert result["total_degradation_cost"] == pytest.approx(5 * (10 + 10 + 46.05))
         assert [e["action"] for e in result["dispatch_log"]] == ["discharge", "charge", "idle"]
         assert [e["trade_type"] for e in result["dispatch_log"]] == [
-            "physical_dispatch", "physical_dispatch", "idle",
+            "physical_dispatch", "physical_dispatch", "opportunity_arb",
         ]
 
 

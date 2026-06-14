@@ -56,6 +56,7 @@ def run_intraday_session(
     degradation_cost = config["degradation_cost_per_mwh"]
     margin_buy = config.get("margin_buy", 0.0)
     margin_sell = config.get("margin_sell", 0.0)
+    exec_cost = config.get("execution", {}).get("slippage", 0.5)
 
     target_daily_cycles = config.get("target_daily_cycles")
     cycle_cap_mwh = (
@@ -116,7 +117,7 @@ def run_intraday_session(
         # locked DA price for this period; the netted volume settles at MID with
         # a net-zero physical position, so only un-netted DA volume is dispatched.
         physical_mw = mw
-        if mw > 0 and mid_p <= da_p - margin_buy:
+        if mw > 0 and mid_p <= da_p - margin_buy - exec_cost:
             netted = mw * duration_h
             financial_netting_pnl -= netted * mid_p     # buy the volume back at MID
             da_revenue_netted += netted * da_p          # keep the DA sale credit
@@ -125,7 +126,7 @@ def run_intraday_session(
             log_netted_mwh = netted
             trade_type = "financial_netting"
             rule_label = f"Rule 2: Buy-Back at £{mid_p:.2f}/MWh"
-        elif mw < 0 and mid_p >= da_p + margin_sell:
+        elif mw < 0 and mid_p >= da_p + margin_sell + exec_cost:
             netted = abs(mw) * duration_h
             financial_netting_pnl += netted * mid_p     # sell the volume at MID
             da_revenue_netted -= netted * da_p          # offset the DA charge cost
@@ -177,13 +178,15 @@ def run_intraday_session(
             oc_discharge = max(future_prices) - degradation_cost
             oc_charge = min(future_prices) + degradation_cost
         else:
-            oc_discharge = oc_charge = da_p
+            # Final period: opportunity cost falls back to current DA price
+            oc_discharge = da_p - degradation_cost
+            oc_charge = da_p + degradation_cost
 
         remaining_mw = asset.power_mw - abs(log_mw)
         if remaining_mw > 1e-9:
             allow_discharge = physical_mw >= 0  # never reverse a scheduled charge
             allow_charge = physical_mw <= 0     # never reverse a scheduled discharge
-            if allow_discharge and mid_p > oc_discharge:
+            if allow_discharge and mid_p > oc_discharge + exec_cost:
                 allowed_mwh = (asset._soc_mwh - required_reserve) * asset.discharge_efficiency
                 extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
                 if extra_mw > 0:
@@ -193,7 +196,7 @@ def run_intraday_session(
                     spread_mw = extra_mw
                     trade_type = "opportunity_arb"
                     rule_label = f"Rule 4: OC Discharge at £{mid_p:.2f}/MWh"
-            elif allow_charge and mid_p < oc_charge:
+            elif allow_charge and mid_p < oc_charge - exec_cost:
                 allowed_mwh = (available_headroom - asset._soc_mwh) / asset.charge_efficiency
                 extra_mw = max(0.0, min(remaining_mw, allowed_mwh / duration_h))
                 if extra_mw > 0:
