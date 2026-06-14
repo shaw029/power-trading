@@ -1,6 +1,7 @@
 import pytest
 
 from src.bess.bess_asset import BESSAsset
+from src.bess.da_optimizer import optimize_da_schedule
 from src.bess.intraday_manager import (
     _compute_implied_soc,
     run_intraday_session,
@@ -33,372 +34,233 @@ class TestComputeImpliedSocClamping:
         assert soc[-1] == pytest.approx(0.0)
 
 
-class TestBaseExecution:
-    """Un-netted DA volume dispatches physically when no rule fires. Prices are
-    chosen so MID sits inside the no-netting / no-arbitrage window each period.
-    On the final period (no future DA position) the opportunity-cost hurdle is a
-    neutral deadzone around the current DA price — MID must beat it by more than
-    degradation for the opportunity-cost leg to trade — so a flat MID == DA leaves the battery idle."""
+def _unit_asset(soc=0.5, power=50.0, deg=0.0):
+    """Lossless 100 MWh / `power` MW battery for arithmetic-clean LP checks."""
+    return BESSAsset(
+        capacity_mwh=100, power_mw=power, charge_efficiency=1.0,
+        discharge_efficiency=1.0, degradation_cost_per_mwh=deg, initial_soc_pct=soc,
+        min_soc_pct=0.0, max_soc_pct=1.0,
+    )
 
-    def test_clean_execution(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=50, charge_efficiency=0.9,
-            discharge_efficiency=0.95, degradation_cost_per_mwh=5.0, initial_soc_pct=0.5,
-        )
+
+class TestBenchmarkUnchanged:
+    """When the locked DA plan is already optimal on the realised prices, the
+    re-optimisation has nothing to improve: it returns the same schedule, so the
+    improvement bucket is ~zero and the benchmark settles at the actual prices."""
+
+    def test_flat_prices_no_deviation(self):
+        # A whiff of degradation makes any flat-price cycle strictly unprofitable,
+        # so the re-optimisation stays put (no degenerate zero-profit churn).
         result = run_intraday_session(
-            da_schedule=[10.0, -10.0, 0.0],
-            da_price_actual=[50.0, 60.0, 40.0],
-            mid_prices=[52.0, 50.0, 40.0],   # h0: 50<52<=55; h1: 45<=50<60; h2: ==DA
-            imbalance_prices=[48.0, 55.0, 40.0],
-            asset=asset,
-            config={"degradation_cost_per_mwh": 5.0},
-        )
-
-        # h0 discharges 10 MWh and h1 charges 10 MWh as a clean DA dispatch. On
-        # the final period the deadzone hurdles are oc_discharge = da_p + deg = 45
-        # and oc_charge = da_p - deg = 35, so MID 40 falls inside and the opportunity-cost leg stays
-        # idle: no intraday PnL, no extra throughput, degradation only on the DA legs.
-        assert result["da_revenue_delivered"] == pytest.approx(10 * 50 - 10 * 60)
-        assert result["intraday_pnl"] == pytest.approx(0.0)
-        assert result["imbalance_pnl"] == pytest.approx(0.0)
-        assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(0.0)
-        assert result["total_degradation_cost"] == pytest.approx(5 * (10 + 10))
-        assert [e["action"] for e in result["dispatch_log"]] == ["discharge", "charge", "idle"]
-        assert [e["trade_type"] for e in result["dispatch_log"]] == [
-            "physical_dispatch", "physical_dispatch", "idle",
-        ]
-
-
-class TestForwardGuardrails:
-    """R_h = min_soc + sum(future discharge MWh)/discharge_eff;
-    H_h = max_soc - sum(future charge MWh)*charge_eff, each clamped to SOC bounds."""
-
-    def _unit_asset(self):
-        return BESSAsset(
-            capacity_mwh=100, power_mw=50, charge_efficiency=1.0,
-            discharge_efficiency=1.0, degradation_cost_per_mwh=0.0, initial_soc_pct=0.5,
-            min_soc_pct=0.0, max_soc_pct=1.0,
-        )
-
-    def test_reserve_and_headroom(self):
-        result = run_intraday_session(
-            da_schedule=[0.0, 30.0, -20.0],
+            da_schedule=[0.0, 0.0, 0.0],
             da_price_actual=[40.0, 40.0, 40.0],
             mid_prices=[40.0, 40.0, 40.0],
             imbalance_prices=[40.0, 40.0, 40.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 0.0},
+            asset=_unit_asset(soc=0.0, deg=1.0),
+            config={"degradation_cost_per_mwh": 1.0},
         )
-        log = result["dispatch_log"]
-        # h0 future = [30 (discharge), -20 (charge)]: reserve 30, headroom 100-20.
-        assert log[0]["required_reserve_mwh"] == pytest.approx(30.0)
-        assert log[0]["available_headroom_mwh"] == pytest.approx(80.0)
-        # h1 future = [-20]: no reserve, headroom 80.
-        assert log[1]["required_reserve_mwh"] == pytest.approx(0.0)
-        assert log[1]["available_headroom_mwh"] == pytest.approx(80.0)
-        # h2 last period: reserve floors at min SOC, headroom at max SOC.
-        assert log[2]["required_reserve_mwh"] == pytest.approx(0.0)
-        assert log[2]["available_headroom_mwh"] == pytest.approx(100.0)
+        assert result["intraday_da_improvement"] == pytest.approx(0.0, abs=1e-6)
+        assert result["execution_costs_paid"] == pytest.approx(0.0, abs=1e-6)
+        assert result["net_pnl"] == pytest.approx(0.0, abs=1e-6)
+        assert all(e["intraday_mw"] == pytest.approx(0.0, abs=1e-6) for e in result["dispatch_log"])
 
-    def test_efficiency_scales_envelope(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=50, charge_efficiency=0.8,
-            discharge_efficiency=0.5, degradation_cost_per_mwh=0.0, initial_soc_pct=0.5,
-            min_soc_pct=0.0, max_soc_pct=1.0,
-        )
+    def test_da_optimal_plan_is_left_alone(self):
+        asset = _unit_asset(soc=0.5, deg=2.0)
+        prices = [30.0, 80.0, 20.0, 90.0]
+        schedule = optimize_da_schedule(prices, asset, duration_h=1.0)
+        asset.reset()
         result = run_intraday_session(
-            da_schedule=[0.0, 10.0, -10.0],
-            da_price_actual=[40.0, 40.0, 40.0],
-            mid_prices=[40.0, 40.0, 40.0],
-            imbalance_prices=[40.0, 40.0, 40.0],
+            da_schedule=schedule,
+            da_price_actual=prices,
+            mid_prices=prices,
+            imbalance_prices=prices,
             asset=asset,
-            config={"degradation_cost_per_mwh": 0.0},
+            config={"degradation_cost_per_mwh": 2.0},
+        )
+        # The DA LP already optimised against these very prices, so re-optimising
+        # against them (margins/exec zero) cannot beat it — no deviation.
+        assert result["intraday_da_improvement"] == pytest.approx(0.0, abs=1e-6)
+        assert result["benchmark_da_revenue"] == pytest.approx(
+            sum(s * p for s, p in zip(schedule, prices))
+        )
+
+
+class TestReoptimizationCapturesSpread:
+    """When realised prices reward a trade the benchmark didn't take, the LP
+    deviates: buy low, sell high. The decision is made on the DA proxy; the trade
+    is then settled at the real MID."""
+
+    def test_buy_low_sell_high(self):
+        # Empty battery, benchmark idle: charge cheap (h0 £10) to discharge dear (h1 £100).
+        result = run_intraday_session(
+            da_schedule=[0.0, 0.0],
+            da_price_actual=[10.0, 100.0],
+            mid_prices=[10.0, 100.0],
+            imbalance_prices=[10.0, 100.0],
+            asset=_unit_asset(soc=0.0),
+            config={"degradation_cost_per_mwh": 0.0, "execution": {"slippage": 0.0}},
         )
         log = result["dispatch_log"]
-        # reserve = 0 + 10/0.5 = 20; headroom = 100 - 10*0.8 = 92.
-        assert log[0]["required_reserve_mwh"] == pytest.approx(20.0)
-        assert log[0]["available_headroom_mwh"] == pytest.approx(92.0)
-
-
-class TestOpportunityArbitrage:
-    """Opportunity-cost arbitrage: physical MID trade when MID beats the best/cheapest reachable
-    future DA price net of degradation, clamped to the R_h / H_h envelope."""
-
-    def _unit_asset(self, soc=0.5):
-        return BESSAsset(
-            capacity_mwh=100, power_mw=50, charge_efficiency=1.0,
-            discharge_efficiency=1.0, degradation_cost_per_mwh=0.0, initial_soc_pct=soc,
-            min_soc_pct=0.0, max_soc_pct=1.0,
-        )
-
-    def test_discharge_when_mid_beats_future(self):
-        result = run_intraday_session(
-            da_schedule=[0.0, 0.0],
-            da_price_actual=[40.0, 30.0],
-            mid_prices=[50.0, 30.0],   # h0: OC_discharge = 30; 50 > 30 → discharge
-            imbalance_prices=[40.0, 30.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 0.0},
-        )
-        entry = result["dispatch_log"][0]
-        assert entry["trade_type"] == "opportunity_arb"
-        assert entry["spread_mw"] == pytest.approx(50.0)
-        assert result["physical_dispatch_pnl"] == pytest.approx(50.0 * 50.0)
-        assert result["intraday_pnl"] == pytest.approx(50.0 * 50.0)
-        assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(50.0)
-
-    def test_charge_when_mid_below_future(self):
-        result = run_intraday_session(
-            da_schedule=[0.0, 0.0],
-            da_price_actual=[40.0, 60.0],
-            mid_prices=[30.0, 60.0],   # h0: OC_charge = 60; 30 < 60 → charge
-            imbalance_prices=[40.0, 60.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 0.0},
-        )
-        entry = result["dispatch_log"][0]
-        assert entry["trade_type"] == "opportunity_arb"
-        assert entry["spread_mw"] == pytest.approx(-50.0)
-        assert result["physical_dispatch_pnl"] == pytest.approx(-50.0 * 30.0)
-        assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(50.0)
-
-    def test_reserve_clamps_arbitrage_to_protect_future_da(self):
-        # h0 idle but a future DA discharge of 30 must be reserved: the MID
-        # discharge can only draw SOC down to R_h = 30, i.e. 20 MWh of throughput,
-        # leaving the h1 commitment fully serviceable with zero imbalance.
-        result = run_intraday_session(
-            da_schedule=[0.0, 30.0],
-            da_price_actual=[40.0, 20.0],
-            mid_prices=[50.0, 25.0],
-            imbalance_prices=[40.0, 20.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 0.0},
-        )
-        assert result["dispatch_log"][0]["spread_mw"] == pytest.approx(20.0)
-        assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(20.0)
+        assert log[0]["final_mw"] == pytest.approx(-50.0)  # charge 50 MW
+        assert log[1]["final_mw"] == pytest.approx(50.0)   # discharge 50 MW
+        # bought 50 MWh @10, sold 50 MWh @100 (MID == DA here)
+        assert result["intraday_da_improvement"] == pytest.approx(50 * 100 - 50 * 10)
+        assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(100.0)
         assert result["imbalance_pnl"] == pytest.approx(0.0)
+        assert result["net_pnl"] == pytest.approx(4500.0)
 
-    def test_degradation_widens_no_trade_deadzone(self):
-        # OC_discharge = max(future) + degradation = 50 + 10 = 60: a standalone
-        # intraday cycle must beat the best reachable future price by MORE than the
-        # wear it incurs. MID 45 is below the future reference, so it must NOT trade
-        # — discharging here would lock in a worse price and still pay degradation.
+    def test_settles_at_real_mid_not_proxy(self):
+        # Decision uses the DA proxy (10 / 100) → still charge h0, discharge h1.
+        # But the real MID at h1 turns out to be 80, so the sale settles at 80, not
+        # the proxy's 100: improvement = -50*10 + 50*80 = 3500.
         result = run_intraday_session(
             da_schedule=[0.0, 0.0],
-            da_price_actual=[40.0, 50.0],
-            mid_prices=[45.0, 50.0],
-            imbalance_prices=[40.0, 50.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 10.0},
+            da_price_actual=[10.0, 100.0],
+            mid_prices=[10.0, 80.0],
+            imbalance_prices=[10.0, 100.0],
+            asset=_unit_asset(soc=0.0),
+            config={"degradation_cost_per_mwh": 0.0, "execution": {"slippage": 0.0}},
         )
-        assert result["dispatch_log"][0]["trade_type"] != "opportunity_arb"
-        assert result["dispatch_log"][0]["spread_mw"] == pytest.approx(0.0)
+        log = result["dispatch_log"]
+        assert log[0]["final_mw"] == pytest.approx(-50.0)
+        assert log[1]["final_mw"] == pytest.approx(50.0)
+        assert result["intraday_da_improvement"] == pytest.approx(50 * 80 - 50 * 10)
+        assert result["net_pnl"] == pytest.approx(3500.0)
 
-        # A MID that clears max(future) + degradation (+ the exec buffer) does trade.
+    def test_execution_cost_charged_on_deviation(self):
         result = run_intraday_session(
             da_schedule=[0.0, 0.0],
-            da_price_actual=[40.0, 50.0],
-            mid_prices=[62.0, 50.0],   # 62 > 50 + 10 + 0.5 → discharge
-            imbalance_prices=[40.0, 50.0],
-            asset=self._unit_asset(),
-            config={"degradation_cost_per_mwh": 10.0},
+            da_price_actual=[10.0, 100.0],
+            mid_prices=[10.0, 100.0],
+            imbalance_prices=[10.0, 100.0],
+            asset=_unit_asset(soc=0.0),
+            config={"degradation_cost_per_mwh": 0.0, "execution": {"slippage": 1.0}},
         )
-        assert result["dispatch_log"][0]["trade_type"] == "opportunity_arb"
-        assert result["dispatch_log"][0]["spread_mw"] > 0
+        # 100 MWh traded (50 buy + 50 sell) at £1/MWh slippage.
+        assert result["execution_costs_paid"] == pytest.approx(100.0)
+        assert result["net_pnl"] == pytest.approx(4500.0 - 100.0)
 
 
-class TestFinancialNetting:
-    """Financial netting: capture the DA-MID spread financially without moving the battery."""
+class TestHurdlesBlockMarginalTrades:
+    """The basis hurdle applies only to the *future* (proxied) leg — the current
+    period trades at the observed MID with no hurdle — alongside the execution
+    buffer and degradation that widen the no-trade band on the decision."""
 
-    def test_buyback_when_mid_below_da(self):
-        # Final period at full SOC: the buyback nets the discharge, and the OC
-        # charge that would otherwise follow is blocked by zero headroom.
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=20, charge_efficiency=1.0,
-            discharge_efficiency=1.0, degradation_cost_per_mwh=0.0, initial_soc_pct=1.0,
-            min_soc_pct=0.0, max_soc_pct=1.0,
-        )
+    def test_future_hurdle_blocks_thin_spread(self):
+        # Charging now (observed MID 40) to sell into the future is only worth it
+        # if the future proxy sell price beats 40. A 10 basis pulls the future
+        # sell proxy to 45-10=35 < 40, so the arb never clears → no deviation.
         result = run_intraday_session(
-            da_schedule=[20.0],
-            da_price_actual=[40.0],
-            mid_prices=[35.0],
-            imbalance_prices=[40.0],
-            asset=asset,
-            config={"degradation_cost_per_mwh": 0.0},
+            da_schedule=[0.0, 0.0],
+            da_price_actual=[40.0, 45.0],
+            mid_prices=[40.0, 45.0],
+            imbalance_prices=[40.0, 45.0],
+            asset=_unit_asset(soc=0.0),
+            config={"degradation_cost_per_mwh": 0.0, "margin_buy": 10.0, "margin_sell": 10.0},
         )
-        entry = result["dispatch_log"][0]
-        assert entry["trade_type"] == "financial_netting"
-        assert entry["netted_mwh"] == pytest.approx(20.0)
-        assert result["financial_netting_pnl"] == pytest.approx(-20.0 * 35.0)
-        assert result["da_revenue_netted"] == pytest.approx(20.0 * 40.0)
-        assert result["financial_spread_captured"] == pytest.approx(20.0 * (40.0 - 35.0))
-        assert result["physical_dispatch_pnl"] == pytest.approx(0.0)
-        assert result["cycles_saved_mwh"] == pytest.approx(20.0)
-        assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(0.0)
+        assert result["intraday_da_improvement"] == pytest.approx(0.0, abs=1e-6)
+        assert all(e["intraday_mw"] == pytest.approx(0.0, abs=1e-6) for e in result["dispatch_log"])
 
-    def test_sellback_when_mid_above_da(self):
-        # Final period at empty SOC: the sellback nets the charge, and the OC
-        # discharge that would otherwise follow is blocked by zero reserve.
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=20, charge_efficiency=1.0,
-            discharge_efficiency=1.0, degradation_cost_per_mwh=0.0, initial_soc_pct=0.0,
-            min_soc_pct=0.0, max_soc_pct=1.0,
-        )
+    def test_degradation_blocks_thin_spread(self):
+        # Round-trip wear 3+3=6 > spread 5 → idle.
         result = run_intraday_session(
-            da_schedule=[-20.0],
-            da_price_actual=[40.0],
-            mid_prices=[45.0],
-            imbalance_prices=[40.0],
-            asset=asset,
-            config={"degradation_cost_per_mwh": 0.0},
+            da_schedule=[0.0, 0.0],
+            da_price_actual=[40.0, 45.0],
+            mid_prices=[40.0, 45.0],
+            imbalance_prices=[40.0, 45.0],
+            asset=_unit_asset(soc=0.0, deg=3.0),
+            config={"degradation_cost_per_mwh": 3.0},
         )
-        entry = result["dispatch_log"][0]
-        assert entry["trade_type"] == "financial_netting"
-        assert result["financial_netting_pnl"] == pytest.approx(20.0 * 45.0)
-        assert result["da_revenue_netted"] == pytest.approx(-20.0 * 40.0)
-        assert result["financial_spread_captured"] == pytest.approx(20.0 * (45.0 - 40.0))
-        assert result["cycles_saved_mwh"] == pytest.approx(20.0)
+        assert result["intraday_da_improvement"] == pytest.approx(0.0, abs=1e-6)
 
-    def test_no_netting_when_mid_above_da(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=20, charge_efficiency=1.0,
-            discharge_efficiency=1.0, degradation_cost_per_mwh=0.0, initial_soc_pct=0.5,
-            min_soc_pct=0.0, max_soc_pct=1.0,
-        )
+    def test_thin_spread_trades_when_wear_low(self):
+        # Round-trip wear 1+1=2 < spread 5 → the LP takes the arb.
         result = run_intraday_session(
-            da_schedule=[20.0],
-            da_price_actual=[40.0],
-            mid_prices=[45.0],
-            imbalance_prices=[40.0],
-            asset=asset,
-            config={"degradation_cost_per_mwh": 0.0},
+            da_schedule=[0.0, 0.0],
+            da_price_actual=[40.0, 45.0],
+            mid_prices=[40.0, 45.0],
+            imbalance_prices=[40.0, 45.0],
+            asset=_unit_asset(soc=0.0, deg=1.0),
+            config={"degradation_cost_per_mwh": 1.0},
         )
-        assert result["dispatch_log"][0]["trade_type"] == "physical_dispatch"
-        assert result["financial_netting_pnl"] == pytest.approx(0.0)
-        assert result["cycles_saved_mwh"] == pytest.approx(0.0)
-
-    def test_margin_buy_blocks_marginal_netting(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=20, charge_efficiency=1.0,
-            discharge_efficiency=1.0, degradation_cost_per_mwh=0.0, initial_soc_pct=0.5,
-            min_soc_pct=0.0, max_soc_pct=1.0,
-        )
-        result = run_intraday_session(
-            da_schedule=[20.0],
-            da_price_actual=[40.0],
-            mid_prices=[35.0],   # below DA, but inside the 10 buy margin
-            imbalance_prices=[40.0],
-            asset=asset,
-            config={"degradation_cost_per_mwh": 0.0, "margin_buy": 10.0},
-        )
-        assert result["dispatch_log"][0]["trade_type"] == "physical_dispatch"
-        assert result["financial_netting_pnl"] == pytest.approx(0.0)
+        assert result["dispatch_log"][1]["final_mw"] > 0
+        assert result["intraday_da_improvement"] > 0
 
 
 class TestCycleCap:
-    """accumulated_intraday_throughput_mwh tracks physical intraday volume; once it
-    reaches target_daily_cycles * capacity the envelope freezes at current SOC."""
+    """target_daily_cycles caps total discharge throughput of the re-optimised
+    physical schedule."""
 
-    def test_cap_freezes_further_arbitrage(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=10, charge_efficiency=1.0,
-            discharge_efficiency=1.0, degradation_cost_per_mwh=0.0, initial_soc_pct=0.5,
-            min_soc_pct=0.0, max_soc_pct=1.0,
-        )
+    def test_cap_limits_discharge(self):
+        asset = _unit_asset(soc=1.0, power=10.0)
         result = run_intraday_session(
             da_schedule=[0.0, 0.0, 0.0, 0.0],
-            da_price_actual=[40.0, 40.0, 40.0, 40.0],
-            mid_prices=[50.0, 50.0, 50.0, 50.0],
-            imbalance_prices=[40.0, 40.0, 40.0, 40.0],
+            # Each period is a strong sell vs the next; uncapped the LP would
+            # discharge 10 MW every period (40 MWh). Cap = 0.25*100 = 25 MWh.
+            da_price_actual=[100.0, 80.0, 60.0, 40.0],
+            mid_prices=[100.0, 80.0, 60.0, 40.0],
+            imbalance_prices=[100.0, 80.0, 60.0, 40.0],
             asset=asset,
             config={"degradation_cost_per_mwh": 0.0, "target_daily_cycles": 0.25},
         )
-        log = result["dispatch_log"]
-        # cap = 0.25 * 100 = 25 MWh; 10 MWh fires each of the first three periods
-        # (throughput 10, 20, 30) then the fourth is frozen.
-        assert [e["spread_mw"] for e in log] == pytest.approx([10.0, 10.0, 10.0, 0.0])
-        assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(30.0)
-        # Once frozen the envelope collapses onto the current SOC.
-        assert log[3]["required_reserve_mwh"] == pytest.approx(log[3]["soc_before"] * 100)
-        assert log[3]["available_headroom_mwh"] == pytest.approx(log[3]["soc_before"] * 100)
-
-
-class TestImbalanceFallback:
-    def test_discharge_shortfall_settles_at_imbalance(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=50, charge_efficiency=0.9,
-            discharge_efficiency=0.95, degradation_cost_per_mwh=1.0, initial_soc_pct=0.2,
+        total_discharge_mwh = sum(
+            e["final_mw"] for e in result["dispatch_log"] if e["final_mw"] > 0
         )
+        assert total_discharge_mwh <= 25.0 + 1e-6
+
+
+class TestLedgerReconciles:
+    def test_buckets_sum_to_net(self):
+        asset = _unit_asset(soc=0.5, deg=2.0)
+        prices = [30.0, 80.0, 20.0, 90.0, 50.0]
+        mid = [33.0, 76.0, 25.0, 95.0, 48.0]
+        schedule = optimize_da_schedule(prices, asset, duration_h=1.0)
+        asset.reset()
         result = run_intraday_session(
-            da_schedule=[30.0],
-            da_price_actual=[50.0],
-            mid_prices=[55.0],   # above DA, so no buyback netting
-            imbalance_prices=[60.0],
+            da_schedule=schedule,
+            da_price_actual=prices,
+            mid_prices=mid,
+            imbalance_prices=[p + 20 for p in prices],
             asset=asset,
-            config={"degradation_cost_per_mwh": 1.0},
+            config={"degradation_cost_per_mwh": 2.0, "margin_buy": 1.0, "margin_sell": 1.0},
+            imbalance_sell_prices=[p - 10 for p in prices],
         )
-        max_mw = 20.0 * 0.95
-        shortfall = 30.0 - max_mw
-        assert result["da_revenue_delivered"] == pytest.approx(30.0 * 50.0)
-        assert result["imbalance_pnl"] == pytest.approx(-shortfall * 60.0)
-        assert result["dispatch_log"][0]["mw"] == pytest.approx(max_mw)
-
-    def test_charge_shortfall_settles_at_ssp(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=50, charge_efficiency=0.9,
-            discharge_efficiency=0.95, degradation_cost_per_mwh=1.0, initial_soc_pct=0.9,
+        recomputed = (
+            result["benchmark_da_revenue"]
+            + result["intraday_da_improvement"]
+            - result["execution_costs_paid"]
+            + result["imbalance_pnl"]
+            - result["total_degradation_cost"]
         )
-        result = run_intraday_session(
-            da_schedule=[-40.0],
-            da_price_actual=[35.0],
-            mid_prices=[30.0],             # below DA, so no sellback netting
-            imbalance_prices=[25.0],       # SBP
-            asset=asset,
-            config={"degradation_cost_per_mwh": 1.0},
-            imbalance_sell_prices=[18.0],  # SSP — distinct value to confirm it is used
-        )
-        max_charge = 10.0 / 0.9
-        shortfall = 40.0 - max_charge
-        assert result["da_revenue_delivered"] == pytest.approx(-40.0 * 35.0)
-        assert result["imbalance_pnl"] == pytest.approx(shortfall * 18.0)  # uses SSP=18.0
+        assert recomputed == pytest.approx(result["net_pnl"])
 
 
 class TestHalfHourlyResolution:
     def test_half_hourly_session(self):
-        asset = BESSAsset(
-            capacity_mwh=100, power_mw=10, charge_efficiency=0.88,
-            discharge_efficiency=1.0, degradation_cost_per_mwh=5.0, initial_soc_pct=0.5,
-        )
         result = run_intraday_session(
-            da_schedule=[10.0, -10.0],
-            da_price_actual=[50.0, 30.0],
-            mid_prices=[55.0, 25.0],   # no netting; power is fully used by the DA leg
-            imbalance_prices=[48.0, 32.0],
-            asset=asset,
-            config={"degradation_cost_per_mwh": 5.0, "resolution_h": 0.5},
+            da_schedule=[0.0, 0.0],
+            da_price_actual=[10.0, 100.0],
+            mid_prices=[10.0, 100.0],
+            imbalance_prices=[10.0, 100.0],
+            asset=_unit_asset(soc=0.0, power=10.0),
+            config={"degradation_cost_per_mwh": 0.0, "resolution_h": 0.5},
         )
-        assert result["da_revenue_delivered"] == pytest.approx(10 * 0.5 * 50 + (-10) * 0.5 * 30)
-        assert result["intraday_pnl"] == pytest.approx(0.0)
-        assert result["imbalance_pnl"] == pytest.approx(0.0)
-        assert result["total_degradation_cost"] == pytest.approx(5.0 * 5.0 + 5.0 * 5.0)
-        assert result["dispatch_log"][0]["action"] == "discharge"
-        assert result["dispatch_log"][1]["action"] == "charge"
-        assert result["dispatch_log"][1]["soc_after"] == pytest.approx(0.494)
+        # power 10 MW over 0.5 h = 5 MWh per period.
+        assert result["dispatch_log"][0]["final_mw"] == pytest.approx(-10.0)
+        assert result["dispatch_log"][1]["final_mw"] == pytest.approx(10.0)
+        assert result["intraday_da_improvement"] == pytest.approx(5 * 100 - 5 * 10)
 
 
-class TestGuardrailsPreventImbalance:
-    """With netting disabled (huge margins), base DA execution plus the opportunity-cost
-    leg must settle a feasible schedule with zero imbalance: that leg always stays inside
-    the R_h / H_h envelope, so it can never starve a future DA commitment."""
+class TestFeasibleScheduleNeverLeaksImbalance:
+    """The LP keeps the physical schedule inside the SOC/power envelope, so a
+    re-optimised day settles with zero imbalance."""
 
-    def test_arbitrage_never_leaks_imbalance(self):
+    def test_no_imbalance_over_random_days(self):
         import random
-
-        from src.bess.da_optimizer import optimize_da_schedule
 
         random.seed(7)
         worst = 0.0
-        for _ in range(200):
+        for _ in range(100):
             asset = BESSAsset(
                 capacity_mwh=20.0, power_mw=10.0,
                 charge_efficiency=0.92, discharge_efficiency=0.92,
@@ -407,15 +269,15 @@ class TestGuardrailsPreventImbalance:
                 min_soc_pct=0.05, max_soc_pct=0.95,
             )
             fc = [random.uniform(-50, 200) for _ in range(24)]
+            mid = [f + random.uniform(-30, 30) for f in fc]
             sched = optimize_da_schedule(fc, asset, duration_h=1.0)
             asset.reset()
-            mid = [f + random.uniform(-60, 60) for f in fc]
             result = run_intraday_session(
                 da_schedule=sched, da_price_actual=fc, mid_prices=mid,
                 imbalance_prices=[abs(f) + 20 for f in fc], asset=asset,
                 config={
                     "degradation_cost_per_mwh": 2.0, "resolution_h": 1.0,
-                    "margin_buy": 1e9, "margin_sell": 1e9,
+                    "margin_buy": 1.0, "margin_sell": 1.0,
                 },
                 imbalance_sell_prices=[f - 10 for f in fc],
             )

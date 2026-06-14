@@ -75,23 +75,25 @@ def chart_realized_shape(
 ):
     """Mean realised physical dispatch and execution prices by hour-of-day.
 
-    The execution layer: what the battery physically did after the intraday
-    engine reshaped the committed schedule against MID. Faint ghost bars are the
-    DA commitment, so the gap to the solid bars is the net intraday reshaping —
-    financial netting settling volume financially (which shrinks the solid bar)
-    and the opportunity-cost leg physically trading extra at MID (spread_mw, which
-    moves it). Lines show realised DA against MID — the spread the intraday engine trades.
+    The execution layer: what the battery physically did after the rolling
+    re-optimisation reshaped the committed schedule. Faint ghost bars are the DA
+    commitment, so the gap to the solid bars is the net intraday reshaping — the
+    re-optimisation's deviation (``spread_mw``) moving energy across the day. The
+    lines are the realised DA price (the proxy the engine *decides* on) and the
+    realised MID (where the deviations *settle*).
     """
     d = dispatch_df.copy()
     d["timestamp"] = pd.to_datetime(d["timestamp"])
-    # Physical movement = the DA dispatch (from action/mw) plus the opportunity-cost
-    # leg's extra MID trade (spread_mw), which is logged separately and leaves
-    # action == "idle". On DA-idle hours the DA leg is 0 and the whole realised bar is
-    # the opportunity-cost spread, so it must not be suppressed; fillna guards a missing/NaN spread.
-    signed = d["mw"].where(d["action"] == "discharge", -d["mw"])
-    signed = signed.where(d["action"] != "idle", 0.0)
-    spread = d["spread_mw"].fillna(0.0) if "spread_mw" in d else 0.0
-    d["signed_mw"] = signed + spread
+    # Physical movement = the realised net dispatch (final_mw): the DA leg as
+    # reshaped by the re-optimisation. Falls back to action/mw + spread_mw for
+    # older logs that predate the final_mw column.
+    if "final_mw" in d:
+        d["signed_mw"] = d["final_mw"].fillna(0.0)
+    else:
+        signed = d["mw"].where(d["action"] == "discharge", -d["mw"])
+        signed = signed.where(d["action"] != "idle", 0.0)
+        spread = d["spread_mw"].fillna(0.0) if "spread_mw" in d else 0.0
+        d["signed_mw"] = signed + spread
     mean_mw = d.groupby(d["timestamp"].dt.hour)["signed_mw"].mean()
 
     sched = da_sched_df.copy()
@@ -114,15 +116,15 @@ def chart_realized_shape(
     ))
     fig.add_trace(go.Scatter(
         x=da_by_hour.index, y=da_by_hour.values,
-        name="Mean DA price (actual)", yaxis="y", line=dict(color="#1f77b4", width=2),
+        name="Mean DA price (decision proxy)", yaxis="y", line=dict(color="#1f77b4", width=2),
     ))
     fig.add_trace(go.Scatter(
         x=mid_by_hour.index, y=mid_by_hour.values,
-        name="Mean MID price", yaxis="y",
+        name="Mean MID price (settlement)", yaxis="y",
         line=dict(color="#9467bd", width=2),
     ))
     fig.update_layout(
-        title="Realised Dispatch Shape — physical dispatch & execution price by hour",
+        title="Realised Dispatch Shape — physical dispatch & execution prices by hour",
         xaxis=dict(title="Hour of Day", dtick=1),
         yaxis=dict(title="Price (£/MWh)", side="left"),
         yaxis2=dict(
@@ -198,10 +200,11 @@ def chart_operation_explorer(
     da_price_map = prices_hourly["day_ahead_price"]
     mid_map = prices_hourly["mid_price"]
 
-    # Build the trade tape. The DA leg is the day-ahead commitment itself (always
-    # shown when da_mw != 0, regardless of how it was later resolved); the intraday
-    # leg is the rule's trade, shown in its true buy/sell direction. Buy = ▲,
-    # Sell = ▼; venue = colour (DA blue, Intraday/MID green).
+    # Build the trade tape. The DA leg is the day-ahead commitment, settled on the
+    # DA price line; the intraday leg is the re-optimisation's deviation
+    # (intraday_mw / spread_mw), which the engine *decides* on the DA proxy but
+    # *settles* at the real MID — so its markers sit on the MID line. Buy = ▲,
+    # Sell = ▼; DA blue, Intraday green.
     buy_da_x, buy_da_y, sell_da_x, sell_da_y = [], [], [], []
     buy_id_x, buy_id_y, sell_id_x, sell_id_y = [], [], [], []
     for _, row in dispatch.iterrows():
@@ -209,9 +212,8 @@ def chart_operation_explorer(
         da_p = da_price_map.get(ts)
         mid_p = mid_map.get(ts)
         da_v = row["da_mw"]
-        # The DA leg only exists when there is a day-ahead commitment; pd.notna
-        # guards against both a missing price (ts absent from prices_hourly) and a
-        # NaN cell. A DA price of 0 is a valid level, not a reason to suppress.
+        # pd.notna guards against a missing price (ts absent from prices_hourly)
+        # and a NaN cell. A DA price of 0 is a valid level, not a reason to suppress.
         if pd.notna(da_p):
             if da_v > 1e-6:         # committed to discharge → sold on DA
                 sell_da_x.append(ts)
@@ -219,29 +221,14 @@ def chart_operation_explorer(
             elif da_v < -1e-6:      # committed to charge → bought on DA
                 buy_da_x.append(ts)
                 buy_da_y.append(da_p)
-        # The intraday leg is independent of the DA leg: the opportunity-cost leg
-        # fires on DA-idle periods (da_v == 0, da_p possibly missing) and must still
-        # plot. It is gated only on the MID price, where the trade actually executed.
-        # A period can carry both intraday legs at once (financial netting nets the DA
-        # volume, the opportunity-cost leg then trades physically), so each is read from
-        # its own signed column — never from rule_label, which the opportunity-cost leg
-        # overwrites, dropping the netting marker.
+        # Re-optimisation deviation from the locked plan, settled at the real MID:
+        # + extra discharge sold, − extra charge bought.
         if pd.notna(mid_p):
-            # Financial netting: + sold the charge back, − bought the
-            # discharge back (netting_mw = −da_mw).
-            netting = row.get("netting_mw", 0.0)
-            if netting > 1e-6:
+            dev = row.get("intraday_mw", row.get("spread_mw", 0.0))
+            if dev > 1e-6:
                 sell_id_x.append(ts)
                 sell_id_y.append(mid_p)
-            elif netting < -1e-6:
-                buy_id_x.append(ts)
-                buy_id_y.append(mid_p)
-            # Opportunity-cost physical extra at MID: + extra discharge sold, − extra charge bought.
-            spread = row.get("spread_mw", 0.0)
-            if spread > 1e-6:
-                sell_id_x.append(ts)
-                sell_id_y.append(mid_p)
-            elif spread < -1e-6:
+            elif dev < -1e-6:
                 buy_id_x.append(ts)
                 buy_id_y.append(mid_p)
 
@@ -277,11 +264,12 @@ def chart_operation_explorer(
     ), row=2, col=1)
     fig.add_trace(go.Scatter(
         x=prices_hourly.index, y=prices_hourly["mid_price"].values,
-        name="MID Price", line=dict(color="#27ae60", width=1.6),
+        name="MID Price (settlement)", line=dict(color="#27ae60", width=1.6),
     ), row=2, col=1)
 
-    # Trade markers sit on the price line of the venue they executed on:
-    # DA (blue) and Intraday/MID (green); ▲ = buy (charge), ▼ = sell (discharge).
+    # DA-leg markers sit on the DA price line; intraday re-opt markers sit on the
+    # MID line where they settle. DA blue, Intraday green; ▲ = buy (charge),
+    # ▼ = sell (discharge).
     da_mk = dict(color="#1f3b6d", line=dict(width=0.5, color="white"))
     id_mk = dict(color="#1e8449", line=dict(width=0.5, color="white"))
     fig.add_trace(go.Scatter(
@@ -305,36 +293,28 @@ def chart_operation_explorer(
         hovertemplate="%{x|%d %b %H:%M}<br>Sell on Intraday @ £%{y:.1f}<extra></extra>",
     ), row=2, col=1)
 
-    # How much, by venue, signed the same way as the markers (+ sell/discharge,
-    # − buy/charge): the blue bar is the full DA commitment; the two green bars are
-    # the intraday legs in their true direction. They are kept as separate stacked
-    # traces — not summed — because a period can carry a financial-netting leg and an
-    # opposite opportunity-cost physical leg at once (e.g. buy the DA discharge back, then
-    # re-discharge at MID): summed they cancel to ~0 and the bar vanishes even
-    # though both trades, and their markers, are real.
+    # How much, signed the same way as the markers (+ sell/discharge, − buy/charge):
+    # the blue bar is the locked DA commitment, the green bar is the
+    # re-optimisation's deviation from it. Kept as separate stacked traces so a
+    # period that trims the DA leg shows both the original commitment and the
+    # offsetting intraday adjustment.
     da_vol = dispatch["da_mw"].values
-    netting_vol = dispatch["netting_mw"].values
-    spread_vol = (
-        dispatch["spread_mw"].values if "spread_mw" in dispatch else [0.0] * len(dispatch)
+    dev_col = "intraday_mw" if "intraday_mw" in dispatch else "spread_mw"
+    dev_vol = (
+        dispatch[dev_col].values if dev_col in dispatch else [0.0] * len(dispatch)
     )
     da_y = [v if abs(v) > 1e-6 else None for v in da_vol]
-    netting_y = [v if abs(v) > 1e-6 else None for v in netting_vol]
-    spread_y = [v if abs(v) > 1e-6 else None for v in spread_vol]
+    dev_y = [v if abs(v) > 1e-6 else None for v in dev_vol]
 
     fig.add_trace(go.Bar(
-        x=times, y=da_y, name="DA trade volume",
+        x=times, y=da_y, name="DA commitment volume",
         marker_color="#1f77b4",
         hovertemplate="%{x|%d %b %H:%M}<br>DA %{y:+.1f} MW<extra></extra>",
     ), row=3, col=1)
     fig.add_trace(go.Bar(
-        x=times, y=spread_y, name="Intraday physical (MID)",
+        x=times, y=dev_y, name="Intraday re-opt deviation",
         marker_color="#27ae60",
-        hovertemplate="%{x|%d %b %H:%M}<br>Intraday physical %{y:+.1f} MW<extra></extra>",
-    ), row=3, col=1)
-    fig.add_trace(go.Bar(
-        x=times, y=netting_y, name="Intraday netting (financial)",
-        marker_color="#82c99a",
-        hovertemplate="%{x|%d %b %H:%M}<br>Intraday netting %{y:+.1f} MW<extra></extra>",
+        hovertemplate="%{x|%d %b %H:%M}<br>Intraday re-opt %{y:+.1f} MW<extra></extra>",
     ), row=3, col=1)
 
     fig.add_trace(go.Scatter(

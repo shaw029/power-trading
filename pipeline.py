@@ -255,6 +255,7 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
     metrics = {
         "total_da_revenue": float(results_df["da_revenue"].sum()),
         "total_intraday_pnl": float(results_df["intraday_pnl"].sum()),
+        "total_execution_costs_paid": float(results_df["execution_costs_paid"].sum()),
         "total_intraday_throughput_mwh": float(results_df["intraday_throughput_mwh"].sum()),
         "total_imbalance_pnl": float(results_df["imbalance_pnl"].sum()),
         "total_degradation_cost": total_degradation,
@@ -432,8 +433,9 @@ def _run_bess_pipeline(config: dict) -> dict:
         prev_soc_pct = asset.soc_pct
         daily_results.append({
             "date": date,
-            "da_revenue": result["da_revenue_delivered"] + result["da_revenue_netted"],
-            "intraday_pnl": result["intraday_pnl"],
+            "da_revenue": result["benchmark_da_revenue"],
+            "intraday_pnl": result["intraday_da_improvement"],
+            "execution_costs_paid": result["execution_costs_paid"],
             "imbalance_pnl": result["imbalance_pnl"],
             "degradation_cost": result["total_degradation_cost"],
             "intraday_throughput_mwh": result["accumulated_intraday_throughput_mwh"],

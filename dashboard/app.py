@@ -4,9 +4,9 @@ The pipeline only persists aggregate BESS results (daily PnL and summary
 metrics), which show how much the battery earned but not why it acted as it
 did. This app closes that gap: it faithfully replays the same strategy the
 pipeline runs — the walk-forward ML day-ahead forecast, the LP schedule, and
-the intraday rules engine with continuous state-of-charge carry-over — and
-surfaces the per-hour decision trail (prices, schedule vs. actual dispatch,
-SOC, curtailments) so the model's behaviour can be inspected and debugged.
+the rolling intraday re-optimisation (against the DA-proxy MID) with continuous
+state-of-charge carry-over — and surfaces the per-hour decision trail (prices,
+schedule vs. actual dispatch, SOC) so the model's behaviour can be inspected.
 
 Run with ``make dashboard`` or ``streamlit run dashboard/app.py``.
 """
@@ -143,10 +143,11 @@ def run_bess_simulation(
     One asset, one continuous SOC chain across every out-of-sample day: each
     day starts from the previous day's *actual* ending SOC (the first from
     ``initial_soc_pct``), the LP schedules against the ML forecast, the intraday
-    rules engine settles against actual DA/MID/imbalance prices, and shortfalls
-    use SBP (short) / SSP (long). Cached on the asset parameters so toggling the
-    month only re-slices; changing a slider re-runs. Covers the full OOS range —
-    callers slice the month they want.
+    engine re-optimises the physical schedule deciding on the DA-proxy MID
+    (cleared DA price ± the basis) and settling the deviations at the real MID,
+    and any residual shortfall uses SBP (short) / SSP (long). Cached on the asset
+    parameters so toggling the month only re-slices; changing a slider re-runs.
+    Covers the full OOS range — callers slice the month they want.
     """
     prices = load_prices()
     cfg = _load_config()
@@ -235,11 +236,6 @@ def run_bess_simulation(
 
         daily_results.append({
             "date": pd.Timestamp(date),
-            "da_revenue_delivered": result["da_revenue_delivered"],
-            "da_revenue_netted": result["da_revenue_netted"],
-            "financial_spread_captured": result["financial_spread_captured"],
-            "financial_netting_pnl": result["financial_netting_pnl"],
-            "physical_dispatch_pnl": result["physical_dispatch_pnl"],
             "cycles_saved_mwh": result["cycles_saved_mwh"],
             "imbalance_pnl": result["imbalance_pnl"],
             "degradation_cost": result["total_degradation_cost"],
@@ -313,19 +309,21 @@ def render_bess(prices: pd.DataFrame):
             float(_cfg_cycles) if _cfg_cycles is not None else 1.5, step=0.5,
         )
 
-    st.sidebar.markdown("### Intraday Rule Levers")
-    netting_margin = st.sidebar.slider(
-        "Netting Margin (£/MWh)", 0.0, 50.0,
+    st.sidebar.markdown("### Intraday Re-optimisation Levers")
+    basis_margin = st.sidebar.slider(
+        "MID-Proxy Basis (£/MWh)", 0.0, 50.0,
         float(bess_cfg.get("margin_buy", 0.0)), step=1.0,
-        help="Extra spread MID must beat the period's DA price by before financial "
-             "netting fires (applied to both buy-back and sell-back). Higher = less "
-             "netting; turn it up to suppress the infeasibility-driven imbalance.",
+        help="The DA→MID basis used to proxy the (unobservable) intraday MID from "
+             "the cleared DA price: discharge clears at DA − basis, charge at DA + "
+             "basis. It is the hurdle a deviation must beat — higher = the LP "
+             "deviates from the locked DA plan less often.",
     )
     slippage = st.sidebar.slider(
         "Execution Buffer / Slippage (£/MWh)", 0.0, 10.0,
         float(cfg.get("execution", {}).get("slippage", 0.50)), step=0.50,
-        help="Per-MWh execution cost. Also widens the no-trade deadzone on BOTH "
-             "intraday legs, so a higher buffer makes the engine trade less often.",
+        help="Per-MWh execution cost charged on every deviated MWh, and an extra "
+             "hurdle in the re-optimisation objective, so a higher buffer makes the "
+             "engine deviate from the DA plan less often.",
     )
 
     # The simulation runs over the whole out-of-sample period and is cached on
@@ -344,8 +342,8 @@ def render_bess(prices: pd.DataFrame):
         resolution_h=bess_cfg.get("resolution_h", 1.0),
         soc_drift_tolerance=bess_cfg.get("soc_drift_tolerance", 0.05),
         slippage=slippage,
-        margin_buy=netting_margin,
-        margin_sell=netting_margin,
+        margin_buy=basis_margin,
+        margin_sell=basis_margin,
     )
 
     soc_bounds = {
@@ -381,7 +379,7 @@ def render_bess(prices: pd.DataFrame):
     k4.metric("Imbalance Penalty", f"£{total_imbalance:,.0f}")
     k5.metric("Degradation Cost", f"£{total_degradation:,.0f}")
     k6.metric("Net PnL", f"£{total_net:,.0f}")
-    k7.metric("Cycles Saved", f"{total_cycles_saved:,.0f} MWh")
+    k7.metric("Wear Avoided", f"{total_cycles_saved:,.0f} MWh")
 
     period = pd.Period(month_str, freq="M")
     start = period.start_time.tz_localize("UTC")
