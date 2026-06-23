@@ -108,10 +108,42 @@ _BESS_DEFAULTS = {
     "power_mw": 50.0,
     "charge_efficiency": 0.94,
     "discharge_efficiency": 0.94,
-    "degradation_cost_per_mwh": 8.50,
+    "degradation_cost_per_mwh": 5.00,
     "initial_soc_pct": 0.50,
+    "min_soc_pct": 0.10,
+    "max_soc_pct": 0.90,
     "resolution_h": 1.0,
     "soc_drift_tolerance": 0.05,
+    "target_daily_cycles": None,
+    "margin_buy": 0.0,
+    "margin_sell": 0.0,
+}
+
+_SIGNAL_DEFAULTS = {
+    "threshold": DEFAULT_SIGNAL_THRESHOLD,
+    "top_n": 5,
+    "vol_multiplier": 1.0,
+    "vol_window": 336,
+    "transaction_cost": 0.0,
+}
+
+_MODEL_DEFAULTS = {
+    "type": "xgboost",
+    "hyperparameters": None,
+}
+
+_VALIDATION_DEFAULTS = {
+    "type": "walk_forward",
+    "train_days": 200,
+    "test_days": 30,
+    "step_days": 30,
+}
+
+_EXECUTION_DEFAULTS = {
+    "baseline_hedge_ratio": 0.50,
+    "take_profit_pct": 0.90,
+    "stop_loss_price_delta": 5.00,
+    "slippage": 0.50,
 }
 
 _FIXED_SOURCE_KEYS = (
@@ -157,7 +189,28 @@ def validate_config(config: dict) -> dict:
         bess = config.get("bess", {})
         for key, default in _BESS_DEFAULTS.items():
             bess.setdefault(key, default)
+        # The intraday engine reuses the execution slippage as its per-MWh
+        # execution-cost buffer. The pipeline passes the bess block alone to
+        # run_intraday_session, so surface the top-level execution.slippage (or
+        # its default) inside the bess config; without this the engine always
+        # fell back to its hard-coded 0.50 default regardless of the YAML.
+        bess.setdefault("execution", {})
+        bess["execution"].setdefault(
+            "slippage", config.get("execution", {}).get("slippage", 0.50)
+        )
         config["bess"] = bess
+
+    if config["strategy_type"] == "virtual":
+        for section, defaults in (
+            ("signal", _SIGNAL_DEFAULTS),
+            ("model", _MODEL_DEFAULTS),
+            ("validation", _VALIDATION_DEFAULTS),
+            ("execution", _EXECUTION_DEFAULTS),
+        ):
+            block = config.get(section, {})
+            for dkey, dval in defaults.items():
+                block.setdefault(dkey, dval)
+            config[section] = block
 
     # ── data.periods ────────────────────────────────────────────────────
     data = config.get("data")

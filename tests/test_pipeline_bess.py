@@ -121,7 +121,8 @@ def _setup_bess_mocks(da, tmp_path, monkeypatch):
 EXPECTED_METRIC_KEYS = {
     "total_da_revenue",
     "total_intraday_pnl",
-    "total_imbalance_pnl",
+    "total_execution_costs_paid",
+    "total_intraday_throughput_mwh",
     "total_degradation_cost",
     "total_net_pnl",
     "total_cycles",
@@ -153,7 +154,7 @@ class TestBESSPipelineIntegration:
                 "power_mw": 50.0,
                 "charge_efficiency": 0.92,
                 "discharge_efficiency": 0.96,
-                "degradation_cost_per_mwh": 8.50,
+                "degradation_cost_per_mwh": 5.00,
                 "initial_soc_pct": 0.50,
             },
         }
@@ -166,8 +167,8 @@ class TestBESSPipelineIntegration:
 
         pnl = pd.read_csv(trading_dir / "pnl.csv")
         assert list(pnl.columns) == [
-            "date", "da_revenue", "intraday_pnl",
-            "imbalance_pnl", "degradation_cost", "net_pnl",
+            "date", "da_revenue", "intraday_pnl", "execution_costs_paid",
+            "degradation_cost", "intraday_throughput_mwh", "net_pnl",
         ]
         assert len(pnl) == 3
 
@@ -198,7 +199,7 @@ class TestBESSPipelineIntegration:
                 "power_mw": 50.0,
                 "charge_efficiency": 0.92,
                 "discharge_efficiency": 0.96,
-                "degradation_cost_per_mwh": 8.50,
+                "degradation_cost_per_mwh": 5.00,
                 "initial_soc_pct": 0.50,
             },
         }
@@ -276,7 +277,7 @@ class TestBESSPipelineIntegration:
                 "power_mw": 50.0,
                 "charge_efficiency": 0.92,
                 "discharge_efficiency": 0.96,
-                "degradation_cost_per_mwh": 8.50,
+                "degradation_cost_per_mwh": 5.00,
                 "initial_soc_pct": 0.50,
             },
         }
@@ -320,7 +321,7 @@ class TestBESSPipelineIntegration:
                 "power_mw": 50.0,
                 "charge_efficiency": 0.92,
                 "discharge_efficiency": 0.96,
-                "degradation_cost_per_mwh": 8.50,
+                "degradation_cost_per_mwh": 5.00,
                 "initial_soc_pct": 0.50,
             },
         }
@@ -343,7 +344,7 @@ class TestBESSPipelineIntegration:
 
         captured_forecasts = []
 
-        def capturing_optimize(da_price_forecast, asset, duration_h=1.0):
+        def capturing_optimize(da_price_forecast, asset, duration_h=1.0, target_daily_cycles=None):
             captured_forecasts.append(list(da_price_forecast))
             return [0.0] * len(da_price_forecast)
 
@@ -360,7 +361,7 @@ class TestBESSPipelineIntegration:
                 "power_mw": 50.0,
                 "charge_efficiency": 0.92,
                 "discharge_efficiency": 0.96,
-                "degradation_cost_per_mwh": 8.50,
+                "degradation_cost_per_mwh": 5.00,
                 "initial_soc_pct": 0.50,
             },
         }

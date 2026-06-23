@@ -56,6 +56,38 @@ class TestDAOptimizer:
             assert soc >= -1e-6, f"SOC went negative at hour {h}"
             assert soc <= battery.capacity_mwh + 1e-6, f"SOC exceeded capacity at hour {h}"
 
+    def test_schedule_strictly_feasible_against_bounds(self) -> None:
+        # LP solvers satisfy SOC bounds only to within their feasibility tolerance,
+        # so the raw solution can overshoot the strict [min, max] band by a sliver.
+        # The returned schedule is projected to be exactly executable; verify the
+        # implied trajectory never breaches the bounds beyond float noise, even with
+        # non-trivial min/max SOC limits that the solver likes to sit against.
+        import random
+
+        random.seed(0)
+        for _ in range(50):
+            asset = BESSAsset(
+                capacity_mwh=20.0,
+                power_mw=10.0,
+                charge_efficiency=0.92,
+                discharge_efficiency=0.92,
+                degradation_cost_per_mwh=2.0,
+                initial_soc_pct=random.uniform(0.1, 0.9),
+                min_soc_pct=0.05,
+                max_soc_pct=0.95,
+            )
+            prices = [random.uniform(-50, 200) for _ in range(24)]
+            schedule = optimize_da_schedule(prices, asset, duration_h=1.0)
+
+            soc = asset.initial_soc_pct * asset.capacity_mwh
+            for h, mw in enumerate(schedule):
+                if mw > 0:
+                    soc -= mw / asset.discharge_efficiency
+                else:
+                    soc += (-mw) * asset.charge_efficiency
+                assert soc >= asset._min_soc_mwh - 1e-9, f"min SOC breached at hour {h}"
+                assert soc <= asset._max_soc_mwh + 1e-9, f"max SOC breached at hour {h}"
+
     def test_flat_prices_no_trade(self) -> None:
         empty_battery = BESSAsset(
             capacity_mwh=100.0,
@@ -149,6 +181,37 @@ class TestDAOptimizer:
 
         net_dispatch = sum(schedule)
         assert net_dispatch < 0, "Should net charge when all prices are negative (paid to consume)"
+
+    def test_target_daily_cycles_limits_discharge_energy(self, battery: BESSAsset) -> None:
+        # Volatile prices would drive multiple cycles if left unconstrained.
+        prices = [10.0, 90.0] * 12
+        target = 0.5
+        schedule = optimize_da_schedule(prices, battery, target_daily_cycles=target)
+
+        discharge_energy = sum(mw for mw in schedule if mw > 0)
+        assert discharge_energy <= target * battery.capacity_mwh + 1e-6
+
+    def test_target_daily_cycles_constraint_uses_energy_not_power(self, battery: BESSAsset) -> None:
+        # With half-hour periods, summing power (MW) instead of energy (MWh) would
+        # let twice as much energy through. Verify the limit is enforced in MWh.
+        duration_h = 0.5
+        prices = [10.0, 90.0] * 24  # 48 half-hour periods
+        target = 0.5
+        schedule = optimize_da_schedule(
+            prices, battery, duration_h=duration_h, target_daily_cycles=target,
+        )
+
+        discharge_energy = sum(mw * duration_h for mw in schedule if mw > 0)
+        assert discharge_energy <= target * battery.capacity_mwh + 1e-6
+
+    def test_higher_cycle_target_allows_more_throughput(self, battery: BESSAsset) -> None:
+        prices = [10.0, 90.0] * 12
+        tight = optimize_da_schedule(prices, battery, target_daily_cycles=0.25)
+        loose = optimize_da_schedule(prices, battery, target_daily_cycles=1.0)
+
+        tight_energy = sum(mw for mw in tight if mw > 0)
+        loose_energy = sum(mw for mw in loose if mw > 0)
+        assert loose_energy > tight_energy + 1e-6
 
     def test_terminal_soc_within_bounds(self, battery: BESSAsset) -> None:
         prices = [15.0, 85.0, 20.0, 90.0, 10.0, 80.0] * 4

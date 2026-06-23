@@ -255,7 +255,8 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
     metrics = {
         "total_da_revenue": float(results_df["da_revenue"].sum()),
         "total_intraday_pnl": float(results_df["intraday_pnl"].sum()),
-        "total_imbalance_pnl": float(results_df["imbalance_pnl"].sum()),
+        "total_execution_costs_paid": float(results_df["execution_costs_paid"].sum()),
+        "total_intraday_throughput_mwh": float(results_df["intraday_throughput_mwh"].sum()),
         "total_degradation_cost": total_degradation,
         "total_net_pnl": float(net.sum()),
         "total_cycles": float(total_cycles),
@@ -353,7 +354,6 @@ def _run_bess_pipeline(config: dict) -> dict:
     logger.info("BESS pipeline: loading and processing price data (%s → %s)", feat_start, feat_end)
     da_processed = process_day_ahead_price(fetch_day_ahead_price(start_date=feat_start, end_date=feat_end))
     mid_processed = process_market_index_price(fetch_market_index_price(start_date=feat_start, end_date=feat_end))
-    imb_processed = process_imbalance_price(fetch_imbalance_price(start_date=feat_start, end_date=feat_end))
 
     duration_h = bess_cfg.get("resolution_h", 1.0)
     resample_freq = f"{int(duration_h * 60)}min"
@@ -361,7 +361,6 @@ def _run_bess_pipeline(config: dict) -> dict:
     prices = (
         da_processed.resample(resample_freq).mean()
         .join(mid_processed.resample(resample_freq).mean())
-        .join(imb_processed[["system_buy_price", "system_sell_price"]].resample(resample_freq).mean())
         .dropna()
     )
 
@@ -372,6 +371,8 @@ def _run_bess_pipeline(config: dict) -> dict:
         discharge_efficiency=bess_cfg["discharge_efficiency"],
         degradation_cost_per_mwh=bess_cfg["degradation_cost_per_mwh"],
         initial_soc_pct=bess_cfg["initial_soc_pct"],
+        min_soc_pct=bess_cfg.get("min_soc_pct", 0.0),
+        max_soc_pct=bess_cfg.get("max_soc_pct", 1.0),
     )
 
     # Step 5: Daily BESS simulation using ML forecasts
@@ -411,23 +412,27 @@ def _run_bess_pipeline(config: dict) -> dict:
         carry_soc = prev_soc_pct if prev_soc_pct is not None else bess_cfg["initial_soc_pct"]
         asset.reset(soc_pct=carry_soc)
         da_prices = day_df["day_ahead_price"].tolist()
-        schedule = optimize_da_schedule(da_price_forecast=forecast, asset=asset, duration_h=duration_h)
+        schedule = optimize_da_schedule(
+            da_price_forecast=forecast,
+            asset=asset,
+            duration_h=duration_h,
+            target_daily_cycles=bess_cfg.get("target_daily_cycles"),
+        )
         result = run_intraday_session(
             da_schedule=schedule,
             da_price_actual=da_prices,
             mid_prices=day_df["mid_price"].tolist(),
-            imbalance_prices=day_df["system_buy_price"].tolist(),
             asset=asset,
             config=bess_cfg,
-            imbalance_sell_prices=day_df["system_sell_price"].tolist(),
         )
         prev_soc_pct = asset.soc_pct
         daily_results.append({
             "date": date,
-            "da_revenue": result["da_revenue"],
-            "intraday_pnl": result["intraday_pnl"],
-            "imbalance_pnl": result["imbalance_pnl"],
+            "da_revenue": result["benchmark_da_revenue"],
+            "intraday_pnl": result["intraday_da_improvement"],
+            "execution_costs_paid": result["execution_costs_paid"],
             "degradation_cost": result["total_degradation_cost"],
+            "intraday_throughput_mwh": result["accumulated_intraday_throughput_mwh"],
             "net_pnl": result["net_pnl"],
         })
 
@@ -690,7 +695,8 @@ def print_pipeline_results(results: dict):
     print(f"  Total PnL:     £{tm['total_pnl']:>12,.2f}")
     print(f"  Active trades:  {tm['n_trades']:>11,}")
     print(f"  Win rate:       {tm['win_rate']:>11.1%}")
-    print(f"  Profit factor:  {tm['profit_factor']:>11.2f}")
+    print(f"  Profit factor:  {tm['profit_factor']:>11.2f}" if tm['profit_factor'] is not None
+          else f"  Profit factor:  {'n/a':>11}")
     print(f"  Sharpe ratio:   {tm['sharpe_ratio']:>11.3f}")
     print(f"  Max drawdown:  £{tm['max_drawdown']:>12,.2f}")
     print(f"  Avg win:       £{tm['avg_win']:>12,.2f}")

@@ -262,13 +262,13 @@ class TestMetrics:
         _, metrics = run_backtest(sigs, da, ssp, sbp)
         assert metrics["max_drawdown"] <= 0.0
 
-    def test_profit_factor_infinity_when_no_losses(self):
+    def test_profit_factor_none_when_no_losses(self):
         sigs = np.array([1])
         da = np.array([50.0])
         ssp = np.array([70.0])
         sbp = np.array([75.0])
         _, metrics = run_backtest(sigs, da, ssp, sbp, cost_per_trade=0.0)
-        assert metrics["profit_factor"] == float("inf")
+        assert metrics["profit_factor"] is None
 
     def test_signal_distribution_counts(self):
         sigs = np.array([1, -1, 0, 1])

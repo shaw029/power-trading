@@ -50,7 +50,16 @@ bess:
   power_mw: 50.0
   charge_efficiency: 0.94
   discharge_efficiency: 0.94
-  degradation_cost_per_mwh: 8.50
+  degradation_cost_per_mwh: 5.00
   initial_soc_pct: 0.50
+  min_soc_pct: 0.10
+  max_soc_pct: 0.90
   resolution_h: 1.0
   soc_drift_tolerance: 0.05
+  target_daily_cycles: 1.5   # max average daily cycling target; null disables the limit
+  # MID is not observable intraday, so it is proxied from the known cleared DA
+  # price plus a configurable basis. The rolling re-optimisation only deviates
+  # from the locked DA plan when a trade beats this basis (+ execution + wear):
+  margin_buy: 0.0            # MID-vs-DA basis (£/MWh) charged on extra intraday charging (buy)
+  margin_sell: 0.0           # MID-vs-DA basis (£/MWh) shaved off extra intraday discharging (sell)
+  # The intraday execution-cost buffer is reused from the top-level execution.slippage.

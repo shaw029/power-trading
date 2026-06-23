@@ -66,10 +66,16 @@ def _fit_model(
             n_jobs=-1,
         )
 
-    if model_type == "linear_regression":
+    elif model_type == "linear_regression":
         from sklearn.linear_model import LinearRegression
 
         model = LinearRegression()
+
+    elif model_type != "xgboost":
+        raise ValueError(
+            f"Unknown model_type {model_type!r}. "
+            "Use 'xgboost', 'random_forest', or 'linear_regression'."
+        )
 
     logger.info("Training %s on %d rows", model_type, len(X_train))
     model.fit(X_train, y_train)

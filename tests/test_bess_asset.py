@@ -70,11 +70,11 @@ class TestLimitEnforcement:
             battery.discharge(mw=51, duration_h=1.0)
 
     def test_charge_exceeds_capacity(self, battery: BESSAsset) -> None:
-        with pytest.raises(ValueError, match="exceed capacity"):
+        with pytest.raises(ValueError, match="exceed max SOC"):
             battery.charge(mw=50, duration_h=2.0)
 
     def test_discharge_below_zero(self, battery: BESSAsset) -> None:
-        with pytest.raises(ValueError, match="deplete SOC"):
+        with pytest.raises(ValueError, match="breach min SOC"):
             battery.discharge(mw=50, duration_h=1.5)
 
     def test_charge_at_exact_power_limit(self, battery: BESSAsset) -> None:
@@ -138,3 +138,70 @@ class TestReset:
         battery.charge(mw=10, duration_h=1.0)
         battery.reset()
         assert battery.degradation_cost == pytest.approx(0.0)
+
+    def test_reset_with_valid_soc(self, battery: BESSAsset) -> None:
+        battery.reset(soc_pct=0.3)
+        assert battery.soc_pct == pytest.approx(0.3)
+
+    def test_reset_above_max_soc_raises(self) -> None:
+        asset = BESSAsset(
+            capacity_mwh=100.0,
+            power_mw=50.0,
+            charge_efficiency=0.9,
+            discharge_efficiency=0.95,
+            degradation_cost_per_mwh=0.50,
+            initial_soc_pct=0.5,
+            min_soc_pct=0.2,
+            max_soc_pct=0.8,
+        )
+        with pytest.raises(ValueError, match="Invalid SOC"):
+            asset.reset(soc_pct=0.9)
+
+    def test_reset_below_min_soc_raises(self) -> None:
+        asset = BESSAsset(
+            capacity_mwh=100.0,
+            power_mw=50.0,
+            charge_efficiency=0.9,
+            discharge_efficiency=0.95,
+            degradation_cost_per_mwh=0.50,
+            initial_soc_pct=0.5,
+            min_soc_pct=0.2,
+            max_soc_pct=0.8,
+        )
+        with pytest.raises(ValueError, match="Invalid SOC"):
+            asset.reset(soc_pct=0.1)
+
+
+class TestCustomSocBounds:
+    @pytest.fixture
+    def bounded_battery(self) -> BESSAsset:
+        return BESSAsset(
+            capacity_mwh=100.0,
+            power_mw=50.0,
+            charge_efficiency=1.0,
+            discharge_efficiency=1.0,
+            degradation_cost_per_mwh=0.50,
+            initial_soc_pct=0.5,
+            min_soc_pct=0.2,
+            max_soc_pct=0.8,
+        )
+
+    def test_charge_respects_custom_max(self, bounded_battery: BESSAsset) -> None:
+        bounded_battery.charge(mw=30, duration_h=1.0)
+        assert bounded_battery.soc_pct == pytest.approx(0.8)
+        with pytest.raises(ValueError, match="exceed max SOC"):
+            bounded_battery.charge(mw=10, duration_h=1.0)
+
+    def test_discharge_respects_custom_min(self, bounded_battery: BESSAsset) -> None:
+        bounded_battery.discharge(mw=30, duration_h=1.0)
+        assert bounded_battery.soc_pct == pytest.approx(0.2)
+        with pytest.raises(ValueError, match="breach min SOC"):
+            bounded_battery.discharge(mw=10, duration_h=1.0)
+
+    def test_can_charge_respects_custom_max(self, bounded_battery: BESSAsset) -> None:
+        assert bounded_battery.can_charge(mw=30, duration_h=1.0) is True
+        assert bounded_battery.can_charge(mw=40, duration_h=1.0) is False
+
+    def test_can_discharge_respects_custom_min(self, bounded_battery: BESSAsset) -> None:
+        assert bounded_battery.can_discharge(mw=30, duration_h=1.0) is True
+        assert bounded_battery.can_discharge(mw=40, duration_h=1.0) is False

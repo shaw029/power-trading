@@ -45,14 +45,27 @@ Phase 3 extends the framework beyond virtual trading to physical asset dispatch.
 
 The BESS strategy decomposes the trading day into three settlement layers, each targeting a different liquidity venue:
 
-1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal charge/discharge schedule against an ML-generated DA price *forecast*, maximising `Σ [(discharge_h − charge_h) × forecast_price_h − (discharge_h + charge_h) × degradation_cost_per_mwh] × resolution_h` subject to SOC, power, and efficiency constraints. Degradation cost is included in the primal objective so the solver avoids unprofitable cycling — not applied only as a post-hoc deduction. Revenue is then settled against the *actual* cleared DA price, so forecast quality directly drives PnL. The schedule length adapts to the configured `resolution_h` (BESS config key; e.g. 48 half-hourly periods or 24 hourly).
+1. **Day-Ahead (LP Optimisation):** A linear program (PuLP/HiGHS) solves the optimal charge/discharge schedule against an ML-generated DA price *forecast*, maximising `Σ [(discharge_h − charge_h) × forecast_price_h − (discharge_h + charge_h) × degradation_cost_per_mwh] × resolution_h` subject to SOC, power, efficiency, and optional cycle-cap constraints. Degradation cost is included in the primal objective so the solver avoids unprofitable cycling — not applied only as a post-hoc deduction. Revenue is then settled against the *actual* cleared DA price, so forecast quality directly drives PnL. The schedule length adapts to the configured `resolution_h` (BESS config key; e.g. 48 half-hourly periods or 24 hourly). The LP respects a configurable **SOC operating window** (`min_soc_pct`–`max_soc_pct`, default 10–90%) to protect cell longevity; the usable capacity is therefore `(max_soc_pct − min_soc_pct) × capacity_mwh`. An optional `target_daily_cycles` cap limits total discharge energy per day (`Σ discharge_h × duration_h ≤ target_daily_cycles × capacity_mwh`). The end-of-day SOC is unconstrained — the LP ends wherever it is optimal — and the actual ending SOC is **carried forward** as the starting SOC for the next day's LP, so days are not treated independently.
 
-2. **Intraday (Rules-Based Rebalancing):** During the delivery window, a rules engine adjusts the DA schedule in real time against Market Index Prices:
-   - **Rule 1 — DA Dispatch Execution:** Execute the committed schedule; any shortfall from SOC constraints settles at the imbalance price.
-   - **Rule 2 — SOC Drift Rebalance:** If actual SOC drifts more than 5% from the DA-implied trajectory, buy/sell at MID to realign.
-   - **Rule 3 — Spread Improvement:** If spare capacity exists and MID exceeds DA + degradation cost (or the inverse for charging), take the incremental trade.
+2. **Intraday (Rolling-Horizon Re-Optimisation — DA-Proxy MID):** The day-ahead schedule is locked at the 11:00 auction and its *financial* position cannot be changed, but during delivery the battery's *physical* dispatch can still deviate from the plan and settle the deviation in the continuous intraday market. A linear program re-optimises the physical schedule over the remaining horizon and books the deviation against the benchmark. The frozen DA schedule is what a trader is measured against; everything the re-optimisation adds on top is consolidated into a single **Intraday DA Improvement** bucket.
 
-3. **Imbalance Settlement (Ex-Post):** Any volume that could not be physically delivered or absorbed — because SOC hit a bound — is settled at the system imbalance price (SSP/SBP), appearing as a residual cost or credit.
+   - **Observed now, proxied for the future.** The intraday market is *continuous*, so the price each quarter-hour is trading at becomes **visible shortly before its delivery** — the current period's MID is *observed*, not guessed. Only the not-yet-visible **future** periods are uncertain, and those are priced from a **DA proxy**: the cleared DA price (known since the 11:00 auction) ± a configurable basis — extra discharge assumed to clear at `da − margin_sell`, extra charge at `da + margin_buy`. The basis is **conservatism on the proxy only**: it tempers netting the locked DA commitment or opening a new position on a still-*guessed* future price. The visible current period carries no such hurdle — its price is known.
+
+   - **Rolling walk, execute only the visible period.** Because only the current period is tradeable (its price is visible), the engine walks the day period by period. At step `h` it re-solves an LP over the **remaining** horizon `[h:]` — the current period priced at the observed MID, every future period at the hurdled proxy — then **executes and locks only period `h`**, advances SOC and the cycle budget, and rolls to `h+1`, where one more real MID has appeared. The LP chooses the physical net dispatch `P_k` maximising the value of the deviations `dev_k = P_k − da_schedule_k`, net of execution friction and degradation:
+
+     ```
+     max Σ_{k≥h} [ dev⁺_k · sell_k − dev⁻_k · buy_k
+                   − (dev⁺_k + dev⁻_k) · exec_cost
+                   − (charge_k + discharge_k) · degradation_cost ] · duration_h
+     ```
+
+     where `sell_h = buy_h = mid_h` (observed, no hurdle) for the current period and `sell_k = da_k − margin_sell`, `buy_k = da_k + margin_buy` for future `k > h`. The locked DA revenue is a constant and drops out, so maximising deviation value is equivalent to maximising net PnL. Genuine new information — one more observed MID — arrives every step, so the re-solve actually adapts (unlike a static single solve). Phase 4 replaces the future-period DA proxy with a live, updating MID *forecast*, sharpening exactly the part the engine currently has to guess.
+
+   - **Settlement and feasibility.** The executed deviation `dev_h` settles at the **observed MID** `mid_h`. It is clamped to what the battery can physically deliver from the current SOC, so the executed position is always feasible; in a continuous market the trader only ever commits what it can deliver, flattening any gap to the DA commitment at MID — so there is **no imbalance** (the bucket is retained at ≈ 0 for the Phase-4 case where a forecast can leave a position unflattened at gate closure). A **cycle cap** bounds total discharge throughput at `target_daily_cycles × capacity_mwh`, decremented as the walk dispatches each period.
+
+   > **No look-ahead bias.** The current period's MID is genuinely observable before its delivery in the continuous market, so reading it is not a peek; future periods are *not* read — they fall back to the DA proxy (prices the trader already holds from the 11:00 auction). The walk never prices a future period off unrealised intraday data, and each period is executed only once its own price is visible.
+
+3. **Imbalance Settlement (Ex-Post):** Any volume that could not be physically delivered or absorbed — because SOC hit an absolute bound — is settled at the system imbalance price (SSP/SBP), appearing as a residual cost or credit.
 
 ### Asset Model (`BESSAsset`)
 
@@ -64,20 +77,30 @@ The `BESSAsset` dataclass tracks internal state across the trading day:
 | `power_mw` | Maximum charge/discharge rate |
 | `charge_efficiency` | Fraction of energy stored in the battery during charging |
 | `discharge_efficiency` | Fraction of stored energy delivered to the grid during discharge |
-| `degradation_cost_per_mwh` | £/MWh throughput cost representing battery wear |
-| `initial_soc_pct` | Starting state-of-charge as a fraction of capacity |
+| `degradation_cost_per_mwh` | £/MWh throughput cost representing battery wear, applied symmetrically to both charge and discharge volume |
+| `initial_soc_pct` | Starting state-of-charge for the **first day** only; subsequent days inherit the actual end-of-day SOC from the previous day |
+| `min_soc_pct` | Lower SOC operating bound (default 10%) — LP and intraday engine never discharge below this level |
+| `max_soc_pct` | Upper SOC operating bound (default 90%) — LP and intraday engine never charge above this level |
 
-The asset enforces physical feasibility: `charge()` and `discharge()` raise if power or SOC limits are violated, and `can_charge()`/`can_discharge()` allow the intraday manager to test feasibility before acting.
+The asset enforces physical feasibility: `charge()` and `discharge()` raise if power or SOC window limits are violated, and `can_charge()`/`can_discharge()` allow the intraday manager to test feasibility before acting. The effective usable capacity is `(max_soc_pct − min_soc_pct) × capacity_mwh`.
 
 ### PnL Decomposition
 
-Net PnL for each day is decomposed into four components:
+Net PnL for each day is reported as a **trader's-alpha ledger**: the frozen day-ahead schedule is the benchmark the desk is measured against, the re-optimisation's contribution is consolidated into a single improvement bucket, and execution friction is broken out separately.
 
 ```
-net_pnl = da_revenue + intraday_pnl + imbalance_pnl − degradation_cost
+net_pnl = benchmark_da_revenue + intraday_da_improvement − execution_costs_paid + imbalance_pnl − degradation_cost
 ```
 
-This decomposition lets the analyst attribute value to each settlement layer independently — see `notebooks/03_bess_dispatch_analysis.ipynb` for the full waterfall.
+- **`benchmark_da_revenue`** — the planned LP schedule settled at the *actual* cleared DA prices, frozen up front before any intraday action is taken. This is the benchmark.
+- **`intraday_da_improvement`** — the cash the rolling re-optimisation adds on top of the benchmark: for each period, the value of its executed physical deviation `dev_h = P_h − da_schedule_h` **settled at that period's observed MID**, summed over the day and reported **gross** of execution friction.
+- **`execution_costs_paid`** — slippage (`execution.slippage`, default 0.5 £/MWh) paid on every traded (deviated) MWh, isolated into its own bucket rather than netted into the improvement.
+- **`imbalance_pnl`** — retained at ≈ 0. Each executed period is clamped to what the battery can physically deliver and any gap to the DA commitment is flattened at MID, so no volume spills to SSP/SBP in this phase; the bucket stays for continuity and the Phase-4 case where a forecast can leave a position unflattened at gate closure.
+- **`degradation_cost`** — throughput wear on the physically cycled volume `Σ |P_h|`.
+
+The buckets sum exactly to Net PnL. For continuity the engine also surfaces `da_revenue` (= `benchmark_da_revenue`), `intraday_pnl` (= `intraday_da_improvement`), `cycles_saved_mwh` (wear avoided by re-optimising away from the benchmark plan: benchmark throughput − actual throughput), and `accumulated_intraday_throughput_mwh` (the deviated MWh the re-optimisation traded).
+
+This decomposition lets the analyst attribute value to each layer independently — see `notebooks/03_bess_dispatch_analysis.ipynb` for the full waterfall.
 
 ## 6. Validated Results
 
