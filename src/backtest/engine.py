@@ -240,10 +240,13 @@ def run_backtest(
 
     sum_wins = float(np.sum(net_pnl[win_mask])) if win_mask.any() else 0.0
     sum_losses = float(np.sum(net_pnl[loss_mask])) if loss_mask.any() else 0.0
-    profit_factor = sum_wins / abs(sum_losses) if sum_losses != 0.0 else float("inf")
+    # Undefined when there are no losing trades / no drawdown. Use None rather than
+    # inf/nan so the metrics serialise to standards-compliant JSON (bare Infinity/NaN
+    # tokens are rejected by strict parsers such as pd.read_json and JS JSON.parse).
+    profit_factor = sum_wins / abs(sum_losses) if sum_losses != 0.0 else None
 
     max_dd_pct = abs(max_drawdown) / starting_capital if starting_capital > 0 else 0.0
-    calmar_ratio = total_return_pct / max_dd_pct if max_dd_pct > 0 else float("nan")
+    calmar_ratio = total_return_pct / max_dd_pct if max_dd_pct > 0 else None
 
     n_long = int((signals == 1).sum())
     n_short = int((signals == -1).sum())
@@ -259,7 +262,7 @@ def run_backtest(
     )
     logger.info("  Total PnL:        £%s", f"{total_pnl:>10,.2f}")
     logger.info("  Sharpe:            %.3f", sharpe_ratio)
-    logger.info("  Profit factor:     %.2f", profit_factor)
+    logger.info("  Profit factor:     %s", f"{profit_factor:.2f}" if profit_factor is not None else "n/a")
     logger.info("  Max drawdown:     £%s", f"{max_drawdown:>10,.2f}")
     logger.info("  Win rate:          %.1f%%", win_rate * 100)
     logger.info("  Active trades:    %d / %d periods", n_active, n)

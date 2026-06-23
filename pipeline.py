@@ -695,7 +695,8 @@ def print_pipeline_results(results: dict):
     print(f"  Total PnL:     £{tm['total_pnl']:>12,.2f}")
     print(f"  Active trades:  {tm['n_trades']:>11,}")
     print(f"  Win rate:       {tm['win_rate']:>11.1%}")
-    print(f"  Profit factor:  {tm['profit_factor']:>11.2f}")
+    print(f"  Profit factor:  {tm['profit_factor']:>11.2f}" if tm['profit_factor'] is not None
+          else f"  Profit factor:  {'n/a':>11}")
     print(f"  Sharpe ratio:   {tm['sharpe_ratio']:>11.3f}")
     print(f"  Max drawdown:  £{tm['max_drawdown']:>12,.2f}")
     print(f"  Avg win:       £{tm['avg_win']:>12,.2f}")

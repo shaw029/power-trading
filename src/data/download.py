@@ -1,5 +1,6 @@
 import glob
 import json
+import re
 import pandas as pd
 import requests
 import logging
@@ -35,6 +36,20 @@ from src.utils.config import (
 logger = logging.getLogger(__name__)
 
 os.makedirs(RAW_DATA_DIR, exist_ok=True)
+
+# Allow-list of known-good NESO CKAN resource IDs and a strict date pattern.
+# Both are interpolated into raw datastore_search_sql strings, so they are
+# validated before use to close off any SQL-injection vector.
+_NESO_ALLOWED_RESOURCE_IDS = {NESO_NDFD_RESOURCE_ID}
+_DATE_FILTER_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _validate_neso_query_inputs(resource_id: str, date_filter: str | None) -> None:
+    """Reject any resource ID or date not on the known-good allow-list/pattern."""
+    if resource_id not in _NESO_ALLOWED_RESOURCE_IDS:
+        raise ValueError(f"Unknown NESO resource_id: {resource_id!r}")
+    if date_filter is not None and not _DATE_FILTER_RE.match(date_filter):
+        raise ValueError(f"Invalid date_filter (expected YYYY-MM-DD): {date_filter!r}")
 
 
 def _save_raw_json(dataset_name: str, filename: str, payload: object) -> None:
@@ -211,6 +226,8 @@ def download_neso_ndfd_daily(start_date: str, end_date: str) -> None:
 
         logger.info(f"Fetching NESO_NDFD {date_iso}")
 
+        _validate_neso_query_inputs(NESO_NDFD_RESOURCE_ID, date_iso)
+
         try:
             all_records = []
             offset = 0
@@ -285,6 +302,8 @@ def fetch_neso_sql(resource_id: str, date_filter: str | None = None) -> pd.DataF
     Fetch data from NESO CKAN DataStore API using SQL query with pagination.
     """
     logger.info(f"Fetching NESO resource {resource_id}")
+
+    _validate_neso_query_inputs(resource_id, date_filter)
 
     all_records: list[dict] = []
     offset = 0
