@@ -119,6 +119,33 @@ _BESS_DEFAULTS = {
     "margin_sell": 0.0,
 }
 
+_SIGNAL_DEFAULTS = {
+    "threshold": DEFAULT_SIGNAL_THRESHOLD,
+    "top_n": 5,
+    "vol_multiplier": 1.0,
+    "vol_window": 336,
+    "transaction_cost": 0.0,
+}
+
+_MODEL_DEFAULTS = {
+    "type": "xgboost",
+    "hyperparameters": None,
+}
+
+_VALIDATION_DEFAULTS = {
+    "type": "walk_forward",
+    "train_days": 200,
+    "test_days": 30,
+    "step_days": 30,
+}
+
+_EXECUTION_DEFAULTS = {
+    "baseline_hedge_ratio": 0.50,
+    "take_profit_pct": 0.90,
+    "stop_loss_price_delta": 5.00,
+    "slippage": 0.50,
+}
+
 _FIXED_SOURCE_KEYS = (
     "wind_source",
     "generation_source",
@@ -172,6 +199,18 @@ def validate_config(config: dict) -> dict:
             "slippage", config.get("execution", {}).get("slippage", 0.50)
         )
         config["bess"] = bess
+
+    if config["strategy_type"] == "virtual":
+        for section, defaults in (
+            ("signal", _SIGNAL_DEFAULTS),
+            ("model", _MODEL_DEFAULTS),
+            ("validation", _VALIDATION_DEFAULTS),
+            ("execution", _EXECUTION_DEFAULTS),
+        ):
+            block = config.get(section, {})
+            for dkey, dval in defaults.items():
+                block.setdefault(dkey, dval)
+            config[section] = block
 
     # ── data.periods ────────────────────────────────────────────────────
     data = config.get("data")
