@@ -117,7 +117,7 @@ The `signal` block controls trade signal generation and cost assumptions:
 ```yaml
 signal:
   threshold: 2.0         # minimum edge required to fire (£/MWh)
-  top_n: 5               # max concurrent positions
+  top_n: 5               # max high-conviction trades retained per direction per market day
   vol_multiplier: 1.0    # gate = max(threshold, vol_multiplier × rolling_vol)
   vol_window: 336        # rolling std lookback in half-hour periods (336 = 7 days)
   transaction_cost: 1.0  # cost applied per trade (£/MWh of position)
@@ -126,7 +126,7 @@ signal:
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `threshold` | float | 5.0 | Minimum predicted edge (£/MWh) required to open a position. `config.example.yaml` uses 2.0 — a calibrated starting value for 2018 data; the code default is 5.0. |
-| `top_n` | int | 5 | Maximum number of concurrent positions |
+| `top_n` | int | 5 | Max high-conviction trades retained per direction per market day |
 | `vol_multiplier` | float | 1.0 | Multiplier applied to rolling volatility for dynamic gating |
 | `vol_window` | int | 336 | Rolling standard-deviation lookback in half-hour periods |
 | `transaction_cost` | float | 1.0 | Cost deducted per trade in £/MWh of position size |

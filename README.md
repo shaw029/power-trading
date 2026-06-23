@@ -4,7 +4,7 @@ End-to-end quantitative research framework for virtual and physical trading in t
 
 **Virtual Strategy** — ML-proxied residual load mispricing against the EPEX Day-Ahead auction, with hybrid intraday execution splitting volume between a passive MID hedge and an active TP/SL engine.
 
-**BESS Strategy** — Battery Energy Storage System dispatch optimisation via LP-based Day-Ahead scheduling and a rolling-horizon intraday re-optimisation that walks the day period by period, trading each quarter at its observed MID and pricing the still-unseen future from a hurdled DA proxy.
+**BESS Strategy** — Battery Energy Storage System dispatch optimisation via LP-based Day-Ahead scheduling and a rolling-horizon intraday re-optimisation that walks the day period by period, trading each settlement period at its observed MID and pricing the still-unseen future from a hurdled DA proxy.
 
 **2018 validated backtest (Virtual):**
 
@@ -60,7 +60,7 @@ python main.py --config configs/config.yaml
 - Day-Ahead schedule solved via linear programming (PuLP/HiGHS) against an ML DA price forecast; revenue then settles against the actual cleared DA price, so forecast quality drives PnL
 - SOC operating window (default 10–90%) protects cell longevity, with an optional `target_daily_cycles` throughput cap; degradation cost is priced into the LP objective, not just deducted after the fact
 - End-of-day SOC carries forward as the next day's starting level — days are not treated independently
-- Intraday rolling-horizon re-optimisation improves on the locked DA schedule. The intraday market is continuous, so each quarter's MID becomes **visible shortly before its delivery**: the engine walks the day period by period, re-solving the remaining horizon with the current period at its **observed MID** and the not-yet-visible future at a **DA proxy** (cleared DA price ± a configurable `margin_sell`/`margin_buy` basis). The basis is conservatism on the *guessed* future only — the visible current price carries no hurdle. Only the visible period is executed and locked before rolling forward; each executed deviation settles at its observed MID and is clamped to feasibility, so the day settles with ≈ 0 imbalance
+- Intraday rolling-horizon re-optimisation improves on the locked DA schedule. The intraday market is continuous, so each settlement period's MID becomes **visible shortly before its delivery**: the engine walks the day period by period, re-solving the remaining horizon with the current period at its **observed MID** and the not-yet-visible future at a **DA proxy** (cleared DA price ± a configurable `margin_sell`/`margin_buy` basis). The basis is conservatism on the *guessed* future only — the visible current price carries no hurdle. Only the visible period is executed and locked before rolling forward; each executed deviation settles at its observed MID and is clamped to feasibility, so the day settles with ≈ 0 imbalance
 
 → Full commercial model, asset state machine, and PnL decomposition in [ARCHITECTURE.md](ARCHITECTURE.md#5-phase-3-physical-asset-bess-optimisation).
 
