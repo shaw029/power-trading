@@ -123,7 +123,6 @@ EXPECTED_METRIC_KEYS = {
     "total_intraday_pnl",
     "total_execution_costs_paid",
     "total_intraday_throughput_mwh",
-    "total_imbalance_pnl",
     "total_degradation_cost",
     "total_net_pnl",
     "total_cycles",
@@ -169,7 +168,7 @@ class TestBESSPipelineIntegration:
         pnl = pd.read_csv(trading_dir / "pnl.csv")
         assert list(pnl.columns) == [
             "date", "da_revenue", "intraday_pnl", "execution_costs_paid",
-            "imbalance_pnl", "degradation_cost", "intraday_throughput_mwh", "net_pnl",
+            "degradation_cost", "intraday_throughput_mwh", "net_pnl",
         ]
         assert len(pnl) == 3
 

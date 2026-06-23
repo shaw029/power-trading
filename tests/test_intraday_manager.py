@@ -55,7 +55,6 @@ class TestBenchmarkUnchanged:
             da_schedule=[0.0, 0.0, 0.0],
             da_price_actual=[40.0, 40.0, 40.0],
             mid_prices=[40.0, 40.0, 40.0],
-            imbalance_prices=[40.0, 40.0, 40.0],
             asset=_unit_asset(soc=0.0, deg=1.0),
             config={"degradation_cost_per_mwh": 1.0},
         )
@@ -73,7 +72,6 @@ class TestBenchmarkUnchanged:
             da_schedule=schedule,
             da_price_actual=prices,
             mid_prices=prices,
-            imbalance_prices=prices,
             asset=asset,
             config={"degradation_cost_per_mwh": 2.0},
         )
@@ -96,7 +94,6 @@ class TestReoptimizationCapturesSpread:
             da_schedule=[0.0, 0.0],
             da_price_actual=[10.0, 100.0],
             mid_prices=[10.0, 100.0],
-            imbalance_prices=[10.0, 100.0],
             asset=_unit_asset(soc=0.0),
             config={"degradation_cost_per_mwh": 0.0, "execution": {"slippage": 0.0}},
         )
@@ -106,7 +103,6 @@ class TestReoptimizationCapturesSpread:
         # bought 50 MWh @10, sold 50 MWh @100 (MID == DA here)
         assert result["intraday_da_improvement"] == pytest.approx(50 * 100 - 50 * 10)
         assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(100.0)
-        assert result["imbalance_pnl"] == pytest.approx(0.0)
         assert result["net_pnl"] == pytest.approx(4500.0)
 
     def test_settles_at_real_mid_not_proxy(self):
@@ -117,7 +113,6 @@ class TestReoptimizationCapturesSpread:
             da_schedule=[0.0, 0.0],
             da_price_actual=[10.0, 100.0],
             mid_prices=[10.0, 80.0],
-            imbalance_prices=[10.0, 100.0],
             asset=_unit_asset(soc=0.0),
             config={"degradation_cost_per_mwh": 0.0, "execution": {"slippage": 0.0}},
         )
@@ -132,7 +127,6 @@ class TestReoptimizationCapturesSpread:
             da_schedule=[0.0, 0.0],
             da_price_actual=[10.0, 100.0],
             mid_prices=[10.0, 100.0],
-            imbalance_prices=[10.0, 100.0],
             asset=_unit_asset(soc=0.0),
             config={"degradation_cost_per_mwh": 0.0, "execution": {"slippage": 1.0}},
         )
@@ -154,7 +148,6 @@ class TestHurdlesBlockMarginalTrades:
             da_schedule=[0.0, 0.0],
             da_price_actual=[40.0, 45.0],
             mid_prices=[40.0, 45.0],
-            imbalance_prices=[40.0, 45.0],
             asset=_unit_asset(soc=0.0),
             config={"degradation_cost_per_mwh": 0.0, "margin_buy": 10.0, "margin_sell": 10.0},
         )
@@ -167,7 +160,6 @@ class TestHurdlesBlockMarginalTrades:
             da_schedule=[0.0, 0.0],
             da_price_actual=[40.0, 45.0],
             mid_prices=[40.0, 45.0],
-            imbalance_prices=[40.0, 45.0],
             asset=_unit_asset(soc=0.0, deg=3.0),
             config={"degradation_cost_per_mwh": 3.0},
         )
@@ -179,7 +171,6 @@ class TestHurdlesBlockMarginalTrades:
             da_schedule=[0.0, 0.0],
             da_price_actual=[40.0, 45.0],
             mid_prices=[40.0, 45.0],
-            imbalance_prices=[40.0, 45.0],
             asset=_unit_asset(soc=0.0, deg=1.0),
             config={"degradation_cost_per_mwh": 1.0},
         )
@@ -199,7 +190,6 @@ class TestCycleCap:
             # discharge 10 MW every period (40 MWh). Cap = 0.25*100 = 25 MWh.
             da_price_actual=[100.0, 80.0, 60.0, 40.0],
             mid_prices=[100.0, 80.0, 60.0, 40.0],
-            imbalance_prices=[100.0, 80.0, 60.0, 40.0],
             asset=asset,
             config={"degradation_cost_per_mwh": 0.0, "target_daily_cycles": 0.25},
         )
@@ -220,16 +210,13 @@ class TestLedgerReconciles:
             da_schedule=schedule,
             da_price_actual=prices,
             mid_prices=mid,
-            imbalance_prices=[p + 20 for p in prices],
             asset=asset,
             config={"degradation_cost_per_mwh": 2.0, "margin_buy": 1.0, "margin_sell": 1.0},
-            imbalance_sell_prices=[p - 10 for p in prices],
         )
         recomputed = (
             result["benchmark_da_revenue"]
             + result["intraday_da_improvement"]
             - result["execution_costs_paid"]
-            + result["imbalance_pnl"]
             - result["total_degradation_cost"]
         )
         assert recomputed == pytest.approx(result["net_pnl"])
@@ -241,7 +228,6 @@ class TestHalfHourlyResolution:
             da_schedule=[0.0, 0.0],
             da_price_actual=[10.0, 100.0],
             mid_prices=[10.0, 100.0],
-            imbalance_prices=[10.0, 100.0],
             asset=_unit_asset(soc=0.0, power=10.0),
             config={"degradation_cost_per_mwh": 0.0, "resolution_h": 0.5},
         )
@@ -251,11 +237,11 @@ class TestHalfHourlyResolution:
         assert result["intraday_da_improvement"] == pytest.approx(5 * 100 - 5 * 10)
 
 
-class TestFeasibleScheduleNeverLeaksImbalance:
+class TestLedgerReconcilesOverRandomDays:
     """The LP keeps the physical schedule inside the SOC/power envelope, so a
-    re-optimised day settles with zero imbalance."""
+    re-optimised day always reconciles: the ledger buckets sum to net PnL."""
 
-    def test_no_imbalance_over_random_days(self):
+    def test_buckets_reconcile_over_random_days(self):
         import random
 
         random.seed(7)
@@ -274,12 +260,17 @@ class TestFeasibleScheduleNeverLeaksImbalance:
             asset.reset()
             result = run_intraday_session(
                 da_schedule=sched, da_price_actual=fc, mid_prices=mid,
-                imbalance_prices=[abs(f) + 20 for f in fc], asset=asset,
+                asset=asset,
                 config={
                     "degradation_cost_per_mwh": 2.0, "resolution_h": 1.0,
                     "margin_buy": 1.0, "margin_sell": 1.0,
                 },
-                imbalance_sell_prices=[f - 10 for f in fc],
             )
-            worst = max(worst, abs(result["imbalance_pnl"]))
-        assert worst < 1e-6, f"feasible schedule leaked imbalance: {worst}"
+            recomputed = (
+                result["benchmark_da_revenue"]
+                + result["intraday_da_improvement"]
+                - result["execution_costs_paid"]
+                - result["total_degradation_cost"]
+            )
+            worst = max(worst, abs(recomputed - result["net_pnl"]))
+        assert worst < 1e-6, f"ledger failed to reconcile: {worst}"

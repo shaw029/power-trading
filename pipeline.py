@@ -257,7 +257,6 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
         "total_intraday_pnl": float(results_df["intraday_pnl"].sum()),
         "total_execution_costs_paid": float(results_df["execution_costs_paid"].sum()),
         "total_intraday_throughput_mwh": float(results_df["intraday_throughput_mwh"].sum()),
-        "total_imbalance_pnl": float(results_df["imbalance_pnl"].sum()),
         "total_degradation_cost": total_degradation,
         "total_net_pnl": float(net.sum()),
         "total_cycles": float(total_cycles),
@@ -355,7 +354,6 @@ def _run_bess_pipeline(config: dict) -> dict:
     logger.info("BESS pipeline: loading and processing price data (%s → %s)", feat_start, feat_end)
     da_processed = process_day_ahead_price(fetch_day_ahead_price(start_date=feat_start, end_date=feat_end))
     mid_processed = process_market_index_price(fetch_market_index_price(start_date=feat_start, end_date=feat_end))
-    imb_processed = process_imbalance_price(fetch_imbalance_price(start_date=feat_start, end_date=feat_end))
 
     duration_h = bess_cfg.get("resolution_h", 1.0)
     resample_freq = f"{int(duration_h * 60)}min"
@@ -363,7 +361,6 @@ def _run_bess_pipeline(config: dict) -> dict:
     prices = (
         da_processed.resample(resample_freq).mean()
         .join(mid_processed.resample(resample_freq).mean())
-        .join(imb_processed[["system_buy_price", "system_sell_price"]].resample(resample_freq).mean())
         .dropna()
     )
 
@@ -425,10 +422,8 @@ def _run_bess_pipeline(config: dict) -> dict:
             da_schedule=schedule,
             da_price_actual=da_prices,
             mid_prices=day_df["mid_price"].tolist(),
-            imbalance_prices=day_df["system_buy_price"].tolist(),
             asset=asset,
             config=bess_cfg,
-            imbalance_sell_prices=day_df["system_sell_price"].tolist(),
         )
         prev_soc_pct = asset.soc_pct
         daily_results.append({
@@ -436,7 +431,6 @@ def _run_bess_pipeline(config: dict) -> dict:
             "da_revenue": result["benchmark_da_revenue"],
             "intraday_pnl": result["intraday_da_improvement"],
             "execution_costs_paid": result["execution_costs_paid"],
-            "imbalance_pnl": result["imbalance_pnl"],
             "degradation_cost": result["total_degradation_cost"],
             "intraday_throughput_mwh": result["accumulated_intraday_throughput_mwh"],
             "net_pnl": result["net_pnl"],

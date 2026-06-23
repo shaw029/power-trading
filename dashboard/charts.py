@@ -369,13 +369,12 @@ def chart_pnl_waterfall(results_df: pd.DataFrame):
 
     The frozen day-ahead schedule is the benchmark; the intraday rules are
     consolidated into a single improvement bar on top of it, execution friction
-    is isolated into its own deduction, and imbalance settlement and degradation
-    bridge to the net result. The bars sum exactly to Net PnL.
+    is isolated into its own deduction, and degradation bridges to the net
+    result. The bars sum exactly to Net PnL.
     """
     benchmark = results_df["benchmark_da_revenue"].sum()
     intraday = results_df["intraday_da_improvement"].sum()
     execution = results_df["execution_costs_paid"].sum()
-    imbalance = results_df["imbalance_pnl"].sum()
     degradation = results_df["degradation_cost"].sum()
 
     # (label, signed value, bar colour). DA Benchmark and the intraday improvement
@@ -384,7 +383,6 @@ def chart_pnl_waterfall(results_df: pd.DataFrame):
         ("DA Benchmark", benchmark, COLORS["da"]),
         ("Intraday DA Improvement", intraday, COLORS["intraday"]),
         ("Execution Costs", -execution, COLORS["cost"]),
-        ("Imbalance Penalty", imbalance, COLORS["gain"] if imbalance >= 0 else COLORS["cost"]),
         ("Degradation", -degradation, COLORS["cost"]),
     ]
     net = sum(v for _, v, _ in components)
@@ -446,7 +444,6 @@ def chart_daily_attribution(results_df: pd.DataFrame):
         ("DA Benchmark", df["benchmark_da_revenue"], COLORS["da"]),
         ("Intraday DA Improvement", df["intraday_da_improvement"], COLORS["intraday"]),
         ("Execution Costs", -df["execution_costs_paid"], "#7f8c8d"),
-        ("Imbalance", df["imbalance_pnl"], "#e67e22"),
         ("Degradation", -df["degradation_cost"], "#c0392b"),
     ]
 

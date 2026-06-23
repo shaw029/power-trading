@@ -118,10 +118,8 @@ def run_intraday_session(
     da_schedule: list[float],
     da_price_actual: list[float],
     mid_prices: list[float],
-    imbalance_prices: list[float],
     asset: BESSAsset,
     config: dict,
-    imbalance_sell_prices: list[float] | None = None,
 ) -> dict:
     """Rolling-horizon intraday engine — observed current MID, proxied future.
 
@@ -151,11 +149,6 @@ def run_intraday_session(
     mid_prices            — the real observed continuous-market MID. The current
                             period is decided and settled at it; future periods
                             (not yet visible) fall back to the DA proxy.
-    imbalance_prices      — SBP (system buy price): cost when the BESS is short
-                            (couldn't deliver scheduled discharge volume).
-    imbalance_sell_prices — SSP (system sell price): credit when the BESS is long
-                            (couldn't absorb scheduled charging volume).
-                            Defaults to imbalance_prices when not supplied.
     """
     n_periods = len(da_schedule)
     duration_h = config.get("resolution_h", 1.0)
@@ -199,7 +192,6 @@ def run_intraday_session(
     initial_deg = asset.degradation_cost
     intraday_da_improvement = 0.0
     execution_costs_paid = 0.0
-    imbalance_pnl = 0.0
     intraday_throughput_mwh = 0.0
     discharge_throughput_mwh = 0.0
     physical: list[float] = []
@@ -319,17 +311,15 @@ def run_intraday_session(
         benchmark_da_revenue
         + intraday_da_improvement
         - execution_costs_paid
-        + imbalance_pnl
         - total_degradation
     )
 
     return {
         # Trader's-alpha ledger — buckets sum exactly to net_pnl:
-        # benchmark + intraday improvement − execution + imbalance − degradation.
+        # benchmark + intraday improvement − execution − degradation.
         "benchmark_da_revenue": benchmark_da_revenue,
         "intraday_da_improvement": intraday_da_improvement,
         "execution_costs_paid": execution_costs_paid,
-        "imbalance_pnl": imbalance_pnl,
         "total_degradation_cost": total_degradation,
         "net_pnl": net_pnl,
         "accumulated_intraday_throughput_mwh": intraday_throughput_mwh,
