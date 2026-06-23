@@ -467,3 +467,194 @@ def chart_daily_attribution(results_df: pd.DataFrame):
         hovermode="x unified",
     )
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Live GB BESS benchmark builders
+#
+# The four functions below back the live-benchmark figure-export CLI and the
+# static site's data pipeline. They take plain DataFrames/dicts (no dependency
+# on this project's later modules) so they stay generic and reusable, and they
+# reuse the shared COLORS palette to stay on-brand with the rest of the file.
+# ---------------------------------------------------------------------------
+
+# Ordered fallback palette for the per-series builders below, drawn from the
+# shared COLORS values so a new category gets an on-brand colour.
+_SERIES_PALETTE = [COLORS["da"], COLORS["intraday"], COLORS["cost"], COLORS["net"]]
+
+
+def _palette_for(labels: list[str]) -> dict[str, str]:
+    """Assign a stable colour to each label, cycling the shared palette."""
+    return {label: _SERIES_PALETTE[i % len(_SERIES_PALETTE)] for i, label in enumerate(labels)}
+
+
+def chart_duration_comparison(
+    df: pd.DataFrame,
+    duration_col: str = "duration",
+    value_col: str = "net_pnl",
+    title: str = "Duration Comparison",
+    value_label: str = "Net PnL (£)",
+) -> go.Figure:
+    """Compare the 1h/2h/4h reference assets on a single metric.
+
+    ``df`` carries one row per duration with a duration label (``duration_col``)
+    and the metric to compare (``value_col``, e.g. net PnL or cycles). Each
+    duration gets its own on-brand colour so the bars read consistently across
+    the benchmark figures.
+    """
+    d = df.copy()
+    durations = [str(v) for v in d[duration_col]]
+    palette = _palette_for(durations)
+
+    fig = go.Figure(
+        go.Bar(
+            x=durations,
+            y=d[value_col].values,
+            marker_color=[palette[v] for v in durations],
+            text=[f"{v:,.0f}" for v in d[value_col].values],
+            textposition="outside",
+            hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=title,
+        xaxis_title="Duration",
+        yaxis_title=value_label,
+        template="plotly_white",
+        height=400,
+        showlegend=False,
+    )
+    return fig
+
+
+def chart_daytype_scatter(
+    df: pd.DataFrame,
+    spread_col: str = "da_spread",
+    pnl_col: str = "net_pnl",
+    daytype_col: str = "day_type",
+) -> go.Figure:
+    """Scatter of day-ahead price spread (x) vs net PnL (y), by day-type.
+
+    Each day-type label (e.g. windy / sunny / calm) gets its own colour and
+    legend entry, so the relationship between the day-ahead spread the battery
+    had to work with and the PnL it earned is visible per regime.
+    """
+    d = df.copy()
+    labels = [str(v) for v in d[daytype_col].unique()]
+    palette = _palette_for(labels)
+
+    fig = go.Figure()
+    for label in labels:
+        sub = d[d[daytype_col].astype(str) == label]
+        fig.add_trace(
+            go.Scatter(
+                x=sub[spread_col].values,
+                y=sub[pnl_col].values,
+                mode="markers",
+                name=label,
+                marker=dict(color=palette[label], size=8, line=dict(width=0.5, color="white")),
+                hovertemplate=(
+                    label + "<br>Spread £%{x:,.1f}<br>Net PnL £%{y:,.0f}<extra></extra>"
+                ),
+            )
+        )
+    fig.update_layout(
+        title="Day-Ahead Spread vs Net PnL by Day-Type",
+        xaxis_title="DA Price Spread (£/MWh)",
+        yaxis_title="Net PnL (£)",
+        template="plotly_white",
+        height=400,
+        legend=dict(orientation="h", x=0, y=1.12),
+        hovermode="closest",
+    )
+    return fig
+
+
+def chart_equity_curve(
+    df: pd.DataFrame,
+    date_col: str = "date",
+    pnl_col: str = "net_pnl",
+    duration_col: str = "duration",
+) -> go.Figure:
+    """Cumulative PnL per duration over time, one line per duration.
+
+    ``df`` holds one row per (duration, date) with that day's PnL. The daily
+    PnL is accumulated within each duration, so the lines show how the 1h/2h/4h
+    assets compound their returns across the benchmark window.
+    """
+    d = df.copy()
+    d[date_col] = pd.to_datetime(d[date_col])
+    d = d.sort_values(date_col)
+
+    durations = [str(v) for v in d[duration_col].unique()]
+    palette = _palette_for(durations)
+
+    fig = go.Figure()
+    for label in durations:
+        sub = d[d[duration_col].astype(str) == label]
+        cum = sub[pnl_col].cumsum()
+        fig.add_trace(
+            go.Scatter(
+                x=sub[date_col].values,
+                y=cum.values,
+                mode="lines",
+                name=label,
+                line=dict(color=palette[label], width=2),
+                hovertemplate=(label + "<br>%{x|%d %b}<br>Cumulative £%{y:,.0f}<extra></extra>"),
+            )
+        )
+    fig.update_layout(
+        title="Equity Curve — Cumulative PnL by Duration",
+        xaxis_title="Date",
+        yaxis_title="Cumulative PnL (£)",
+        template="plotly_white",
+        height=400,
+        legend=dict(orientation="h", x=0, y=1.12),
+        hovermode="x unified",
+    )
+    return fig
+
+
+def chart_daytype_profiles(
+    df: pd.DataFrame,
+    hour_col: str = "hour",
+    value_col: str = "soc",
+    daytype_col: str = "day_type",
+    value_label: str = "Mean SOC (%)",
+) -> go.Figure:
+    """Mean dispatch/SOC shape by hour-of-day, one line per day-type.
+
+    Averages ``value_col`` (e.g. dispatch MW or SOC) over every day of each
+    day-type label, so the typical windy vs sunny vs calm profile across the
+    day can be compared side by side.
+    """
+    d = df.copy()
+    profiles = d.groupby([daytype_col, hour_col])[value_col].mean().reset_index()
+
+    labels = [str(v) for v in profiles[daytype_col].unique()]
+    palette = _palette_for(labels)
+
+    fig = go.Figure()
+    for label in labels:
+        sub = profiles[profiles[daytype_col].astype(str) == label].sort_values(hour_col)
+        fig.add_trace(
+            go.Scatter(
+                x=sub[hour_col].values,
+                y=sub[value_col].values,
+                mode="lines+markers",
+                name=label,
+                line=dict(color=palette[label], width=2),
+                marker=dict(size=5),
+                hovertemplate=label + "<br>Hour %{x}<br>%{y:,.2f}<extra></extra>",
+            )
+        )
+    fig.update_layout(
+        title="Mean Profile by Day-Type",
+        xaxis=dict(title="Hour of Day", dtick=2),
+        yaxis_title=value_label,
+        template="plotly_white",
+        height=400,
+        legend=dict(orientation="h", x=0, y=1.12),
+        hovermode="x unified",
+    )
+    return fig
