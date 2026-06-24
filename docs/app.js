@@ -367,6 +367,173 @@
   }
 
   // ----------------------------------------------------------------------- //
+  // Day-types view
+  // ----------------------------------------------------------------------- //
+
+  // The fixed label vocabulary the day artifacts tag days with. The scatter and
+  // profile figures carry one Plotly trace per day-type (its trace name), so the
+  // filter just toggles trace visibility by name.
+  var DAYTYPE_TAGS = ["windy", "sunny", "volatile", "calm", "high_demand", "low_demand"];
+
+  // The subset of the fixed tags that actually appears across the history rows'
+  // labels, preserving the canonical DAYTYPE_TAGS order.
+  function presentTags(rows) {
+    var seen = {};
+    rows.forEach(function (row) {
+      (row.labels || []).forEach(function (label) {
+        seen[label] = true;
+      });
+    });
+    return DAYTYPE_TAGS.filter(function (tag) {
+      return seen[tag];
+    });
+  }
+
+  // Restyle one rendered figure so a trace is hidden when its day-type is a
+  // de-selected fixed tag; traces named outside the fixed set (e.g. "untagged")
+  // are always shown. Subsetting via `visible` lets the axes rescale to the kept
+  // points/lines.
+  function applyDaytypeFilter(divId, selected) {
+    var div = document.getElementById(divId);
+    if (!div || !Array.isArray(div.data)) {
+      return;
+    }
+    var visible = div.data.map(function (trace) {
+      var name = trace.name;
+      if (DAYTYPE_TAGS.indexOf(name) !== -1 && !selected[name]) {
+        return false;
+      }
+      return true;
+    });
+    Plotly.restyle(div, { visible: visible });
+  }
+
+  // Build the Day-types view: a label filter, the DA-spread-vs-net-PnL scatter
+  // and the average-profile comparison, plus a windy-vs-calm focus toggle. The
+  // filter and toggle re-style both figures client-side.
+  function renderDayTypes(history) {
+    var empty = document.getElementById("daytype-empty");
+    var content = document.getElementById("daytype-content");
+    var rows = history && Array.isArray(history.rows) ? history.rows : [];
+
+    if (!rows.length) {
+      if (empty) {
+        empty.hidden = false;
+      }
+      if (content) {
+        content.hidden = true;
+      }
+      return;
+    }
+
+    if (empty) {
+      empty.hidden = true;
+    }
+    if (content) {
+      content.hidden = false;
+    }
+
+    var tags = presentTags(rows);
+    if (!tags.length) {
+      tags = DAYTYPE_TAGS.slice();
+    }
+
+    var selected = {};
+    var inputs = {};
+    tags.forEach(function (tag) {
+      selected[tag] = true;
+    });
+
+    var toggleBtn = document.getElementById("daytype-compare");
+    var comparing = false;
+
+    function apply() {
+      applyDaytypeFilter("dt-fig-scatter", selected);
+      applyDaytypeFilter("dt-fig-profiles", selected);
+    }
+
+    function setCompareVisual(on) {
+      comparing = on;
+      if (toggleBtn) {
+        toggleBtn.classList.toggle("active", on);
+      }
+    }
+
+    // Force the selection (and its checkboxes) to exactly `active`, e.g. the
+    // windy/calm pair for the comparison focus.
+    function setOnly(active) {
+      tags.forEach(function (tag) {
+        var on = active.indexOf(tag) !== -1;
+        selected[tag] = on;
+        if (inputs[tag]) {
+          inputs[tag].checked = on;
+        }
+      });
+    }
+
+    function setAll(value) {
+      tags.forEach(function (tag) {
+        selected[tag] = value;
+        if (inputs[tag]) {
+          inputs[tag].checked = value;
+        }
+      });
+    }
+
+    var filterEl = document.getElementById("daytype-filters");
+    if (filterEl) {
+      filterEl.textContent = "";
+      tags.forEach(function (tag) {
+        var label = document.createElement("label");
+        label.className = "filter-chip";
+
+        var input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = true;
+        input.value = tag;
+        input.addEventListener("change", function () {
+          selected[tag] = input.checked;
+          // A manual edit leaves the windy-vs-calm focus, visually.
+          setCompareVisual(false);
+          apply();
+        });
+
+        var text = document.createElement("span");
+        text.textContent = tag;
+
+        label.appendChild(input);
+        label.appendChild(text);
+        filterEl.appendChild(label);
+        inputs[tag] = input;
+      });
+    }
+
+    if (toggleBtn) {
+      var canCompare = tags.indexOf("windy") !== -1 && tags.indexOf("calm") !== -1;
+      toggleBtn.disabled = !canCompare;
+      toggleBtn.addEventListener("click", function () {
+        if (comparing) {
+          setAll(true);
+          setCompareVisual(false);
+        } else {
+          setOnly(["windy", "calm"]);
+          setCompareVisual(true);
+        }
+        apply();
+      });
+    }
+
+    // Render both figures, then apply the current filter once they exist so the
+    // trace-visibility restyle has data to act on.
+    Promise.all([
+      renderFig("dt-fig-scatter", "data/figs/_history/daytype_scatter.json"),
+      renderFig("dt-fig-profiles", "data/figs/_history/daytype_profiles.json"),
+    ]).then(function () {
+      apply();
+    });
+  }
+
+  // ----------------------------------------------------------------------- //
   // View routing
   // ----------------------------------------------------------------------- //
 
@@ -411,10 +578,15 @@
       // Render the History view lazily on first navigation, so its figures size
       // against a visible (non-zero-width) container.
       var historyRendered = false;
+      var daytypesRendered = false;
       wireNav(hasLatest, function (view) {
         if (view === "history" && !historyRendered) {
           historyRendered = true;
           renderHistory(data.history, data.manifest);
+        }
+        if (view === "day-types" && !daytypesRendered) {
+          daytypesRendered = true;
+          renderDayTypes(data.history);
         }
       });
 

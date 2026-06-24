@@ -79,10 +79,32 @@
       </div>
     </section>
 
-    <!-- Day-types (built in a later ticket) -->
+    <!-- Day-types -->
     <section id="view-day-types" class="view" hidden>
       <h2>Day-types</h2>
-      <p class="placeholder">Performance grouped by day-type lands in a later update.</p>
+      <p id="daytype-empty" class="placeholder" hidden>
+        No day-type history has been published yet. Once days are settled and
+        tagged, the day-ahead-spread scatter and average profiles appear here.
+      </p>
+
+      <div id="daytype-content" hidden>
+        <div class="filter-bar">
+          <span class="filter-label">Labels</span>
+          <div id="daytype-filters" class="filter-chips" role="group" aria-label="Day-type labels"></div>
+          <button id="daytype-compare" class="compare-btn" type="button">Windy vs calm</button>
+        </div>
+
+        <div class="figure-grid">
+          <figure class="fig-card">
+            <figcaption>DA spread vs net PnL</figcaption>
+            <div id="dt-fig-scatter" class="plotly-fig">Loading&hellip;</div>
+          </figure>
+          <figure class="fig-card">
+            <figcaption>Average profile by day-type</figcaption>
+            <div id="dt-fig-profiles" class="plotly-fig">Loading&hellip;</div>
+          </figure>
+        </div>
+      </div>
     </section>
 
     <!-- Methodology (built in a later ticket) -->
