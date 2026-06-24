@@ -3,8 +3,8 @@
  *
  * Loads the committed JSON artifacts under data/ (relative paths, so the site
  * works from a GitHub Pages project subpath), renders the Latest view, and
- * routes between the nav views. History / Day-types / Methodology are
- * placeholders here and gain real content in later updates.
+ * routes between the nav views. History and Day-types are placeholders here
+ * and gain real content in later updates.
  */
 (function () {
   "use strict";

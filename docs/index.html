@@ -107,10 +107,91 @@
       </div>
     </section>
 
-    <!-- Methodology (built in a later ticket) -->
+    <!-- Methodology -->
     <section id="view-methodology" class="view" hidden>
-      <h2>Methodology</h2>
-      <p class="placeholder">A write-up of the benchmark methodology lands in a later update.</p>
+      <div class="prose">
+        <h2>Methodology</h2>
+
+        <p>
+          This site is a <strong>transparent benchmark</strong> of a GB battery
+          (BESS) trading strategy. It is not a live trading account: no real
+          money, broker, or exchange is involved, and no orders are ever placed.
+          Every figure is the output of a settlement engine run over published
+          market data, so the rules and assumptions behind each day's PnL are
+          fully stated below.
+        </p>
+
+        <h3>Reference assets</h3>
+        <p>
+          The benchmark tracks a single 50&nbsp;MW battery at three storage
+          durations, run side by side:
+        </p>
+        <ul>
+          <li><strong>1-hour</strong> &mdash; 50&nbsp;MW / 50&nbsp;MWh</li>
+          <li><strong>2-hour</strong> &mdash; 50&nbsp;MW / 100&nbsp;MWh</li>
+          <li><strong>4-hour</strong> &mdash; 50&nbsp;MW / 200&nbsp;MWh</li>
+        </ul>
+        <p>
+          The power rating is fixed at 50&nbsp;MW across all three; only the
+          energy capacity (and therefore the discharge duration) changes.
+        </p>
+
+        <h3>Data sources</h3>
+        <ul>
+          <li>
+            <strong>ENTSO-E</strong> &mdash; the GB day-ahead auction price used
+            to schedule the day-ahead trades.
+          </li>
+          <li>
+            <strong>Elexon</strong> &mdash; the Market Index Data (MID) price
+            used for intraday re-optimisation, plus generation and demand data
+            for day-type context.
+          </li>
+        </ul>
+
+        <h3>How a day is traded</h3>
+        <p>
+          The day-ahead schedule is optimised against the <strong>actual
+          cleared day-ahead price</strong> for the delivery day. That price is
+          published the day before, around 11:00, so optimising against it is
+          not lookahead &mdash; it is information a real participant would have
+          held before the delivery day began.
+        </p>
+        <p>
+          During the delivery day, the schedule is re-optimised intraday against
+          the <strong>observed MID price</strong>, allowing the strategy to
+          adjust to conditions that differ from the day-ahead expectation.
+        </p>
+
+        <h3>Frictions modelled</h3>
+        <p>
+          The benchmark is not frictionless. The reused settlement engine
+          charges:
+        </p>
+        <ul>
+          <li><strong>Slippage</strong> on executed trades.</li>
+          <li>
+            <strong>Degradation cost</strong> reflecting the wear of cycling the
+            battery.
+          </li>
+        </ul>
+
+        <h3>Out of scope</h3>
+        <p>
+          To keep the benchmark honest about what it does and does not measure,
+          the following are explicitly <strong>not</strong> included:
+        </p>
+        <ul>
+          <li>No real execution or order book &mdash; trades are settled, not placed.</li>
+          <li>No imbalance settlement.</li>
+          <li>No broker or exchange fees beyond the frictions listed above.</li>
+        </ul>
+        <p>
+          Results are <strong>illustrative</strong> of strategy performance
+          under the stated assumptions. They are not a guarantee of replicable
+          real-world trading results.
+        </p>
+      </div>
     </section>
 
     <!-- Shown when no data can be loaded -->

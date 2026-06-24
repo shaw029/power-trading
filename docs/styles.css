@@ -286,6 +286,32 @@ main {
   margin-bottom: 0;
 }
 
+.prose {
+  max-width: 720px;
+}
+
+.prose h3 {
+  color: var(--accent);
+  margin: 1.75rem 0 0.5rem;
+}
+
+.prose p {
+  color: var(--text);
+}
+
+.prose ul {
+  margin: 0.5rem 0 1rem;
+  padding-left: 1.25rem;
+}
+
+.prose li {
+  margin: 0.25rem 0;
+}
+
+.prose strong {
+  color: var(--text);
+}
+
 .site-footer {
   border-top: 1px solid var(--border);
   color: var(--muted);
