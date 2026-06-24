@@ -125,9 +125,11 @@ def test_backfill_records_incomplete_days(monkeypatch):
     assert not (io_store.DATA_DIR / "days").exists()
 
 
-def test_resolve_range_defaults_to_trailing_window():
-    today = dt.datetime.now(dt.timezone.utc).date()
-    yesterday = today - dt.timedelta(days=1)
+def test_resolve_range_defaults_to_trailing_window(monkeypatch):
+    # Pin "yesterday" so the assertion can't straddle the UTC midnight boundary
+    # between resolving the range and computing the expected value.
+    yesterday = dt.date(2026, 6, 23)
+    monkeypatch.setattr(backfill, "_yesterday", lambda: yesterday)
 
     start, end = backfill._resolve_range(None, None)
     assert end == yesterday
