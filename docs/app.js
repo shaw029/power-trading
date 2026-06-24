@@ -283,6 +283,10 @@
     });
   }
 
+  // Tracks the most recently requested detail day so that out-of-order fetch
+  // responses from rapid clicks can be discarded.
+  var pendingDayDetail = null;
+
   // Fetch a single day's artifact and show its labels and per-duration net PnL
   // in the detail panel.
   function showDayDetail(date, manifest) {
@@ -295,7 +299,13 @@
       panel.hidden = false;
     }
 
+    pendingDayDetail = date;
     fetchJson("data/days/" + date + ".json").then(function (day) {
+      // Ignore a response that has been superseded by a newer click.
+      if (pendingDayDetail !== date) {
+        return;
+      }
+
       renderLabels(document.getElementById("hist-detail-labels"), day && day.labels);
 
       var grid = document.getElementById("hist-detail-kpis");
