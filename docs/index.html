@@ -24,7 +24,25 @@
     <section id="view-latest" class="view" hidden>
       <h2>Latest delivery day</h2>
       <p class="view-date">Settled day: <span id="latest-date">&mdash;</span></p>
+      <div id="latest-labels" class="tag-row"></div>
+
+      <div class="duration-selector">
+        <span class="duration-selector-label">Duration</span>
+        <div id="duration-buttons" class="duration-buttons" role="group" aria-label="Battery duration"></div>
+      </div>
+
       <div id="latest-kpis" class="kpi-grid"></div>
+
+      <div class="figure-grid">
+        <figure class="fig-card">
+          <figcaption>Dispatch</figcaption>
+          <div id="fig-dispatch" class="plotly-fig">Loading&hellip;</div>
+        </figure>
+        <figure class="fig-card">
+          <figcaption>PnL waterfall</figcaption>
+          <div id="fig-waterfall" class="plotly-fig">Loading&hellip;</div>
+        </figure>
+      </div>
     </section>
 
     <!-- History (built in a later ticket) -->

@@ -90,59 +90,143 @@
     return value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
   }
 
-  function makeRow(label, valueText, valueClass) {
-    var row = document.createElement("div");
-    row.className = "kpi-row";
-
-    var labelSpan = document.createElement("span");
-    labelSpan.className = "label";
-    labelSpan.textContent = label;
-
-    var valueSpan = document.createElement("span");
-    valueSpan.className = "value" + (valueClass ? " " + valueClass : "");
-    valueSpan.textContent = valueText;
-
-    row.appendChild(labelSpan);
-    row.appendChild(valueSpan);
-    return row;
+  // Resolve the most recent settled date: latest.json's own date, else the last
+  // entry in the manifest's available_dates.
+  function pickLatestDate(latest, manifest) {
+    if (latest && latest.date) {
+      return latest.date;
+    }
+    if (manifest && Array.isArray(manifest.available_dates) && manifest.available_dates.length) {
+      return manifest.available_dates[manifest.available_dates.length - 1];
+    }
+    return null;
   }
 
-  // Build one KPI card per duration from latest.json.
-  function renderLatest(latest, manifest) {
-    var dateEl = document.getElementById("latest-date");
-    if (dateEl) {
-      dateEl.textContent = latest.date || "—";
+  // The durations to expose, preferring the manifest's ordering and falling back
+  // to whatever keys the day artifact / latest.json happen to carry.
+  function pickDurations(manifest, day, latest) {
+    if (manifest && Array.isArray(manifest.durations) && manifest.durations.length) {
+      return manifest.durations;
     }
+    if (day && day.assets) {
+      return Object.keys(day.assets);
+    }
+    if (latest && latest.cumulative_net_pnl) {
+      return Object.keys(latest.cumulative_net_pnl);
+    }
+    return [];
+  }
 
-    var grid = document.getElementById("latest-kpis");
+  // Render the day's labels (e.g. "windy", "volatile") as simple tags.
+  function renderLabels(container, labels) {
+    if (!container) {
+      return;
+    }
+    container.textContent = "";
+    if (!Array.isArray(labels) || !labels.length) {
+      return;
+    }
+    labels.forEach(function (label) {
+      var tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = label;
+      container.appendChild(tag);
+    });
+  }
+
+  function kpiTile(label, valueText, valueClass) {
+    var card = document.createElement("div");
+    card.className = "kpi-card";
+
+    var heading = document.createElement("h3");
+    heading.textContent = label;
+    card.appendChild(heading);
+
+    var value = document.createElement("div");
+    value.className = "kpi-value" + (valueClass ? " " + valueClass : "");
+    value.textContent = valueText;
+    card.appendChild(value);
+
+    return card;
+  }
+
+  // KPI tiles for one duration: net PnL, cycles and capture, sourced from the
+  // day artifact, with net PnL falling back to latest.json's cumulative figure
+  // when the per-day artifact is unavailable.
+  function renderKpis(grid, day, latest, duration) {
     if (!grid) {
       return;
     }
     grid.textContent = "";
 
-    var pnl = latest.cumulative_net_pnl || {};
-    var soc = latest.end_soc || {};
+    var asset = day && day.assets && day.assets[duration] ? day.assets[duration] : null;
+    var metrics = asset && asset.metrics ? asset.metrics : {};
+    var netPnl = asset && asset.pnl && typeof asset.pnl.net_pnl === "number"
+      ? asset.pnl.net_pnl
+      : (latest && latest.cumulative_net_pnl ? latest.cumulative_net_pnl[duration] : undefined);
 
-    // Prefer the manifest's ordering; otherwise fall back to the keys present.
-    var durations = manifest && Array.isArray(manifest.durations) && manifest.durations.length
-      ? manifest.durations
-      : Object.keys(pnl);
+    var pnlClass = typeof netPnl === "number" ? (netPnl < 0 ? "neg" : "pos") : "";
+    grid.appendChild(kpiTile("Net PnL", formatGbp(netPnl), pnlClass));
+    grid.appendChild(kpiTile("Cycles", formatNumber(metrics.cycles)));
+    grid.appendChild(kpiTile("Capture", formatNumber(metrics.capture)));
+  }
 
+  // The dispatch / waterfall figures are exported for a single default duration,
+  // so they stay fixed; only the KPI tiles react to the duration selector.
+  function renderDurationSelector(container, durations, current, onSelect) {
+    if (!container) {
+      return;
+    }
+    container.textContent = "";
     durations.forEach(function (duration) {
-      var card = document.createElement("div");
-      card.className = "kpi-card";
-
-      var heading = document.createElement("h3");
-      heading.textContent = duration + " battery";
-      card.appendChild(heading);
-
-      var pnlValue = pnl[duration];
-      var pnlClass = typeof pnlValue === "number" && pnlValue < 0 ? "neg" : "pos";
-      card.appendChild(makeRow("Cumulative net PnL", formatGbp(pnlValue), pnlClass));
-      card.appendChild(makeRow("End SOC (MWh)", formatNumber(soc[duration])));
-
-      grid.appendChild(card);
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "duration-btn" + (duration === current ? " active" : "");
+      btn.textContent = duration;
+      btn.setAttribute("data-duration", duration);
+      btn.addEventListener("click", function () {
+        var siblings = container.querySelectorAll(".duration-btn");
+        Array.prototype.forEach.call(siblings, function (b) {
+          b.classList.toggle("active", b === btn);
+        });
+        onSelect(duration);
+      });
+      container.appendChild(btn);
     });
+  }
+
+  // Build the Latest view: labels, duration selector, KPI tiles, and the two
+  // reused figures for the most recent settled day.
+  function renderLatest(latest, manifest, day) {
+    var date = pickLatestDate(latest, manifest);
+    var dateEl = document.getElementById("latest-date");
+    if (dateEl) {
+      dateEl.textContent = date || "—";
+    }
+
+    renderLabels(document.getElementById("latest-labels"), day && day.labels);
+
+    var durations = pickDurations(manifest, day, latest);
+    var current = durations.length ? durations[0] : null;
+    var grid = document.getElementById("latest-kpis");
+
+    renderDurationSelector(
+      document.getElementById("duration-buttons"),
+      durations,
+      current,
+      function (duration) {
+        renderKpis(grid, day, latest, duration);
+      }
+    );
+
+    if (current) {
+      renderKpis(grid, day, latest, current);
+    }
+
+    if (date) {
+      renderFig("fig-dispatch", "data/figs/" + date + "/dispatch.json");
+      renderFig("fig-waterfall", "data/figs/" + date + "/waterfall.json");
+    }
   }
 
   // ----------------------------------------------------------------------- //
@@ -188,8 +272,18 @@
         showView("no-data");
         return;
       }
-      renderLatest(data.latest, data.manifest);
-      showView("latest");
+
+      // The per-day artifact carries the per-duration metrics and labels; it may
+      // not be present yet, in which case the KPIs fall back to latest.json.
+      var date = pickLatestDate(data.latest, data.manifest);
+      var dayPromise = date
+        ? fetchJson("data/days/" + date + ".json")
+        : Promise.resolve(null);
+
+      dayPromise.then(function (day) {
+        renderLatest(data.latest, data.manifest, day);
+        showView("latest");
+      });
     });
   }
 
