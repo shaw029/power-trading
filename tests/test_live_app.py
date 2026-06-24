@@ -33,6 +33,8 @@ def app(monkeypatch):
         fetch_live, "get_day_prices", lambda d: _prices(d.isoformat() if isinstance(d, dt.date) else d)
     )
     monkeypatch.setattr(fetch_live, "get_day_context", _context)
+    # Keep the smoke test fast — settle a handful of days, not the full window.
+    monkeypatch.setattr(live_app, "_MAX_HISTORY_DAYS", 5)
     # Drop any cached real data from other runs so the mocks take effect.
     live_app._fetch_day.clear()
     live_app._settle_range.clear()

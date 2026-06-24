@@ -45,9 +45,10 @@ from live.settle import settle_day  # noqa: E402
 from src.bess.bess_asset import BESSAsset  # noqa: E402
 
 RESOLUTION_H = 1.0
-# Nord Pool serves recent GB day-ahead prices without a subscription for roughly
-# the last month, so the history window is capped there.
-_MAX_HISTORY_DAYS = 30
+# Nord Pool serves recent GB day-ahead prices without a subscription back to
+# roughly 65 days; 60 leaves a safety margin. Older days simply 401 → their DA
+# frame comes back empty and the day is skipped, so the window self-trims.
+_MAX_HISTORY_DAYS = 60
 
 
 def _duration_hours(duration: str) -> int:
@@ -277,7 +278,8 @@ def main():
     cfg = bess_config()
     sb = st.sidebar
     sb.header("Parameters")
-    n_days = sb.slider("Days of history", 3, _MAX_HISTORY_DAYS, 14)
+    # Always load the full free Nord Pool window — no reason to show less history.
+    n_days = _MAX_HISTORY_DAYS
     duration = sb.radio(
         "Duration",
         list(REFERENCE_DURATIONS),
@@ -296,6 +298,7 @@ def main():
     soc_min, soc_max = soc_min / 100.0, soc_max / 100.0
 
     sb.divider()
+    sb.caption(f"History: last {n_days} days (the full free Nord Pool window).")
     sb.caption(
         "Fixed assumptions: "
         f"MID basis £{cfg.get('margin_buy', 0):.1f}/MWh · "
