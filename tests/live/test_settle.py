@@ -106,6 +106,26 @@ def test_invalid_period_count_returns_none(n_periods: int):
     assert result is None
 
 
+def test_capture_equals_net_pnl_over_arbitrage_bound():
+    # Capture must be exactly realised net PnL divided by the perfect-foresight
+    # day-ahead arbitrage ceiling, recomputed from the same starting SOC.
+    cfg = bess_config()
+    assets = build_assets()
+    prices = _prices(24)
+    start = _start_soc()
+    result = settle.settle_day(_DAY, prices, cfg, assets, start)
+
+    assert result is not None
+    day_ahead_prices = prices["day_ahead_price"].tolist()
+    duration_h = cfg.get("resolution_h", 1.0)
+    for name, dur in result.durations.items():
+        asset = assets[name]
+        asset.reset(start[name])
+        upper_bound = settle._arbitrage_upper_bound(day_ahead_prices, asset, duration_h)
+        assert upper_bound > settle._CAPTURE_EPS
+        assert dur.capture == pytest.approx(dur.net_pnl / upper_bound)
+
+
 def test_flat_prices_give_near_zero_pnl():
     cfg = bess_config()
     assets = build_assets()

@@ -141,6 +141,35 @@ def test_aggregate_writes_loadable_history_figures():
         json.loads(path.read_text(encoding="utf-8"))
 
 
+def test_aggregate_with_no_day_files():
+    # No day artifacts have been written, so the roll-up produces empty history
+    # and manifest rows while still writing four loadable figures.
+    summary = aggregate.aggregate()
+
+    assert summary["dates"] == []
+    assert summary["durations"] == []
+
+    history = io_store.read_history()
+    assert history is not None
+    assert history["rows"] == []
+
+    manifest_path = io_store._manifest_path()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    schema.validate_manifest(manifest)
+    assert manifest["available_dates"] == []
+    assert manifest["durations"] == []
+
+    assert set(summary["figures"]) == {
+        "equity",
+        "duration_comparison",
+        "daytype_scatter",
+        "daytype_profiles",
+    }
+    for path in summary["figures"].values():
+        assert path.exists()
+        pio.from_json(path.read_text(encoding="utf-8"))
+
+
 def test_aggregate_is_idempotent():
     _write_days()
 

@@ -47,6 +47,17 @@ def test_high_wind_share_is_windy() -> None:
     assert "windy" in tags
 
 
+def test_high_solar_is_sunny() -> None:
+    context = _full_context()
+    context["solar_gwh"] = DEFAULTS["solar_gwh"] + 10.0
+    tags = classify.classify(_prices([50.0] * 24), context)
+    assert "sunny" in tags
+
+    # Just below the threshold the tag is withheld.
+    context["solar_gwh"] = DEFAULTS["solar_gwh"] - 10.0
+    assert "sunny" not in classify.classify(_prices([50.0] * 24), context)
+
+
 def test_all_none_context_returns_price_tags_only() -> None:
     none_context: dict[str, float | None] = {
         "wind_gwh": None,

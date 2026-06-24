@@ -106,8 +106,8 @@ def _generation_aggregates(date: dt.date) -> tuple[float, float, float]:
     wind_gwh = _gwh("gen_WIND")
     solar_gwh = _gwh("gen_SOLAR")
     total_gwh = float(gen[gen_cols].sum().sum() * _PERIOD_HOURS * _MWH_TO_GWH)
-    wind_share = wind_gwh / total_gwh if total_gwh > 0 else None
-    return wind_gwh, solar_gwh, wind_share  # type: ignore[return-value]
+    wind_share = wind_gwh / total_gwh if total_gwh > 0 else 0.0
+    return wind_gwh, solar_gwh, wind_share
 
 
 def _demand_aggregate(date: dt.date) -> float:

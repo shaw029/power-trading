@@ -99,6 +99,18 @@ def test_get_day_context_returns_four_aggregate_fields():
     assert context["wind_share"] == pytest.approx(1000.0 / 3500.0)
 
 
+def test_generation_aggregates_raises_when_no_data_for_day():
+    # Generation rows exist, but all fall on a different day, so after the
+    # delivery-day window filter nothing remains and a ValueError is raised.
+    times = pd.date_range("2024-02-01T00:00:00Z", periods=48, freq="30min")
+    other_day = pd.DataFrame(
+        {"startTime": times, "fuelType": "WIND", "generation": 1000.0}
+    )
+    with mock.patch.object(fetch_live, "fetch_generation_actual", return_value=other_day):
+        with pytest.raises(ValueError):
+            fetch_live._generation_aggregates(_DAY)
+
+
 def test_get_day_context_returns_none_when_fetchers_raise():
     boom = mock.Mock(side_effect=RuntimeError("network down"))
     with (
