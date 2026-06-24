@@ -35,8 +35,9 @@
     return Promise.all([
       fetchJson("data/manifest.json"),
       fetchJson("data/latest.json"),
+      fetchJson("data/history.json"),
     ]).then(function (results) {
-      return { manifest: results[0], latest: results[1] };
+      return { manifest: results[0], latest: results[1], history: results[2] };
     });
   }
 
@@ -230,6 +231,142 @@
   }
 
   // ----------------------------------------------------------------------- //
+  // History view
+  // ----------------------------------------------------------------------- //
+
+  // Plotly reports a datetime x value as a string like "2026-06-23" or
+  // "2026-06-23 00:00:00"; keep just the calendar date so it matches the day
+  // artifact filenames under data/days/.
+  function asDate(value) {
+    return String(value).slice(0, 10);
+  }
+
+  // Build a grouped daily-PnL bar chart client-side from the history rows: one
+  // group per date, one bar per duration carrying that day's net PnL.
+  function dailyPnlFigure(rows, durations) {
+    var dates = rows.map(function (row) {
+      return row.date;
+    });
+    var traces = durations.map(function (duration) {
+      return {
+        type: "bar",
+        name: duration,
+        x: dates,
+        y: rows.map(function (row) {
+          var value = row.net_pnl ? row.net_pnl[duration] : undefined;
+          return typeof value === "number" ? value : null;
+        }),
+      };
+    });
+    var layout = {
+      title: "Daily Net PnL by Duration",
+      barmode: "group",
+      xaxis: { title: "Date" },
+      yaxis: { title: "Net PnL (£)" },
+      template: "plotly_white",
+      height: 400,
+      legend: { orientation: "h", x: 0, y: 1.12 },
+    };
+    return { data: traces, layout: layout };
+  }
+
+  // Wire a Plotly click on a graph div so clicking a point/bar loads that day.
+  function wireDayClick(div, onDate) {
+    if (!div || typeof div.on !== "function") {
+      return;
+    }
+    div.on("plotly_click", function (event) {
+      var point = event && event.points && event.points[0];
+      if (point && point.x != null) {
+        onDate(asDate(point.x));
+      }
+    });
+  }
+
+  // Fetch a single day's artifact and show its labels and per-duration net PnL
+  // in the detail panel.
+  function showDayDetail(date, manifest) {
+    var panel = document.getElementById("hist-detail");
+    var dateEl = document.getElementById("hist-detail-date");
+    if (dateEl) {
+      dateEl.textContent = date;
+    }
+    if (panel) {
+      panel.hidden = false;
+    }
+
+    fetchJson("data/days/" + date + ".json").then(function (day) {
+      renderLabels(document.getElementById("hist-detail-labels"), day && day.labels);
+
+      var grid = document.getElementById("hist-detail-kpis");
+      if (!grid) {
+        return;
+      }
+      grid.textContent = "";
+
+      if (!day || !day.assets) {
+        grid.appendChild(kpiTile("Net PnL", "—", ""));
+        return;
+      }
+
+      var durations = pickDurations(manifest, day, null);
+      durations.forEach(function (duration) {
+        var asset = day.assets[duration];
+        var netPnl = asset && asset.pnl ? asset.pnl.net_pnl : undefined;
+        var pnlClass = typeof netPnl === "number" ? (netPnl < 0 ? "neg" : "pos") : "";
+        grid.appendChild(kpiTile(duration + " net PnL", formatGbp(netPnl), pnlClass));
+      });
+    });
+  }
+
+  // Build the History view: the equity curve and duration-comparison figures,
+  // a client-side daily-PnL bar chart, and click-through to a day's detail.
+  function renderHistory(history, manifest) {
+    var empty = document.getElementById("history-empty");
+    var content = document.getElementById("history-content");
+    var rows = history && Array.isArray(history.rows) ? history.rows : [];
+
+    if (!rows.length) {
+      if (empty) {
+        empty.hidden = false;
+      }
+      if (content) {
+        content.hidden = true;
+      }
+      return;
+    }
+
+    if (empty) {
+      empty.hidden = true;
+    }
+    if (content) {
+      content.hidden = false;
+    }
+
+    var durations = pickDurations(manifest, null, null);
+    if (!durations.length) {
+      durations = Object.keys(rows[0].net_pnl || {});
+    }
+
+    var onDate = function (date) {
+      showDayDetail(date, manifest);
+    };
+
+    renderFig("hist-fig-equity", "data/figs/_history/equity.json").then(function () {
+      wireDayClick(document.getElementById("hist-fig-equity"), onDate);
+    });
+    renderFig("hist-fig-duration", "data/figs/_history/duration_comparison.json");
+
+    var dailyDiv = document.getElementById("hist-fig-daily");
+    if (dailyDiv) {
+      var fig = dailyPnlFigure(rows, durations);
+      Plotly.newPlot(dailyDiv, fig.data, fig.layout, { responsive: true }).then(function () {
+        wireDayClick(dailyDiv, onDate);
+      });
+    }
+  }
+
+  // ----------------------------------------------------------------------- //
   // View routing
   // ----------------------------------------------------------------------- //
 
@@ -248,13 +385,17 @@
     });
   }
 
-  function wireNav(hasData) {
+  function wireNav(hasData, onShow) {
     var buttons = document.querySelectorAll(".nav-link");
     Array.prototype.forEach.call(buttons, function (button) {
       button.addEventListener("click", function () {
         var view = button.getAttribute("data-view");
         // Without data, only the no-data notice is meaningful.
-        showView(hasData ? view : "no-data");
+        var resolved = hasData ? view : "no-data";
+        showView(resolved);
+        if (onShow) {
+          onShow(resolved);
+        }
       });
     });
   }
@@ -266,7 +407,16 @@
   function init() {
     loadData().then(function (data) {
       var hasLatest = data.latest && !isEmpty(data.latest.cumulative_net_pnl);
-      wireNav(hasLatest);
+
+      // Render the History view lazily on first navigation, so its figures size
+      // against a visible (non-zero-width) container.
+      var historyRendered = false;
+      wireNav(hasLatest, function (view) {
+        if (view === "history" && !historyRendered) {
+          historyRendered = true;
+          renderHistory(data.history, data.manifest);
+        }
+      });
 
       if (!hasLatest) {
         showView("no-data");

@@ -45,10 +45,38 @@
       </div>
     </section>
 
-    <!-- History (built in a later ticket) -->
+    <!-- History -->
     <section id="view-history" class="view" hidden>
       <h2>History</h2>
-      <p class="placeholder">Cumulative equity and per-day history land in a later update.</p>
+      <p id="history-empty" class="placeholder" hidden>
+        No day-by-day history has been published yet. Once more than one day is
+        settled, the equity curve and per-day breakdown appear here.
+      </p>
+
+      <div id="history-content" hidden>
+        <div class="figure-grid">
+          <figure class="fig-card">
+            <figcaption>Equity curve</figcaption>
+            <div id="hist-fig-equity" class="plotly-fig">Loading&hellip;</div>
+          </figure>
+          <figure class="fig-card">
+            <figcaption>Daily net PnL</figcaption>
+            <div id="hist-fig-daily" class="plotly-fig">Loading&hellip;</div>
+          </figure>
+          <figure class="fig-card">
+            <figcaption>Duration comparison</figcaption>
+            <div id="hist-fig-duration" class="plotly-fig">Loading&hellip;</div>
+          </figure>
+        </div>
+
+        <p class="hint">Click a day on the equity curve or a daily-PnL bar to see that day's detail.</p>
+
+        <div id="hist-detail" class="day-detail" hidden>
+          <h3>Day detail &mdash; <span id="hist-detail-date">&mdash;</span></h3>
+          <div id="hist-detail-labels" class="tag-row"></div>
+          <div id="hist-detail-kpis" class="kpi-grid"></div>
+        </div>
+      </div>
     </section>
 
     <!-- Day-types (built in a later ticket) -->
