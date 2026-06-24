@@ -152,8 +152,8 @@
   }
 
   // KPI tiles for one duration: net PnL, cycles and capture, sourced from the
-  // day artifact, with net PnL falling back to latest.json's cumulative figure
-  // when the per-day artifact is unavailable.
+  // day artifact. Net PnL is a per-day figure, so it is left blank when the
+  // per-day artifact is unavailable rather than borrowing the cumulative total.
   function renderKpis(grid, day, latest, duration) {
     if (!grid) {
       return;
@@ -164,7 +164,7 @@
     var metrics = asset && asset.metrics ? asset.metrics : {};
     var netPnl = asset && asset.pnl && typeof asset.pnl.net_pnl === "number"
       ? asset.pnl.net_pnl
-      : (latest && latest.cumulative_net_pnl ? latest.cumulative_net_pnl[duration] : undefined);
+      : undefined;
 
     var pnlClass = typeof netPnl === "number" ? (netPnl < 0 ? "neg" : "pos") : "";
     grid.appendChild(kpiTile("Net PnL", formatGbp(netPnl), pnlClass));
@@ -419,7 +419,7 @@
   }
 
   // Build the Day-types view: a label filter, the DA-spread-vs-net-PnL scatter
-  // and the average-profile comparison, plus a windy-vs-calm focus toggle. The
+  // and the average-profile comparison, plus a windy/sunny/calm focus toggle. The
   // filter and toggle re-style both figures client-side.
   function renderDayTypes(history) {
     var empty = document.getElementById("daytype-empty");
@@ -470,7 +470,7 @@
     }
 
     // Force the selection (and its checkboxes) to exactly `active`, e.g. the
-    // windy/calm pair for the comparison focus.
+    // windy/sunny/calm set for the comparison focus.
     function setOnly(active) {
       tags.forEach(function (tag) {
         var on = active.indexOf(tag) !== -1;
@@ -503,7 +503,7 @@
         input.value = tag;
         input.addEventListener("change", function () {
           selected[tag] = input.checked;
-          // A manual edit leaves the windy-vs-calm focus, visually.
+          // A manual edit leaves the comparison focus, visually.
           setCompareVisual(false);
           apply();
         });
@@ -526,7 +526,7 @@
           setAll(true);
           setCompareVisual(false);
         } else {
-          setOnly(["windy", "calm"]);
+          setOnly(["windy", "sunny", "calm"]);
           setCompareVisual(true);
         }
         apply();
