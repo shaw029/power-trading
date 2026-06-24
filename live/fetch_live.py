@@ -52,8 +52,9 @@ def get_day_prices(date: dt.date) -> pd.DataFrame:
     """Return hourly day-ahead and market-index prices for a single delivery day.
 
     The frame is UTC-indexed, resampled to ``"60min"`` (matching the engine's
-    ``resolution_h = 1.0``), NaN-dropped, and covers exactly ``[date, date + 1
-    day)`` with columns ``day_ahead_price`` and ``mid_price``.
+    ``resolution_h = 1.0``), and covers exactly ``[date, date + 1 day)`` with
+    columns ``day_ahead_price`` and ``mid_price``. Rows missing a day-ahead
+    price are dropped; a missing ``mid_price`` is left as NaN.
     """
     start, end = _day_window(date)
     date_str = date.isoformat()
@@ -72,7 +73,11 @@ def get_day_prices(date: dt.date) -> pd.DataFrame:
     prices = day_ahead.join(mid, how="outer")
     prices = prices[(prices.index >= start) & (prices.index < end)]
     prices = prices.resample(_RESAMPLE_RULE).mean()
-    prices = prices[["day_ahead_price", "mid_price"]].dropna()
+    # Only the day-ahead price is essential; a missing mid_price must not throw
+    # away an otherwise valid day-ahead row, so drop on that column alone.
+    prices = prices[["day_ahead_price", "mid_price"]].dropna(
+        subset=["day_ahead_price"]
+    )
     prices.index.name = "time"
     return prices
 
