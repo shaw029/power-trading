@@ -39,6 +39,8 @@ def bess_config() -> dict:
     are applied here too. The returned dict is the validated ``bess`` block.
     """
     raw = yaml.safe_load(_EXAMPLE_CONFIG_PATH.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError(f"Config file is empty or invalid: {_EXAMPLE_CONFIG_PATH}")
     raw["strategy_type"] = "bess"
     validated = validate_config(raw)
     bess: dict = validated["bess"]

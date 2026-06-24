@@ -1,3 +1,6 @@
+import pytest
+
+import live.assets as assets_module
 from live.assets import REFERENCE_DURATIONS, build_assets, bess_config
 from src.bess.bess_asset import BESSAsset
 
@@ -37,3 +40,18 @@ def test_initial_soc_is_configurable():
     assets = build_assets(initial_soc_pct=0.25)
     for asset in assets.values():
         assert asset.soc_pct == 0.25
+
+
+def test_bess_config_raises_on_empty_config(tmp_path, monkeypatch):
+    empty = tmp_path / "empty.yaml"
+    empty.write_text("")
+    monkeypatch.setattr(assets_module, "_EXAMPLE_CONFIG_PATH", empty)
+    with pytest.raises(ValueError):
+        bess_config()
+
+
+def test_bess_config_raises_on_missing_config(tmp_path, monkeypatch):
+    missing = tmp_path / "missing.yaml"
+    monkeypatch.setattr(assets_module, "_EXAMPLE_CONFIG_PATH", missing)
+    with pytest.raises(FileNotFoundError):
+        bess_config()
