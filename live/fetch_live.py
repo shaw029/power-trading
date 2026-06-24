@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 # resampled from their 30-min native grid onto a 60-min grid.
 _RESAMPLE_RULE = "60min"
 
+# Live day-ahead price provider. ENTSO-E stopped publishing GB day-ahead prices,
+# so the live path defaults to Nord Pool's GB (N2EX) feed.
+_DA_SOURCE = "NORDPOOL"
+
 # Native generation/demand data is half-hourly, so each period covers 0.5 h.
 _PERIOD_HOURS = 0.5
 # Megawatt-hours to gigawatt-hours.
@@ -48,7 +52,7 @@ def _day_window(date: dt.date) -> tuple[pd.Timestamp, pd.Timestamp]:
     return start, start + pd.Timedelta(days=1)
 
 
-def get_day_prices(date: dt.date) -> pd.DataFrame:
+def get_day_prices(date: dt.date, da_source: str = _DA_SOURCE) -> pd.DataFrame:
     """Return hourly day-ahead and market-index prices for a single delivery day.
 
     The frame is UTC-indexed, resampled to ``"60min"`` (matching the engine's
@@ -56,14 +60,19 @@ def get_day_prices(date: dt.date) -> pd.DataFrame:
     columns ``day_ahead_price`` and ``mid_price``. Rows missing a day-ahead
     price are dropped; a missing ``mid_price`` falls back to that row's
     day-ahead price.
+
+    ``da_source`` selects the day-ahead price provider; it defaults to
+    ``"NORDPOOL"`` (live GB N2EX prices) since ENTSO-E no longer publishes GB
+    day-ahead prices. Pass ``"ENTSOE"`` to read the historical/cached archive.
     """
     start, end = _day_window(date)
     date_str = date.isoformat()
     next_str = (date + dt.timedelta(days=1)).isoformat()
 
-    # Day-ahead price: loop is `current < end`, so end is the next day.
+    # Day-ahead price. Nord Pool (live GB) days are CET-labelled, so the fetcher
+    # pulls [date, next] inclusive; the window slice below trims to the UTC day.
     day_ahead = process_day_ahead_price(
-        fetch_day_ahead_price(start_date=date_str, end_date=next_str)
+        fetch_day_ahead_price(source=da_source, start_date=date_str, end_date=next_str)
     )
     # Market index (MID) goes through the Elexon path, which reads the inclusive
     # [start_date, end_date] day(s).

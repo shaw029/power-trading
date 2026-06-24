@@ -36,6 +36,9 @@ ENTSOE_API_KEY = os.environ.get("ENTSOE_API_KEY", "")
 ELEXON_BASE_URL = "https://data.elexon.co.uk/bmrs/api/v1"
 ENTSOE_BASE_URL = "https://web-api.tp.entsoe.eu/api"
 NESO_BASE_URL = "https://api.neso.energy/api/3/action/datastore_search_sql"
+# Nord Pool data portal — live GB (N2EX) day-ahead prices. ENTSO-E stopped
+# publishing GB day-ahead prices, so this is the live source for the DA price.
+NORDPOOL_DA_BASE_URL = "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices"
 
 # NESO CKAN Resource IDs
 NESO_NDFD_RESOURCE_ID = "9847e7bb-986e-49be-8138-717b25933fbb"
@@ -166,7 +169,7 @@ _FIXED_SOURCE_DEFAULTS = {
     "imbalance_source": "ELEXON",
 }
 
-_ALLOWED_SOURCES = {"ELEXON", "ENTSOE", "NESO_API", "CSV"}
+_ALLOWED_SOURCES = {"ELEXON", "ENTSOE", "NESO_API", "NORDPOOL", "CSV"}
 
 
 def load_config(path: str | Path) -> dict:

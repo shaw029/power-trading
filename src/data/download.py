@@ -14,6 +14,7 @@ from src.utils.config import (
     ELEXON_API_KEY,
     ENTSOE_BASE_URL,
     ENTSOE_API_KEY,
+    NORDPOOL_DA_BASE_URL,
     NESO_BASE_URL,
     NESO_NDFD_RESOURCE_ID,
     DEFAULT_DEMAND_FORECAST_SOURCE,
@@ -659,20 +660,101 @@ def fetch_day_ahead_price_from_csv(csv_path=DAY_AHEAD_PRICE_CSV) -> pd.DataFrame
     return df
 
 
+def _fetch_nordpool_da_day(market_day: pd.Timestamp) -> pd.DataFrame:
+    """Fetch one Nord Pool delivery day of GB (N2EX) day-ahead prices.
+
+    Nord Pool labels each delivery day in CET (``deliveryDateCET``); the entries
+    themselves carry explicit UTC ``deliveryStart`` timestamps, so the returned
+    frame is UTC-correct and callers stitch consecutive days together to cover a
+    London/UTC window. Prices are hourly £/MWh for the ``UK`` area.
+
+    Returns a DataFrame with columns ``time`` (UTC) and ``value`` (£/MWh); empty
+    on any error or if the day is unavailable (Nord Pool only serves recent days
+    without a subscription).
+    """
+    date_str = market_day.strftime("%Y%m%d")
+    cache_dir = os.path.join(RAW_DATA_DIR, "NORDPOOL_DA")
+    daily_file = os.path.join(cache_dir, f"NORDPOOL_DA_{date_str}.json")
+
+    if os.path.exists(daily_file):
+        with open(daily_file, encoding="utf-8") as fp:
+            records = json.load(fp).get("data", [])
+    else:
+        params = {
+            "date": market_day.strftime("%Y-%m-%d"),
+            "market": "N2EX_DayAhead",
+            "deliveryArea": "UK",
+            "currency": "GBP",
+        }
+        headers = {"Accept": "application/json", "User-Agent": "power-trading/1.0"}
+        resp = requests.get(NORDPOOL_DA_BASE_URL, params=params, headers=headers, timeout=60)
+        if resp.status_code != 200 or not resp.content:
+            logger.warning("Nord Pool DA %s: HTTP %s (no data)", market_day.date(), resp.status_code)
+            return pd.DataFrame(columns=["time", "value"])
+        entries = resp.json().get("multiAreaEntries", [])
+        records = [
+            {"time": e["deliveryStart"], "value": e["entryPerArea"]["UK"]}
+            for e in entries
+            if "UK" in e.get("entryPerArea", {})
+        ]
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(daily_file, "w", encoding="utf-8") as fp:
+            json.dump({"data": records}, fp)
+        logger.info("Downloaded Nord Pool DA %s: %d records", market_day.date(), len(records))
+
+    if not records:
+        return pd.DataFrame(columns=["time", "value"])
+    df = pd.DataFrame(records)
+    df["time"] = pd.to_datetime(df["time"], utc=True)
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    return df[["time", "value"]]
+
+
+def fetch_day_ahead_price_nordpool(
+    start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
+    """Fetch GB (N2EX) day-ahead prices from Nord Pool over a date range.
+
+    Because Nord Pool delivery days are CET-labelled, the range is fetched
+    *inclusive* of ``end_date`` so that the trailing hours of the final UTC day
+    are covered; callers slice the exact window they need afterwards.
+    """
+    logger.info("Fetching day-ahead prices from Nord Pool (N2EX, GB)")
+    current = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
+    all_dfs = []
+    while current <= end:
+        day = _fetch_nordpool_da_day(current)
+        if not day.empty:
+            all_dfs.append(day)
+        current += pd.Timedelta(days=1)
+
+    if not all_dfs:
+        logger.error("No Nord Pool day-ahead data fetched")
+        return pd.DataFrame(columns=["time", "value"])
+    df = pd.concat(all_dfs, ignore_index=True)
+    df = df.sort_values("time").drop_duplicates(subset=["time"])
+    df = df[df["time"].notna()]
+    logger.info("Nord Pool day-ahead price processed. Shape: %s", df.shape)
+    return df[["time", "value"]]
+
+
 def fetch_day_ahead_price(
     source: str | None = None, start_date: str = START_DATE, end_date: str = END_DATE
 ) -> pd.DataFrame:
     """
     Fetch day-ahead electricity price data.
-    source: "ENTSOE" (default) or "CSV"
+    source: "ENTSOE" (default), "NORDPOOL" (live GB), or "CSV"
     Returns DataFrame with columns: time, value.
     """
     if source is None:
         source = DEFAULT_DAY_AHEAD_PRICE_SOURCE
     if source == "CSV":
         return fetch_day_ahead_price_from_csv()
+    if source == "NORDPOOL":
+        return fetch_day_ahead_price_nordpool(start_date=start_date, end_date=end_date)
     if source != "ENTSOE":
-        raise ValueError(f"Unknown source '{source}'. Must be 'ENTSOE' or 'CSV'")
+        raise ValueError(f"Unknown source '{source}'. Must be 'ENTSOE', 'NORDPOOL' or 'CSV'")
 
     logger.info("Fetching day-ahead prices from ENTSO-E")
 
