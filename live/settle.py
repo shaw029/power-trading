@@ -168,10 +168,16 @@ def settle_day(
 
     Returns a :class:`DayResult` with one :class:`DurationResult` per duration,
     or ``None`` if the day's period count is not in :data:`VALID_PERIOD_COUNTS`
-    (the DST / malformed-data guard) — mirroring the pipeline's behaviour of
-    skipping such days rather than attempting settlement.
+    (the DST / malformed-data guard) or a required price column is absent —
+    mirroring the pipeline's behaviour of skipping such days rather than
+    attempting settlement.
+
+    A duration missing from ``prev_end_soc`` falls back to its asset's
+    ``initial_soc_pct`` rather than failing the whole day.
     """
     if len(prices) not in VALID_PERIOD_COUNTS:
+        return None
+    if "day_ahead_price" not in prices.columns or "mid_price" not in prices.columns:
         return None
 
     day_ahead_prices = prices["day_ahead_price"].tolist()
@@ -184,7 +190,7 @@ def settle_day(
             mid_prices=mid_prices,
             asset=asset,
             bess_cfg=bess_cfg,
-            start_soc_pct=prev_end_soc[duration],
+            start_soc_pct=prev_end_soc.get(duration, asset.initial_soc_pct),
         )
 
     return DayResult(date=date, durations=durations)

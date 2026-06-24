@@ -74,7 +74,9 @@ def classify(
         ``solar_gwh`` and ``demand_gwh`` are consulted). Any field may be
         ``None``, in which case the dependent tag is simply omitted.
     thresholds:
-        Threshold dictionary; defaults to :data:`DEFAULTS`.
+        Threshold dictionary; defaults to :data:`DEFAULTS`. A custom dictionary
+        need only override the keys it cares about — any key it omits falls back
+        to the corresponding :data:`DEFAULTS` value.
 
     Returns
     -------
@@ -82,6 +84,10 @@ def classify(
         Zero or more tags from :data:`TAGS`, in a fixed deterministic order.
         Never raises.
     """
+    # Back any custom dictionary with the defaults so an omitted threshold key
+    # never raises a KeyError below.
+    thresholds = {**DEFAULTS, **thresholds}
+
     tags: list[str] = []
 
     # Price-derived tags: volatility of the day-ahead curve.
