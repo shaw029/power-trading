@@ -108,6 +108,31 @@ def test_interrupted_write_does_not_corrupt_existing_file(monkeypatch):
     assert not (io_store._day_path(_DAY).with_name(io_store._day_path(_DAY).name + ".tmp")).exists()
 
 
+def test_nan_value_aborts_write_and_does_not_publish():
+    # A non-finite value (e.g. a missing MID price flowing through settlement)
+    # must never be published: it serialises to the bare token NaN, which the
+    # browser's strict JSON.parse rejects and which would blank the dashboard.
+    day_result = _settled_day()
+    first = next(iter(day_result.durations.values()))
+    first.dispatch_log[0]["mid_price"] = float("nan")
+
+    with pytest.raises(ValueError):
+        io_store.write_day(_DAY, day_result, _context(), ["windy"])
+
+    # Nothing published and no temp file left behind.
+    assert not io_store._day_path(_DAY).exists()
+    tmp = io_store._day_path(_DAY).with_name(io_store._day_path(_DAY).name + ".tmp")
+    assert not tmp.exists()
+
+
+def test_schema_rejects_non_finite_numbers():
+    assert schema._is_number(1.0)
+    assert schema._is_number(0)
+    assert not schema._is_number(float("nan"))
+    assert not schema._is_number(float("inf"))
+    assert not schema._is_number(float("-inf"))
+
+
 def test_all_artifacts_carry_schema_version():
     day_result = _settled_day()
     io_store.write_day(_DAY, day_result, _context(), ["windy"])

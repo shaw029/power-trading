@@ -12,6 +12,7 @@ Every artifact carries ``"schema_version": 1`` (:data:`SCHEMA_VERSION`); changin
 any shape requires bumping that constant.
 """
 
+import math
 from typing import Any
 
 # Current artifact schema version. Stamped on every written artifact and checked
@@ -54,8 +55,16 @@ def _require(condition: bool, message: str) -> None:
 
 
 def _is_number(value: Any) -> bool:
-    """True for a real (non-bool) int or float."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    """True for a real (non-bool), finite int or float.
+
+    NaN and Inf are excluded: they cannot be represented in strict JSON and would
+    break the browser's JSON.parse, so they must never pass validation.
+    """
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 def _is_number_or_none(value: Any) -> bool:

@@ -4,7 +4,7 @@ lint:
 	flake8 .
 
 format:
-	black src/ tests/ main.py pipeline.py dashboard/
+	black src/ tests/ main.py pipeline.py dashboard/ live/
 
 typecheck:
 	mypy .

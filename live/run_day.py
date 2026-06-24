@@ -9,8 +9,9 @@ delivery day:
   2. Fetch the day's prices and tier-2 context (:mod:`live.fetch_live`).
   3. Settle all reference durations (:func:`live.settle.settle_day`).
   4. Classify the day's character (:func:`live.classify.classify`).
-  5. Persist the per-day artifact and advance ``latest.json``
-     (:func:`live.io_store.write_day` / :func:`live.io_store.write_latest`).
+  5. Persist the per-day artifact, export the day-detail figures and advance
+     ``latest.json`` (:func:`live.io_store.write_day` /
+     :func:`live.figures.write_day_figures` / :func:`live.io_store.write_latest`).
 
 It is built to run headless inside CI: no interactive prompts, structured
 one-line logging per step, idempotent per date (re-running a date overwrites its
@@ -27,7 +28,7 @@ import logging
 import sys
 
 from live import classify as classify_mod
-from live import fetch_live, io_store
+from live import fetch_live, figures, io_store
 from live.assets import DEFAULT_START_SOC, REFERENCE_DURATIONS, bess_config, build_assets
 from live.settle import settle_day
 
@@ -117,6 +118,11 @@ def run_day(date: dt.date) -> bool:
     logger.info("classify: date=%s labels=%s", date, labels)
 
     io_store.write_day(date, day_result, context, labels)
+    # Export the day-detail figures the dashboard fetches per date
+    # (figs/<date>/dispatch.json + waterfall.json); reads back the artifact just
+    # written, so it must follow write_day.
+    fig_paths = figures.write_day_figures(date.isoformat())
+    logger.info("figures: date=%s wrote=%s", date, sorted(fig_paths))
     # Recompute latest.json from every stored day so cumulative PnL is summed
     # from scratch — re-running or gap-filling a day never double-counts it.
     cumulative = _advance_latest()

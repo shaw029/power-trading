@@ -97,7 +97,12 @@ def _atomic_write(path: Path, obj: dict, validate: Callable[[Any], None]) -> Non
     tmp = path.with_name(path.name + ".tmp")
     try:
         with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(rounded, handle, indent=2)
+            # allow_nan=False: NaN/Inf serialise to the bare tokens NaN/Infinity,
+            # which are valid to Python's json but rejected by the browser's strict
+            # JSON.parse (docs/app.js). Refuse them here so a non-finite value (e.g.
+            # a missing MID price) aborts the write and leaves the good target in
+            # place rather than publishing an artifact that blanks the dashboard.
+            json.dump(rounded, handle, indent=2, allow_nan=False)
         with open(tmp, "r", encoding="utf-8") as handle:
             written = json.load(handle)
         validate(written)

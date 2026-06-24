@@ -59,6 +59,18 @@ def test_normal_run_writes_day_and_advances_latest(monkeypatch):
     assert set(latest["cumulative_net_pnl"]) == set(REFERENCE_DURATIONS)
 
 
+def test_run_writes_day_detail_figures(monkeypatch):
+    # The dashboard fetches figs/<date>/dispatch.json + waterfall.json per day,
+    # so run_day must export them alongside the artifact.
+    _mock_fetch(monkeypatch, _prices())
+
+    assert run_day.run_day(_DAY) is True
+
+    figs_dir = io_store.DATA_DIR / "figs" / _DAY.isoformat()
+    assert (figs_dir / "dispatch.json").exists()
+    assert (figs_dir / "waterfall.json").exists()
+
+
 def test_rerun_same_date_overwrites_without_duplicate(monkeypatch):
     _mock_fetch(monkeypatch, _prices())
 
