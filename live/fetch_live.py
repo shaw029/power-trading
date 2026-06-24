@@ -54,7 +54,8 @@ def get_day_prices(date: dt.date) -> pd.DataFrame:
     The frame is UTC-indexed, resampled to ``"60min"`` (matching the engine's
     ``resolution_h = 1.0``), and covers exactly ``[date, date + 1 day)`` with
     columns ``day_ahead_price`` and ``mid_price``. Rows missing a day-ahead
-    price are dropped; a missing ``mid_price`` is left as NaN.
+    price are dropped; a missing ``mid_price`` falls back to that row's
+    day-ahead price.
     """
     start, end = _day_window(date)
     date_str = date.isoformat()
@@ -78,6 +79,12 @@ def get_day_prices(date: dt.date) -> pd.DataFrame:
     prices = prices[["day_ahead_price", "mid_price"]].dropna(
         subset=["day_ahead_price"]
     )
+    # A missing intraday MID for an otherwise valid period falls back to that
+    # period's day-ahead price (MID == DA → zero intraday spread, so the engine
+    # simply won't deviate). Leaving it NaN would crash the intraday LP
+    # ("Cannot multiply variables with NaN/inf") and, if it ever survived,
+    # serialise to an invalid JSON NaN token that blanks the dashboard.
+    prices["mid_price"] = prices["mid_price"].fillna(prices["day_ahead_price"])
     prices.index.name = "time"
     return prices
 

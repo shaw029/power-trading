@@ -65,7 +65,7 @@ def test_get_day_prices_returns_hourly_frame_with_both_columns():
     assert not prices.isna().any().any()
 
 
-def test_get_day_prices_keeps_day_ahead_rows_with_missing_mid():
+def test_get_day_prices_falls_back_missing_mid_to_day_ahead():
     # Mid price covers only the first 23 hours, so the final hour has a valid
     # day-ahead price but no mid price.
     mid_short = _mid_raw().iloc[: 23 * 2]
@@ -75,12 +75,14 @@ def test_get_day_prices_keeps_day_ahead_rows_with_missing_mid():
     ):
         prices = fetch_live.get_day_prices(_DAY)
 
-    # All 24 day-ahead rows are kept even though the last hour's mid is missing.
+    # All 24 day-ahead rows are kept and no NaN survives — the last hour's
+    # missing mid falls back to that hour's day-ahead price, so the frame is
+    # safe for the intraday LP and for strict-JSON serialisation.
     assert len(prices) == 24
-    assert not prices["day_ahead_price"].isna().any()
+    assert not prices.isna().any().any()
     last = pd.Timestamp("2024-01-01T23:00:00Z")
     assert last in prices.index
-    assert pd.isna(prices.loc[last, "mid_price"])
+    assert prices.loc[last, "mid_price"] == prices.loc[last, "day_ahead_price"]
 
 
 def test_get_day_context_returns_four_aggregate_fields():
