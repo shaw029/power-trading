@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live GB BESS Benchmark</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.plot.ly/plotly-latest.min.js" charset="utf-8"></script>
+</head>
+<body>
+  <header class="site-header">
+    <h1>Live GB BESS Benchmark</h1>
+    <p class="tagline">Day-by-day dispatch and PnL for reference GB battery durations.</p>
+    <nav class="site-nav" aria-label="Primary">
+      <button class="nav-link" data-view="latest" type="button">Latest</button>
+      <button class="nav-link" data-view="history" type="button">History</button>
+      <button class="nav-link" data-view="day-types" type="button">Day-types</button>
+      <button class="nav-link" data-view="methodology" type="button">Methodology</button>
+    </nav>
+  </header>
+
+  <main id="main">
+    <!-- Latest -->
+    <section id="view-latest" class="view" hidden>
+      <h2>Latest delivery day</h2>
+      <p class="view-date">Settled day: <span id="latest-date">&mdash;</span></p>
+      <div id="latest-kpis" class="kpi-grid"></div>
+    </section>
+
+    <!-- History (built in a later ticket) -->
+    <section id="view-history" class="view" hidden>
+      <h2>History</h2>
+      <p class="placeholder">Cumulative equity and per-day history land in a later update.</p>
+    </section>
+
+    <!-- Day-types (built in a later ticket) -->
+    <section id="view-day-types" class="view" hidden>
+      <h2>Day-types</h2>
+      <p class="placeholder">Performance grouped by day-type lands in a later update.</p>
+    </section>
+
+    <!-- Methodology (built in a later ticket) -->
+    <section id="view-methodology" class="view" hidden>
+      <h2>Methodology</h2>
+      <p class="placeholder">A write-up of the benchmark methodology lands in a later update.</p>
+    </section>
+
+    <!-- Shown when no data can be loaded -->
+    <section id="view-no-data" class="view" hidden>
+      <h2>No data yet</h2>
+      <p class="placeholder">
+        No benchmark data has been published yet. Once the first run commits its
+        artifacts under <code>data/</code>, the latest day's figures appear here.
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Static benchmark site &middot; data refreshed by the live pipeline.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
