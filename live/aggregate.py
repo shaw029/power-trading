@@ -34,12 +34,12 @@ from dashboard.charts import (
     chart_equity_curve,
 )
 from live import io_store
-from live.assets import REFERENCE_DURATIONS, REFERENCE_POWER_MW, bess_config
-
-# Duration whose per-day figures (scatter, profiles) the history charts key off.
-# Mirrors :data:`live.figures.DEFAULT_DURATION` so the day-level and
-# history-level views describe the same reference battery.
-REFERENCE_DURATION: str = "2h"
+from live.assets import (
+    REFERENCE_DURATION,
+    REFERENCE_DURATIONS,
+    REFERENCE_POWER_MW,
+    bess_config,
+)
 
 # Day-type bucket used when a day carries no descriptive labels.
 _UNTAGGED: str = "untagged"

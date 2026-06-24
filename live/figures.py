@@ -26,9 +26,7 @@ import plotly.io as pio
 
 from dashboard.charts import chart_operation_explorer, chart_pnl_waterfall
 from live import io_store
-
-# Duration whose dispatch the figures are rebuilt for, unless overridden.
-DEFAULT_DURATION: str = "2h"
+from live.assets import REFERENCE_DURATION
 
 
 # --------------------------------------------------------------------------- #
@@ -118,7 +116,7 @@ def _results_df(asset: dict[str, Any]) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 def write_day_figures(
     date: str,
-    duration: str = DEFAULT_DURATION,
+    duration: str = REFERENCE_DURATION,
 ) -> dict[str, Path]:
     """Rebuild and export one day's dispatch and PnL-waterfall figures.
 

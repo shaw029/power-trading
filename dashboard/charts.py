@@ -8,6 +8,10 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+# Default figure height (px) shared by the standard single-panel builders; the
+# taller multi-panel/explorer views set their own height explicitly.
+DEFAULT_CHART_HEIGHT = 400
+
 # Shared palette. "da"/"intraday" give the frozen benchmark and the consolidated
 # intraday improvement their own identity in the waterfall; the remaining buckets
 # fall back to the existing green (gain) / red (cost) scheme.
@@ -63,7 +67,7 @@ def chart_da_commitment_shape(
         ),
         legend=dict(x=0, y=1.12, orientation="h"),
         template="plotly_white",
-        height=400,
+        height=DEFAULT_CHART_HEIGHT,
     )
     return fig
 
@@ -134,7 +138,7 @@ def chart_realized_shape(
         barmode="overlay",
         legend=dict(x=0, y=1.12, orientation="h"),
         template="plotly_white",
-        height=400,
+        height=DEFAULT_CHART_HEIGHT,
     )
     return fig
 
@@ -521,7 +525,7 @@ def chart_duration_comparison(
         xaxis_title="Duration",
         yaxis_title=value_label,
         template="plotly_white",
-        height=400,
+        height=DEFAULT_CHART_HEIGHT,
         showlegend=False,
     )
     return fig
@@ -563,7 +567,7 @@ def chart_daytype_scatter(
         xaxis_title="DA Price Spread (£/MWh)",
         yaxis_title="Net PnL (£)",
         template="plotly_white",
-        height=400,
+        height=DEFAULT_CHART_HEIGHT,
         legend=dict(orientation="h", x=0, y=1.12),
         hovermode="closest",
     )
@@ -608,7 +612,7 @@ def chart_equity_curve(
         xaxis_title="Date",
         yaxis_title="Cumulative PnL (£)",
         template="plotly_white",
-        height=400,
+        height=DEFAULT_CHART_HEIGHT,
         legend=dict(orientation="h", x=0, y=1.12),
         hovermode="x unified",
     )
@@ -653,7 +657,7 @@ def chart_daytype_profiles(
         xaxis=dict(title="Hour of Day", dtick=2),
         yaxis_title=value_label,
         template="plotly_white",
-        height=400,
+        height=DEFAULT_CHART_HEIGHT,
         legend=dict(orientation="h", x=0, y=1.12),
         hovermode="x unified",
     )

@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from live import schema
-from live.assets import REFERENCE_POWER_MW
+from live.assets import REFERENCE_POWER_MW, RESOLUTION_H
 from live.settle import DayResult
 from src.utils.config import PROJECT_ROOT
 
@@ -32,10 +32,6 @@ from src.utils.config import PROJECT_ROOT
 # (e.g. to a ``tmp_path``) by monkeypatching this attribute; all paths are
 # derived from it at call time.
 DATA_DIR: Path = PROJECT_ROOT / "docs" / "data"
-
-# The live benchmark runs the hourly engine, so each settlement period spans one
-# hour and timestamps step by ``resolution_h``.
-RESOLUTION_H: float = 1.0
 
 # Decimal places kept for every float written, to bound artifact size.
 _ROUND_NDIGITS: int = 3

@@ -28,14 +28,10 @@ import sys
 
 from live import classify as classify_mod
 from live import fetch_live, io_store
-from live.assets import REFERENCE_DURATIONS, bess_config, build_assets
+from live.assets import DEFAULT_START_SOC, REFERENCE_DURATIONS, bess_config, build_assets
 from live.settle import settle_day
 
 logger = logging.getLogger(__name__)
-
-# Carry-over SOC used for every duration on the very first run, before any
-# ``latest.json`` exists. A half-charged battery is the neutral starting point.
-_DEFAULT_START_SOC: float = 0.5
 
 
 def _resolve_date(raw: str | None) -> dt.date:
@@ -59,7 +55,7 @@ def _carry_over_soc(date: dt.date) -> dict[str, float]:
     half-charged battery.
     """
     iso = date.isoformat()
-    start_soc = {d: _DEFAULT_START_SOC for d in REFERENCE_DURATIONS}
+    start_soc = {d: DEFAULT_START_SOC for d in REFERENCE_DURATIONS}
     for day_iso in io_store.list_day_dates():
         if day_iso >= iso:
             break

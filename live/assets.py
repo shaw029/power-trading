@@ -22,6 +22,18 @@ REFERENCE_POWER_MW: float = 50.0
 # Ordered duration keys; capacity_mwh = REFERENCE_POWER_MW * duration_hours.
 REFERENCE_DURATIONS: tuple[str, ...] = ("1h", "2h", "4h")
 
+# Single duration the day-level and history-level figures key off, so both views
+# describe the same reference battery. Must be one of REFERENCE_DURATIONS.
+REFERENCE_DURATION: str = "2h"
+
+# The live benchmark runs the hourly engine, so each settlement period spans one
+# hour and artifact timestamps step by this resolution.
+RESOLUTION_H: float = 1.0
+
+# Carry-over SOC used for every duration before any stored history exists. A
+# half-charged battery is the neutral starting point.
+DEFAULT_START_SOC: float = 0.5
+
 _EXAMPLE_CONFIG_PATH: Path = PROJECT_ROOT / "configs" / "config.example.yaml"
 
 
@@ -47,7 +59,7 @@ def bess_config() -> dict:
     return bess
 
 
-def build_assets(initial_soc_pct: float = 0.5) -> dict[str, BESSAsset]:
+def build_assets(initial_soc_pct: float = DEFAULT_START_SOC) -> dict[str, BESSAsset]:
     """Build one reference ``BESSAsset`` per duration, keyed by duration string.
 
     All assets share the non-capacity parameters from :func:`bess_config` and the
