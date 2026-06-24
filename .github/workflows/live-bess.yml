@@ -9,6 +9,19 @@ on:
         description: "Delivery day as YYYY-MM-DD or 'yesterday' (default: yesterday)."
         required: false
         type: string
+      backfill:
+        description: "Backfill the start/end range instead of a single day."
+        required: false
+        type: boolean
+        default: false
+      start:
+        description: "Backfill start day as YYYY-MM-DD (default: last 90 days)."
+        required: false
+        type: string
+      end:
+        description: "Backfill end day as YYYY-MM-DD (default: yesterday)."
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -19,6 +32,7 @@ concurrency:
 
 jobs:
   live-bess:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.backfill != true }}
     runs-on: ubuntu-latest
 
     env:
@@ -50,5 +64,42 @@ jobs:
             echo "No changes to commit."
           else
             git commit -m "Update live BESS data"
+            git push
+          fi
+
+  backfill:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.backfill == true }}
+    runs-on: ubuntu-latest
+
+    env:
+      ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
+      ELEXON_API_KEY: ${{ secrets.ELEXON_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Backfill date range
+        run: |
+          args=""
+          if [ -n "${{ inputs.start }}" ]; then args="$args --start ${{ inputs.start }}"; fi
+          if [ -n "${{ inputs.end }}" ]; then args="$args --end ${{ inputs.end }}"; fi
+          python -m live.backfill $args
+
+      - name: Commit data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Backfill live BESS data"
             git push
           fi
