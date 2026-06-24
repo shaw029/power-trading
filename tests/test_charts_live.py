@@ -13,8 +13,32 @@ from dashboard.charts import (
     chart_daytype_scatter,
     chart_duration_comparison,
     chart_equity_curve,
+    chart_price_capture,
 )
 from live.figures import _da_sched_df, _dispatch_df
+
+
+def test_chart_price_capture_returns_figure_and_spread():
+    # Charge at hour 2 (£10), discharge at hour 18 (£90): clear positive spread.
+    df = pd.DataFrame(
+        {
+            "hour": [2, 18],
+            "final_mw": [-50.0, 50.0],
+            "da_price": [10.0, 90.0],
+        }
+    )
+    fig = chart_price_capture(df, duration_h=1.0)
+    assert isinstance(fig, go.Figure)
+    # discharge bars, charge bars, DA-price line.
+    assert len(fig.data) == 3
+    # Achieved spread (90 - 10 = 80) is surfaced in the title.
+    assert "80.00" in fig.layout.title.text
+
+
+def test_chart_price_capture_handles_no_charge_or_discharge():
+    df = pd.DataFrame({"hour": [5], "final_mw": [0.0], "da_price": [40.0]})
+    fig = chart_price_capture(df)
+    assert isinstance(fig, go.Figure)
 
 
 def test_chart_duration_comparison_returns_figure():

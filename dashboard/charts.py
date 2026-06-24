@@ -831,3 +831,84 @@ def chart_daytype_profiles(
         hovermode="x unified",
     )
     return fig
+
+
+def chart_price_capture(
+    dispatch_df: pd.DataFrame,
+    duration_h: float = 1.0,
+    mw_col: str = "final_mw",
+    price_col: str = "da_price",
+    hour_col: str = "hour",
+):
+    """Charge/discharge energy by hour of day against the average DA price.
+
+    A well-optimised battery discharges into high-price hours and charges in
+    low-price hours; the gap between the volume-weighted discharge price and the
+    volume-weighted charge price is the **achieved price spread** — the headline
+    driver of day-ahead revenue, surfaced in the title.
+
+    ``dispatch_df`` is a per-period frame with an hour-of-day column, a signed
+    dispatch column (``+`` discharge / ``−`` charge MW) and the DA price each
+    period settled at. Energy is ``MW × duration_h``; bars are summed over every
+    period in the frame, so the chart works for a single day or a whole range.
+    """
+    df = dispatch_df[[hour_col, mw_col, price_col]].dropna()
+    hours = list(range(24))
+
+    discharge = df[df[mw_col] > 0]
+    charge = df[df[mw_col] < 0]
+    dis_mwh = (discharge[mw_col] * duration_h).groupby(discharge[hour_col]).sum()
+    chg_mwh = (-charge[mw_col] * duration_h).groupby(charge[hour_col]).sum()
+    avg_da = df.groupby(hour_col)[price_col].mean()
+
+    dis_e = discharge[mw_col] * duration_h
+    chg_e = -charge[mw_col] * duration_h
+    w_dis = (discharge[price_col] * dis_e).sum() / dis_e.sum() if dis_e.sum() > 0 else 0.0
+    w_chg = (charge[price_col] * chg_e).sum() / chg_e.sum() if chg_e.sum() > 0 else 0.0
+    spread = w_dis - w_chg
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(
+        go.Bar(
+            x=hours,
+            y=[float(dis_mwh.get(h, 0.0)) for h in hours],
+            name="Discharge (sell) MWh",
+            marker_color=COLORS["intraday"],
+            opacity=0.85,
+            hovertemplate="%{x:02d}:00<br>Discharge %{y:,.1f} MWh<extra></extra>",
+        ),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=hours,
+            y=[float(chg_mwh.get(h, 0.0)) for h in hours],
+            name="Charge (buy) MWh",
+            marker_color=COLORS["da"],
+            opacity=0.85,
+            hovertemplate="%{x:02d}:00<br>Charge %{y:,.1f} MWh<extra></extra>",
+        ),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=hours,
+            y=[float(avg_da.get(h)) if h in avg_da.index else None for h in hours],
+            name="Avg DA price",
+            mode="lines",
+            line=dict(color="#333333", width=2, dash="dash"),
+            hovertemplate="%{x:02d}:00<br>Avg DA £%{y:.1f}<extra></extra>",
+        ),
+        secondary_y=True,
+    )
+    fig.update_layout(
+        title=f"Price Capture — charge/discharge vs DA price (achieved spread £{spread:,.2f}/MWh)",
+        barmode="group",
+        template="plotly_white",
+        height=DEFAULT_CHART_HEIGHT,
+        legend=dict(orientation="h", x=0, y=1.12),
+    )
+    fig.update_xaxes(title_text="Hour of Day", dtick=2)
+    fig.update_yaxes(title_text="Energy (MWh)", secondary_y=False)
+    fig.update_yaxes(title_text="Avg DA Price (£/MWh)", secondary_y=True)
+    return fig
