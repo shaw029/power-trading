@@ -76,6 +76,7 @@ def _prices_hourly(prices: dict[str, Any]) -> pd.DataFrame:
 
 def _dispatch_df(asset: dict[str, Any], timestamps: list[str]) -> pd.DataFrame:
     """Per-period dispatch frame keyed by timestamp via each entry's ``period`` index."""
+    columns = ["timestamp", "da_mw", "intraday_mw", "soc_after"]
     rows = [
         {
             "timestamp": timestamps[entry["period"]],
@@ -85,12 +86,15 @@ def _dispatch_df(asset: dict[str, Any], timestamps: list[str]) -> pd.DataFrame:
         }
         for entry in asset["dispatch"]
     ]
-    return pd.DataFrame(rows)
+    # An empty dispatch must still carry the expected columns, otherwise the
+    # downstream chart builder raises a KeyError on the missing "timestamp".
+    return pd.DataFrame(rows, columns=columns)
 
 
 def _da_sched_df(asset: dict[str, Any], prices: dict[str, Any]) -> pd.DataFrame:
     """Day-ahead schedule frame: committed MW plus the (realised) day-ahead price line."""
     timestamps = prices["timestamps"]
+    columns = ["timestamp", "da_mw", "da_price_pred"]
     rows = [
         {
             "timestamp": timestamps[period],
@@ -99,7 +103,9 @@ def _da_sched_df(asset: dict[str, Any], prices: dict[str, Any]) -> pd.DataFrame:
         }
         for period, mw in enumerate(asset["schedule_mw"])
     ]
-    return pd.DataFrame(rows)
+    # An empty schedule must still carry the expected columns, otherwise the
+    # downstream chart builder raises a KeyError on the missing "timestamp".
+    return pd.DataFrame(rows, columns=columns)
 
 
 def _results_df(asset: dict[str, Any]) -> pd.DataFrame:
