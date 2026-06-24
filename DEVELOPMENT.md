@@ -255,6 +255,78 @@ It replays the strategy exactly as `pipeline.py` does, so what you see matches r
 
 Because scheduling against an in-sample forecast would be leakage, the selectable months are limited to the model's out-of-sample (walk-forward) range. Changing an asset parameter (capacity, power, efficiencies, SOC bounds, degradation, cycle cap) re-runs the whole out-of-sample period and is cached on those parameters; switching month just re-slices the cached result. Override the data and feature locations with the `PT_PROCESSED_DATA` and `PT_FEATURES` environment variables.
 
+## Live Benchmark
+
+The live GB BESS benchmark runs the existing BESS engine forward one delivery day at a time on realised GB market data, settling three reference batteries (50 MW at 1h / 2h / 4h duration) against the actual Day-Ahead and observed intraday (MID) prices. A scheduled GitHub Action settles yesterday each night and commits the resulting JSON artifacts and Plotly figures under `docs/data/`; the static site in `docs/` reads them and is published via GitHub Pages. This section is everything a new contributor needs to enable the benchmark end-to-end.
+
+### The `live/` package
+
+All live-benchmark code lives in `live/`. Every module reuses the production data fetchers (`src/data/`), BESS engine (`src/bess/`), and dashboard chart builders (`dashboard/charts.py`) — nothing re-implements strategy logic.
+
+| Module | Responsibility |
+|---|---|
+| `assets.py` | Defines the three canonical reference batteries — all 50 MW, differing only in storage duration (1h/2h/4h → 50/100/200 MWh). Every non-capacity parameter (efficiencies, SOC band, degradation, cycling target, margins, slippage) is read from the `bess` block of `configs/config.example.yaml` via the shared config loader, so there is no second copy of those numbers. |
+| `fetch_live.py` | Thin single-day adapter over `src.data.download` / `src.data.preprocess`. Exposes `get_day_prices` (hourly DA + MID prices, resampled to a 60-min grid) and `get_day_context` (tier-2 generation/demand aggregates). No new API code lives here. |
+| `settle.py` | Pure, deterministic single-day settlement. For each reference duration it resets the asset to the carried-over end-of-day SOC, solves the Day-Ahead LP schedule, then runs the rolling intraday session against the actual DA and observed MID prices — exactly as `pipeline._run_bess_pipeline` drives it. Does no file or network IO. |
+| `classify.py` | Tags a day with zero or more descriptive labels from a fixed vocabulary (`windy`, `sunny`, `volatile`, `calm`, `high_demand`, `low_demand`) using conservative round-number thresholds. Pure, deterministic, and never raises. |
+| `io_store.py` / `schema.py` | The single read/write layer for the committed JSON artifacts under `docs/data/`. `io_store.py` serialises day results and roll-ups with an atomic write-validate-replace (`<target>.tmp` → validate → `os.replace`); `schema.py` holds the dependency-free structural validators (every artifact carries `schema_version: 1`) that gate each write, so a malformed artifact is never published. |
+| `run_day.py` | Single-day orchestration CLI. Resolves carry-over SOC and running PnL from the previous day (`latest.json`, defaulting to a half-charged battery), fetches prices + context, settles all durations, classifies the day, and persists the per-day artifact and `latest.json`. Built for headless CI: idempotent per date, structured logging, and a clean exit with nothing written when a day's price data is incomplete or not yet available. |
+| `figures.py` | Rebuilds a single day's dispatch and PnL-waterfall figures from a stored artifact by reshaping it into the frames the existing `dashboard.charts` builders expect, writing each to `docs/data/figs/<date>/` as Plotly JSON (atomic write-then-reload-to-validate). No calculation, no network IO. |
+| `aggregate.py` | Roll-up layer. Scans every `docs/data/days/*.json` and rebuilds, from scratch each run, `history.json`, `manifest.json`, and the four history-level figures under `docs/data/figs/_history/`. Idempotent and stably ordered by date. |
+| `backfill.py` | Bulk CLI that replays a contiguous date range through `run_day.run_day`, oldest-to-newest so SOC and running PnL carry over correctly, then runs `aggregate` once at the end. By default skips dates already present under `docs/data/days/` (so a re-run only fills holes); `--force` re-settles every day. |
+
+### Enabling GitHub Pages
+
+The site is plain static files in `docs/` — there is no build step. To publish it:
+
+1. On GitHub, go to **Settings → Pages**.
+2. Under **Build and deployment**, set **Source** to **Deploy from a branch**.
+3. Choose the branch you publish from and the **`/docs`** folder, then **Save**.
+4. After the Pages build finishes, the site is served at `https://<owner>.github.io/<repo>/`.
+
+The committed `docs/.nojekyll` file must stay in place so Pages serves the `data/figs/_history/` directory (whose name starts with `_`) verbatim, bypassing Jekyll. A small fixture artifact is checked in so the page renders before the first live run commits real data.
+
+### Required secrets
+
+The workflow fetches data with the same API keys the local pipeline uses. Set them as **repository Actions secrets** (GitHub → **Settings → Secrets and variables → Actions → New repository secret**) so `.github/workflows/live-bess.yml` can read them via `secrets.*`:
+
+| Secret | Used for |
+|---|---|
+| `ENTSOE_API_KEY` | GB Day-Ahead auction prices (ENTSO-E Transparency Platform). |
+| `ELEXON_API_KEY` | Elexon BMRS data (market index price, generation, demand). |
+
+These are the CI equivalents of the keys you keep in `.env` locally (see **Local Configuration** above).
+
+### Running a single day or a backfill
+
+Both entry points run identically locally and in CI.
+
+**Locally** (after `conda activate quantenv` and with the keys set in `.env`):
+
+```bash
+# Settle a single delivery day (--date yesterday is also accepted;
+# omitting --date defaults to yesterday in UTC)
+python -m live.run_day --date 2024-05-01
+
+# Backfill a contiguous range, oldest-to-newest (omitting --start backfills the
+# trailing 90 days ending at --end; --end itself defaults to yesterday in UTC)
+python -m live.backfill --start 2024-04-01 --end 2024-04-30
+
+# Re-settle days that already exist instead of skipping them
+python -m live.backfill --start 2024-04-01 --end 2024-04-30 --force
+
+# Rebuild the history-level artifacts/figures (run_day updates latest.json only;
+# backfill calls this for you at the end of its range)
+python -m live.aggregate
+```
+
+**Via the workflow** — the `live-bess.yml` workflow runs on a nightly `schedule` and can also be triggered by hand under **Actions → Live BESS → Run workflow** (`workflow_dispatch`):
+
+- Leave **backfill** unchecked to settle one day. Set **date** to a `YYYY-MM-DD` value or `yesterday` (default `yesterday`). This runs `run_day`, then `aggregate`, and commits `docs/data/`.
+- Tick **backfill** to replay a range instead. Set **start** and **end** (`YYYY-MM-DD`; defaults to the last 90 days ending yesterday). This runs `backfill` over the range and commits `docs/data/`.
+
+Either path commits the regenerated artifacts under `docs/data/` back to the branch, and the Pages site picks them up on its next build. To stand up a fresh site, enable Pages, set the two secrets, then trigger a `workflow_dispatch` backfill — the committed data drives the published views.
+
 ## VS Code
 
 Select the `quantenv` interpreter via **Python: Select Interpreter** (`⌘⇧P`) after cloning.

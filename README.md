@@ -117,13 +117,23 @@ make dashboard          # or: streamlit run dashboard/app.py
 
 ---
 
+## Live Benchmark
+
+The strategies above are validated on a historical backtest. The **live GB BESS benchmark** runs the same BESS engine forward every day on yesterday's realised GB market data, settling three reference batteries (50 MW at 1h / 2h / 4h duration) against the actual Day-Ahead and intraday prices. It is a continuously updating, out-of-sample track record rather than a one-off backtest.
+
+A scheduled GitHub Actions workflow (`.github/workflows/live-bess.yml`) fetches each delivery day, settles it, and commits the resulting JSON artifacts and figures under `docs/`. A static site (plain HTML/CSS/Plotly.js, no build step) reads those artifacts and is published via **GitHub Pages, served from the `/docs` folder** at `https://<owner>.github.io/<repo>/` — for this repository, https://shaw029.github.io/power-trading/. The site has Latest-day, History, and Day-type views, plus a **Methodology** page giving the full explanation of benchmark scope, the reference assets, and caveats.
+
+→ See the **Methodology** view on the published site for the complete write-up, and [DEVELOPMENT.md](DEVELOPMENT.md#live-benchmark) for how to enable Pages, set the required secrets, and trigger a run or backfill.
+
+---
+
 ## Docs
 
 | Document | Contents |
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Strategy design, market rationale, signal logic, and BESS commercial model |
 | [DATA_SOURCES.md](DATA_SOURCES.md) | Seven datasets across three APIs, CSV fallbacks, and per-day caching |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Environment setup, config reference, project structure, the dashboard, and VS Code launch configs |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Environment setup, config reference, project structure, the dashboard, the live benchmark, and VS Code launch configs |
 
 ---
 
