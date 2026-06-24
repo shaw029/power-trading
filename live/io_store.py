@@ -250,6 +250,19 @@ def read_day(date: dt.date | str) -> dict:
     return day
 
 
+def list_day_dates() -> list[str]:
+    """ISO dates of every stored day artifact, ascending.
+
+    The dates double as the artifact stems, so callers can pass them straight to
+    :func:`read_day`. Derived from :data:`DATA_DIR` at call time so a redirected
+    data dir (e.g. a ``tmp_path`` in tests) is respected.
+    """
+    days_dir = _days_dir()
+    if not days_dir.exists():
+        return []
+    return sorted(path.stem for path in days_dir.glob("*.json"))
+
+
 # --------------------------------------------------------------------------- #
 # latest.json
 # --------------------------------------------------------------------------- #

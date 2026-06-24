@@ -69,6 +69,33 @@ def test_backfill_writes_each_day_with_continuous_soc(monkeypatch):
     assert [row["date"] for row in history["rows"]] == dates
 
 
+def test_backfill_gap_reads_prior_day_not_future_state(monkeypatch):
+    _mock_fetch(monkeypatch, _prices())
+    middle = _START + dt.timedelta(days=1)
+
+    # Build the first and last day, leaving the middle day as a gap. latest.json
+    # now points at the last (future) day.
+    backfill.backfill(_START, _START)
+    backfill.backfill(_END, _END)
+    last_before = io_store.read_day(_END)
+
+    # Fill the gap. The middle day must carry over from the first day, not from
+    # the later day's state left behind in latest.json.
+    summary = backfill.backfill(_START, _END)
+    assert summary["written"] == [middle.isoformat()]
+    assert summary["skipped"] == [_START.isoformat(), _END.isoformat()]
+
+    first = io_store.read_day(_START)
+    gap = io_store.read_day(middle)
+    for duration in REFERENCE_DURATIONS:
+        assert gap["assets"][duration]["soc"]["start"] == pytest.approx(
+            first["assets"][duration]["soc"]["end"], abs=1e-3
+        )
+
+    # The already-settled later day is skipped and left untouched.
+    assert io_store.read_day(_END) == last_before
+
+
 def test_backfill_skips_existing_unless_forced(monkeypatch):
     _mock_fetch(monkeypatch, _prices())
 

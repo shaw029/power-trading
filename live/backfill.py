@@ -9,9 +9,10 @@ scheduled run per day.
 Two properties make the replay correct and cheap:
 
   * **SOC continuity.** Days are processed strictly oldest-to-newest. Each day
-    advances ``latest.json``, so the next day reads the carried-over state of
-    charge and running PnL exactly as the live scheduler would — the backfilled
-    series is indistinguishable from one built a day at a time.
+    derives its carried-over state of charge and running PnL from the stored
+    artifacts of the days before it (:func:`live.run_day.run_day`), so the
+    backfilled series is indistinguishable from one built a day at a time — and
+    filling a gap reads the real prior-day state rather than a later day's.
   * **One roll-up.** :func:`live.aggregate.aggregate` is run once at the very
     end rather than after every day, since it rebuilds ``history.json``,
     ``manifest.json`` and the history-level figures from scratch each time.

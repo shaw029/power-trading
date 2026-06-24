@@ -63,11 +63,31 @@ def test_rerun_same_date_overwrites_without_duplicate(monkeypatch):
     _mock_fetch(monkeypatch, _prices())
 
     assert run_day.run_day(_DAY) is True
+    first = io_store.read_latest()
+    assert first is not None
+
     assert run_day.run_day(_DAY) is True
+    second = io_store.read_latest()
+    assert second is not None
 
     days_dir = io_store.DATA_DIR / "days"
     files = sorted(p.name for p in days_dir.glob("*.json"))
     assert files == [f"{_DAY.isoformat()}.json"]
+
+    # Re-running the same day is idempotent: the cumulative PnL and end SOC must
+    # be unchanged, not doubled by re-adding the day's own contribution.
+    assert second["date"] == first["date"]
+    assert second["cumulative_net_pnl"] == first["cumulative_net_pnl"]
+    assert second["end_soc"] == first["end_soc"]
+
+    # With no earlier day stored, the rerun starts from the default half charge,
+    # never from the day's own end SOC.
+    day = io_store.read_day(_DAY)
+    for duration in REFERENCE_DURATIONS:
+        assert day["assets"][duration]["soc"]["start"] == pytest.approx(0.5, abs=1e-9)
+        assert second["cumulative_net_pnl"][duration] == pytest.approx(
+            day["assets"][duration]["pnl"]["net_pnl"], abs=1e-2
+        )
 
 
 def test_carries_cumulative_pnl_forward(monkeypatch):
