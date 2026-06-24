@@ -20,16 +20,19 @@ SCHEMA_VERSION: int = 1
 
 # Required keys for the nested blocks of a per-day artifact.
 _CONTEXT_KEYS: tuple[str, ...] = ("wind_gwh", "solar_gwh", "demand_gwh", "wind_share")
-_DISPATCH_KEYS: tuple[str, ...] = (
-    "period",
+# Dispatch entry keys grouped by the type their value must have.
+_DISPATCH_INT_KEYS: tuple[str, ...] = ("period",)
+_DISPATCH_NUMBER_KEYS: tuple[str, ...] = (
     "da_mw",
     "intraday_mw",
     "final_mw",
     "soc_after",
     "da_price",
     "mid_price",
-    "trade_type",
-    "rule_label",
+)
+_DISPATCH_STR_KEYS: tuple[str, ...] = ("trade_type", "rule_label")
+_DISPATCH_KEYS: tuple[str, ...] = (
+    _DISPATCH_INT_KEYS + _DISPATCH_NUMBER_KEYS + _DISPATCH_STR_KEYS
 )
 _PNL_KEYS: tuple[str, ...] = (
     "benchmark_da_revenue",
@@ -57,6 +60,11 @@ def _is_number(value: Any) -> bool:
 
 def _is_number_or_none(value: Any) -> bool:
     return value is None or _is_number(value)
+
+
+def _is_int(value: Any) -> bool:
+    """True for a real (non-bool) int."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _check_envelope(obj: Any) -> None:
@@ -95,6 +103,21 @@ def _validate_asset(duration: str, asset: Any) -> None:
         _require(isinstance(entry, dict), f"'{duration}.dispatch[{i}]' must be an object")
         for key in _DISPATCH_KEYS:
             _require(key in entry, f"'{duration}.dispatch[{i}]' missing '{key}'")
+        for key in _DISPATCH_INT_KEYS:
+            _require(
+                _is_int(entry[key]),
+                f"'{duration}.dispatch[{i}].{key}' must be an integer",
+            )
+        for key in _DISPATCH_NUMBER_KEYS:
+            _require(
+                _is_number(entry[key]),
+                f"'{duration}.dispatch[{i}].{key}' must be a number",
+            )
+        for key in _DISPATCH_STR_KEYS:
+            _require(
+                isinstance(entry[key], str),
+                f"'{duration}.dispatch[{i}].{key}' must be a string",
+            )
 
     soc = asset.get("soc")
     _require(isinstance(soc, dict), f"'{duration}.soc' must be an object")

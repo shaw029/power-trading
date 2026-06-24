@@ -191,3 +191,67 @@ def test_floats_rounded_to_three_decimals():
     latest = io_store.read_latest()
     assert latest is not None
     assert latest["cumulative_net_pnl"]["1h"] == 1.235
+
+
+def _valid_day_artifact() -> dict:
+    """A freshly settled, schema-valid per-day artifact to mutate in tests."""
+    day_result = _settled_day()
+    io_store.write_day(_DAY, day_result, _context(), ["windy"])
+    artifact = io_store.read_day(_DAY)
+    # Sanity-check the baseline passes before any test mutates it.
+    schema.validate_day(artifact)
+    return artifact
+
+
+def _first_dispatch_entry(artifact: dict) -> dict:
+    duration = next(iter(artifact["assets"]))
+    entry: dict = artifact["assets"][duration]["dispatch"][0]
+    return entry
+
+
+def test_validate_day_accepts_settled_artifact():
+    schema.validate_day(_valid_day_artifact())
+
+
+def test_validate_day_rejects_non_numeric_dispatch_value():
+    artifact = _valid_day_artifact()
+    _first_dispatch_entry(artifact)["da_mw"] = "not-a-number"
+    with pytest.raises(schema.SchemaError, match="da_mw"):
+        schema.validate_day(artifact)
+
+
+def test_validate_day_rejects_bool_dispatch_number():
+    # bool is a subclass of int but must not pass a numeric type check.
+    artifact = _valid_day_artifact()
+    _first_dispatch_entry(artifact)["soc_after"] = True
+    with pytest.raises(schema.SchemaError, match="soc_after"):
+        schema.validate_day(artifact)
+
+
+def test_validate_day_rejects_non_string_dispatch_label():
+    artifact = _valid_day_artifact()
+    _first_dispatch_entry(artifact)["trade_type"] = 7
+    with pytest.raises(schema.SchemaError, match="trade_type"):
+        schema.validate_day(artifact)
+
+
+def test_validate_day_rejects_non_integer_period():
+    artifact = _valid_day_artifact()
+    _first_dispatch_entry(artifact)["period"] = 1.5
+    with pytest.raises(schema.SchemaError, match="period"):
+        schema.validate_day(artifact)
+
+
+def test_validate_day_rejects_missing_dispatch_key():
+    artifact = _valid_day_artifact()
+    del _first_dispatch_entry(artifact)["mid_price"]
+    with pytest.raises(schema.SchemaError, match="mid_price"):
+        schema.validate_day(artifact)
+
+
+def test_validate_day_rejects_non_dict_dispatch_entry():
+    artifact = _valid_day_artifact()
+    duration = next(iter(artifact["assets"]))
+    artifact["assets"][duration]["dispatch"][0] = ["not", "an", "object"]
+    with pytest.raises(schema.SchemaError, match="must be an object"):
+        schema.validate_day(artifact)
