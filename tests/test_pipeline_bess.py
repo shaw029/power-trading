@@ -16,10 +16,13 @@ def _synthetic_prices(n_days=3):
 
     da = pd.DataFrame({"day_ahead_price": base + rng.normal(0, 2, periods)}, index=index)
     mid = pd.DataFrame({"mid_price": base + 2 + rng.normal(0, 3, periods)}, index=index)
-    imb = pd.DataFrame({
-        "system_buy_price": 50 + rng.normal(0, 5, periods),
-        "system_sell_price": 35 + rng.normal(0, 5, periods),
-    }, index=index)
+    imb = pd.DataFrame(
+        {
+            "system_buy_price": 50 + rng.normal(0, 5, periods),
+            "system_sell_price": 35 + rng.normal(0, 5, periods),
+        },
+        index=index,
+    )
 
     for df in (da, mid, imb):
         df.index.name = "time"
@@ -39,10 +42,13 @@ def _synthetic_dst_prices(start_date, end_date):
 
     da = pd.DataFrame({"day_ahead_price": base + rng.normal(0, 2, n)}, index=index)
     mid = pd.DataFrame({"mid_price": base + 2 + rng.normal(0, 3, n)}, index=index)
-    imb = pd.DataFrame({
-        "system_buy_price": 50 + rng.normal(0, 5, n),
-        "system_sell_price": 35 + rng.normal(0, 5, n),
-    }, index=index)
+    imb = pd.DataFrame(
+        {
+            "system_buy_price": 50 + rng.normal(0, 5, n),
+            "system_sell_price": 35 + rng.normal(0, 5, n),
+        },
+        index=index,
+    )
 
     for df in (da, mid, imb):
         df.index.name = "time"
@@ -59,29 +65,31 @@ def _synthetic_features(price_df):
     hour = idx.hour + idx.minute / 60
     dow = idx.dayofweek
 
-    return pd.DataFrame({
-        "time": utc_idx,
-        "day_ahead_price": price_df["day_ahead_price"].values,
-        "wind_fc_da_d1_10h30": rng.uniform(5000, 15000, n),
-        "demand_fc_da_d1_10h30": rng.uniform(25000, 45000, n),
-        "auction_residual_load": rng.uniform(15000, 35000, n),
-        "wind_auction_drift": rng.normal(0, 500, n),
-        "day_ahead_price_lag48": np.full(n, 40.0),
-        "day_ahead_price_lag96": np.full(n, 40.0),
-        "system_sell_price_lag48": np.full(n, 35.0),
-        "system_sell_price_lag96": np.full(n, 35.0),
-        "system_buy_price_lag48": np.full(n, 50.0),
-        "system_buy_price_lag96": np.full(n, 50.0),
-        "imbalance_spread_lag48": np.full(n, 15.0),
-        "imbalance_spread_lag96": np.full(n, 15.0),
-        "hour_sin": np.sin(2 * np.pi * hour / 24),
-        "hour_cos": np.cos(2 * np.pi * hour / 24),
-        "dow_sin": np.sin(2 * np.pi * dow / 7),
-        "dow_cos": np.cos(2 * np.pi * dow / 7),
-        "system_sell_price": 35 + rng.normal(0, 5, n),
-        "system_buy_price": 50 + rng.normal(0, 5, n),
-        "mid_price": 42 + rng.normal(0, 3, n),
-    })
+    return pd.DataFrame(
+        {
+            "time": utc_idx,
+            "day_ahead_price": price_df["day_ahead_price"].values,
+            "wind_fc_da_d1_10h30": rng.uniform(5000, 15000, n),
+            "demand_fc_da_d1_10h30": rng.uniform(25000, 45000, n),
+            "auction_residual_load": rng.uniform(15000, 35000, n),
+            "wind_auction_drift": rng.normal(0, 500, n),
+            "day_ahead_price_lag48": np.full(n, 40.0),
+            "day_ahead_price_lag96": np.full(n, 40.0),
+            "system_sell_price_lag48": np.full(n, 35.0),
+            "system_sell_price_lag96": np.full(n, 35.0),
+            "system_buy_price_lag48": np.full(n, 50.0),
+            "system_buy_price_lag96": np.full(n, 50.0),
+            "imbalance_spread_lag48": np.full(n, 15.0),
+            "imbalance_spread_lag96": np.full(n, 15.0),
+            "hour_sin": np.sin(2 * np.pi * hour / 24),
+            "hour_cos": np.cos(2 * np.pi * hour / 24),
+            "dow_sin": np.sin(2 * np.pi * dow / 7),
+            "dow_cos": np.cos(2 * np.pi * dow / 7),
+            "system_sell_price": 35 + rng.normal(0, 5, n),
+            "system_buy_price": 50 + rng.normal(0, 5, n),
+            "mid_price": 42 + rng.normal(0, 3, n),
+        }
+    )
 
 
 class _RampModel:
@@ -106,11 +114,13 @@ def _setup_bess_mocks(da, tmp_path, monkeypatch):
     def mock_train(*args, **kwargs):
         return (
             _RampModel(),
-            pd.DataFrame({
-                "time": oos_rows["time"].values,
-                "actual_da_price": oos_rows["day_ahead_price"].values,
-                "predicted_da_price": np.arange(len(oos_rows), dtype=float),
-            }),
+            pd.DataFrame(
+                {
+                    "time": oos_rows["time"].values,
+                    "actual_da_price": oos_rows["day_ahead_price"].values,
+                    "predicted_da_price": np.arange(len(oos_rows), dtype=float),
+                }
+            ),
             pd.DataFrame({"dummy": [0]}),
         )
 
@@ -167,8 +177,13 @@ class TestBESSPipelineIntegration:
 
         pnl = pd.read_csv(trading_dir / "pnl.csv")
         assert list(pnl.columns) == [
-            "date", "da_revenue", "intraday_pnl", "execution_costs_paid",
-            "degradation_cost", "intraday_throughput_mwh", "net_pnl",
+            "date",
+            "da_revenue",
+            "intraday_pnl",
+            "execution_costs_paid",
+            "degradation_cost",
+            "intraday_throughput_mwh",
+            "net_pnl",
         ]
         assert len(pnl) == 3
 
@@ -241,10 +256,17 @@ class TestBESSPipelineIntegration:
         sparse_date = london_dates[1]
         features_df["_london_date"] = times.dt.tz_convert("Europe/London").dt.date
         mask = features_df["_london_date"] == sparse_date
-        trimmed = pd.concat([
-            features_df[~mask],
-            features_df[mask].iloc[:1],
-        ]).drop(columns=["_london_date"]).sort_values("time").reset_index(drop=True)
+        trimmed = (
+            pd.concat(
+                [
+                    features_df[~mask],
+                    features_df[mask].iloc[:1],
+                ]
+            )
+            .drop(columns=["_london_date"])
+            .sort_values("time")
+            .reset_index(drop=True)
+        )
 
         features_dir = tmp_path / "artifacts" / "bess_test" / "integration_run" / "features"
         features_dir.mkdir(parents=True)
@@ -257,11 +279,13 @@ class TestBESSPipelineIntegration:
         def mock_train(*args, **kwargs):
             return (
                 _RampModel(),
-                pd.DataFrame({
-                    "time": oos_rows["time"].values,
-                    "actual_da_price": oos_rows["day_ahead_price"].values,
-                    "predicted_da_price": np.arange(len(oos_rows), dtype=float),
-                }),
+                pd.DataFrame(
+                    {
+                        "time": oos_rows["time"].values,
+                        "actual_da_price": oos_rows["day_ahead_price"].values,
+                        "predicted_da_price": np.arange(len(oos_rows), dtype=float),
+                    }
+                ),
                 pd.DataFrame({"dummy": [0]}),
             )
 
@@ -305,11 +329,14 @@ class TestBESSPipelineIntegration:
         features_dir.mkdir(parents=True)
         features_df.to_parquet(features_dir / "features.parquet", index=False)
 
-        monkeypatch.setattr("src.models.train.train_da_price_model", lambda *a, **kw: (
-            _RampModel(),
-            pd.DataFrame({"time": [], "actual_da_price": [], "predicted_da_price": []}),
-            pd.DataFrame({"dummy": [0]}),
-        ))
+        monkeypatch.setattr(
+            "src.models.train.train_da_price_model",
+            lambda *a, **kw: (
+                _RampModel(),
+                pd.DataFrame({"time": [], "actual_da_price": [], "predicted_da_price": []}),
+                pd.DataFrame({"dummy": [0]}),
+            ),
+        )
         monkeypatch.setattr("pipeline.save_model", lambda *a, **kw: None)
 
         config = {
@@ -349,7 +376,8 @@ class TestBESSPipelineIntegration:
             return [0.0] * len(da_price_forecast)
 
         monkeypatch.setattr(
-            "src.bess.da_optimizer.optimize_da_schedule", capturing_optimize,
+            "src.bess.da_optimizer.optimize_da_schedule",
+            capturing_optimize,
         )
 
         config = {

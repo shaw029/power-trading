@@ -7,33 +7,57 @@ from datetime import datetime
 
 # Import our custom modules
 from src.data.download import (
-    fetch_demand_forecast, fetch_wind_forecast, fetch_generation_actual,
-    fetch_day_ahead_price, fetch_market_index_price, fetch_demand_actual, fetch_imbalance_price,
+    fetch_demand_forecast,
+    fetch_wind_forecast,
+    fetch_generation_actual,
+    fetch_day_ahead_price,
+    fetch_market_index_price,
+    fetch_demand_actual,
+    fetch_imbalance_price,
 )
 from src.data.preprocess import (
     merge_all,
-    process_generation_mix, process_imbalance_price, process_day_ahead_price,
-    process_market_index_price, process_demand_actual,
-    process_wind_forecast, process_demand_forecast,
+    process_generation_mix,
+    process_imbalance_price,
+    process_day_ahead_price,
+    process_market_index_price,
+    process_demand_actual,
+    process_wind_forecast,
+    process_demand_forecast,
 )
 from src.features.build_features import build_features
 from src.models.train import train_model
 from src.models.signal import (
-    generate_signal, build_daily_schedule, compute_penalty_buffer, compute_volatility_threshold,
+    generate_signal,
+    build_daily_schedule,
+    compute_penalty_buffer,
+    compute_volatility_threshold,
 )
 from src.backtest.engine import run_backtest
 from src.utils.config import (
-    ensure_directories, FEATURES_DATASET, MODEL_FILE, PREDICTIONS_FILE,
-    SIGNALS_FILE, PNL_FILE, METRICS_FILE, MODEL_METADATA_FILE, CURRENT_VERSION,
-    PROCESSED_DATA_DIR, DEFAULT_SIGNAL_THRESHOLD, SAVE_OUTPUTS_DEFAULT,
-    PROJECT_ROOT, VERSIONED_FEATURES_DIR, VERSIONED_MODELS_DIR, VERSIONED_TRADING_DIR,
-    get_periods, get_sources,
+    ensure_directories,
+    FEATURES_DATASET,
+    MODEL_FILE,
+    PREDICTIONS_FILE,
+    SIGNALS_FILE,
+    PNL_FILE,
+    METRICS_FILE,
+    MODEL_METADATA_FILE,
+    CURRENT_VERSION,
+    PROCESSED_DATA_DIR,
+    DEFAULT_SIGNAL_THRESHOLD,
+    SAVE_OUTPUTS_DEFAULT,
+    PROJECT_ROOT,
+    VERSIONED_FEATURES_DIR,
+    VERSIONED_MODELS_DIR,
+    VERSIONED_TRADING_DIR,
+    get_periods,
+    get_sources,
 )
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -50,36 +74,36 @@ def setup_experiment_paths(config: dict | None = None, mode: str | None = None) 
     """
     if config is None:
         return {
-            "features_dir":     VERSIONED_FEATURES_DIR,
-            "model_dir":        VERSIONED_MODELS_DIR,
-            "trading_dir":      VERSIONED_TRADING_DIR,
-            "features_file":    FEATURES_DATASET,
-            "model_file":       MODEL_FILE,
-            "metadata_file":    MODEL_METADATA_FILE,
+            "features_dir": VERSIONED_FEATURES_DIR,
+            "model_dir": VERSIONED_MODELS_DIR,
+            "trading_dir": VERSIONED_TRADING_DIR,
+            "features_file": FEATURES_DATASET,
+            "model_file": MODEL_FILE,
+            "metadata_file": MODEL_METADATA_FILE,
             "predictions_file": PREDICTIONS_FILE,
-            "signals_file":     SIGNALS_FILE,
-            "pnl_file":         PNL_FILE,
-            "metrics_file":     METRICS_FILE,
+            "signals_file": SIGNALS_FILE,
+            "pnl_file": PNL_FILE,
+            "metrics_file": METRICS_FILE,
         }
 
     strategy = config["strategy"]
     run_name = config["run_name"]
-    run_dir      = PROJECT_ROOT / "artifacts" / strategy / run_name
+    run_dir = PROJECT_ROOT / "artifacts" / strategy / run_name
     features_dir = run_dir / "features"
-    mode_dir     = run_dir / mode if mode else run_dir
-    model_dir    = mode_dir / "model"
-    trading_dir  = mode_dir / "trading"
+    mode_dir = run_dir / mode if mode else run_dir
+    model_dir = mode_dir / "model"
+    trading_dir = mode_dir / "trading"
     return {
-        "features_dir":     features_dir,
-        "model_dir":        model_dir,
-        "trading_dir":      trading_dir,
-        "features_file":    features_dir / "features.parquet",
-        "model_file":       model_dir    / "model.joblib",
-        "metadata_file":    model_dir    / "metadata.json",
-        "predictions_file": trading_dir  / "predictions.csv",
-        "signals_file":     trading_dir  / "signals.csv",
-        "pnl_file":         trading_dir  / "pnl.csv",
-        "metrics_file":     trading_dir  / "metrics.json",
+        "features_dir": features_dir,
+        "model_dir": model_dir,
+        "trading_dir": trading_dir,
+        "features_file": features_dir / "features.parquet",
+        "model_file": model_dir / "model.joblib",
+        "metadata_file": model_dir / "metadata.json",
+        "predictions_file": trading_dir / "predictions.csv",
+        "signals_file": trading_dir / "signals.csv",
+        "pnl_file": trading_dir / "pnl.csv",
+        "metrics_file": trading_dir / "metrics.json",
     }
 
 
@@ -118,46 +142,54 @@ def build_features_pipeline(config, features_save_path=None):
         logger.info("Step 1: Downloading raw data")
 
         wind_df = fetch_wind_forecast(
-            source=sources["wind_source"], start_date=full_start, end_date=full_end)
+            source=sources["wind_source"], start_date=full_start, end_date=full_end
+        )
         generation_df = fetch_generation_actual(
-            source=sources["generation_source"], start_date=full_start, end_date=full_end)
+            source=sources["generation_source"], start_date=full_start, end_date=full_end
+        )
         price_df = fetch_day_ahead_price(
-            source=sources["day_ahead_price_source"], start_date=full_start, end_date=full_end)
+            source=sources["day_ahead_price_source"], start_date=full_start, end_date=full_end
+        )
         mid_df = fetch_market_index_price(
-            source=sources["market_index_source"], start_date=full_start, end_date=full_end)
+            source=sources["market_index_source"], start_date=full_start, end_date=full_end
+        )
         itsdo_df = fetch_demand_actual(
-            source=sources["demand_actual_source"], start_date=full_start, end_date=full_end)
+            source=sources["demand_actual_source"], start_date=full_start, end_date=full_end
+        )
         b1770_df = fetch_imbalance_price(
-            source=sources["imbalance_source"], start_date=full_start, end_date=full_end)
+            source=sources["imbalance_source"], start_date=full_start, end_date=full_end
+        )
 
         demand_dfs = []
         for p in periods:
-            demand_dfs.append(fetch_demand_forecast(
-                source=str(p["demand_source"]),
-                start_date=str(p["start"]),
-                end_date=str(p["end"]),
-            ))
+            demand_dfs.append(
+                fetch_demand_forecast(
+                    source=str(p["demand_source"]),
+                    start_date=str(p["start"]),
+                    end_date=str(p["end"]),
+                )
+            )
         demand_df = pd.concat(demand_dfs, ignore_index=True)
 
         # Step 2: Preprocess and merge
         logger.info("Step 2: Preprocessing and merging data")
 
         generation_processed = process_generation_mix(generation_df)
-        b1770_processed      = process_imbalance_price(b1770_df)
-        price_processed      = process_day_ahead_price(price_df)
-        mid_processed        = process_market_index_price(mid_df)
-        itsdo_processed      = process_demand_actual(itsdo_df)
-        wind_processed       = process_wind_forecast(wind_df)
-        demand_processed     = process_demand_forecast(demand_df)
+        b1770_processed = process_imbalance_price(b1770_df)
+        price_processed = process_day_ahead_price(price_df)
+        mid_processed = process_market_index_price(mid_df)
+        itsdo_processed = process_demand_actual(itsdo_df)
+        wind_processed = process_wind_forecast(wind_df)
+        demand_processed = process_demand_forecast(demand_df)
 
         processed_df = merge_all(
-            generation_mix     = generation_processed,
-            imbalance_price    = b1770_processed,
-            day_ahead_price    = price_processed,
-            market_index_price = mid_processed,
-            demand_actual      = itsdo_processed,
-            wind_forecast      = wind_processed,
-            demand_forecast    = demand_processed,
+            generation_mix=generation_processed,
+            imbalance_price=b1770_processed,
+            day_ahead_price=price_processed,
+            market_index_price=mid_processed,
+            demand_actual=itsdo_processed,
+            wind_forecast=wind_processed,
+            demand_forecast=demand_processed,
         )
 
         # Step 3: Build features
@@ -172,11 +204,11 @@ def build_features_pipeline(config, features_save_path=None):
 
 
 def save_model(model, metadata: dict, paths: dict):
-    metadata['saved_at'] = datetime.now().isoformat()
+    metadata["saved_at"] = datetime.now().isoformat()
     paths["model_dir"].mkdir(parents=True, exist_ok=True)
     joblib.dump(model, paths["model_file"])
     logger.info(f"Model saved to {paths['model_file']}")
-    with open(paths["metadata_file"], 'w') as f:
+    with open(paths["metadata_file"], "w") as f:
         json.dump(metadata, f, indent=2, default=str)
     logger.info(f"Model metadata saved to {paths['metadata_file']}")
 
@@ -192,41 +224,49 @@ def load_model(paths: dict | None = None):
     return model
 
 
-def save_outputs(predictions_df: pd.DataFrame, signals: np.ndarray, pnl_series: np.ndarray, paths: dict):
+def save_outputs(
+    predictions_df: pd.DataFrame, signals: np.ndarray, pnl_series: np.ndarray, paths: dict
+):
     timestamps = predictions_df["time"].values
 
     _ts = pd.DatetimeIndex(pd.to_datetime(timestamps, utc=True))
     _london = _ts.tz_convert("Europe/London")
-    auction_times = (_london.normalize() - pd.Timedelta(days=1) + pd.Timedelta(hours=11)).tz_convert("UTC")
+    auction_times = (
+        _london.normalize() - pd.Timedelta(days=1) + pd.Timedelta(hours=11)
+    ).tz_convert("UTC")
 
-    signals_df = pd.DataFrame({
-        'auction_time':     auction_times,
-        'delivery_time':    timestamps,
-        'predicted_spread': predictions_df["predicted_spread"].values,
-        'signal':           signals,
-        'direction':        pd.array(signals, dtype=int),
-    })
-    signals_df['direction'] = signals_df['direction'].map({1: 'BUY', -1: 'SELL', 0: 'NEUTRAL'})
+    signals_df = pd.DataFrame(
+        {
+            "auction_time": auction_times,
+            "delivery_time": timestamps,
+            "predicted_spread": predictions_df["predicted_spread"].values,
+            "signal": signals,
+            "direction": pd.array(signals, dtype=int),
+        }
+    )
+    signals_df["direction"] = signals_df["direction"].map({1: "BUY", -1: "SELL", 0: "NEUTRAL"})
 
     paths["trading_dir"].mkdir(parents=True, exist_ok=True)
-    predictions_df[["time", "actual_spread", "predicted_spread"]].to_csv(paths["predictions_file"], index=False)
+    predictions_df[["time", "actual_spread", "predicted_spread"]].to_csv(
+        paths["predictions_file"], index=False
+    )
     logger.info(f"Predictions saved to {paths['predictions_file']}")
 
     signals_df.to_csv(paths["signals_file"], index=False)
     logger.info(f"Signals saved to {paths['signals_file']}")
 
-    pd.DataFrame({'time': timestamps, 'pnl': pnl_series}).to_csv(paths["pnl_file"], index=False)
+    pd.DataFrame({"time": timestamps, "pnl": pnl_series}).to_csv(paths["pnl_file"], index=False)
     logger.info(f"PnL saved to {paths['pnl_file']}")
 
 
 def save_metrics(model_metrics: dict, trading_metrics: dict, paths: dict):
     metrics = {
-        'timestamp': datetime.now().isoformat(),
-        'model_performance': model_metrics,
-        'trading_performance': trading_metrics,
+        "timestamp": datetime.now().isoformat(),
+        "model_performance": model_metrics,
+        "trading_performance": trading_metrics,
     }
     paths["trading_dir"].mkdir(parents=True, exist_ok=True)
-    with open(paths["metrics_file"], 'w') as f:
+    with open(paths["metrics_file"], "w") as f:
         json.dump(metrics, f, indent=2, default=str)
     logger.info(f"Metrics saved to {paths['metrics_file']}")
 
@@ -288,10 +328,7 @@ def _resample_forecast(
     if int_ratio == 1:
         return raw_forecast[:n_target]
 
-    return [
-        sum(raw_forecast[i:i + int_ratio]) / int_ratio
-        for i in range(0, n_needed, int_ratio)
-    ]
+    return [sum(raw_forecast[i : i + int_ratio]) / int_ratio for i in range(0, n_needed, int_ratio)]
 
 
 def _run_bess_pipeline(config: dict) -> dict:
@@ -331,13 +368,17 @@ def _run_bess_pipeline(config: dict) -> dict:
         wf_step_days=val_cfg.get("step_days", 30),
     )
 
-    save_model(da_model, {
-        "model_type": model_cfg.get("type", "xgboost"),
-        "target": "day_ahead_price",
-        "n_features": X_test.shape[1],
-        "features": list(X_test.columns),
-        "mode": "bess",
-    }, paths)
+    save_model(
+        da_model,
+        {
+            "model_type": model_cfg.get("type", "xgboost"),
+            "target": "day_ahead_price",
+            "n_features": X_test.shape[1],
+            "features": list(X_test.columns),
+            "mode": "bess",
+        },
+        paths,
+    )
 
     # Step 3: Determine out-of-sample dates and load features for forecasting
     oos_times = pd.to_datetime(da_predictions_df["time"], utc=True)
@@ -352,14 +393,19 @@ def _run_bess_pipeline(config: dict) -> dict:
     feat_start = features_df["time"].min().strftime("%Y-%m-%d")
     feat_end = (features_df["time"].max() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     logger.info("BESS pipeline: loading and processing price data (%s → %s)", feat_start, feat_end)
-    da_processed = process_day_ahead_price(fetch_day_ahead_price(start_date=feat_start, end_date=feat_end))
-    mid_processed = process_market_index_price(fetch_market_index_price(start_date=feat_start, end_date=feat_end))
+    da_processed = process_day_ahead_price(
+        fetch_day_ahead_price(start_date=feat_start, end_date=feat_end)
+    )
+    mid_processed = process_market_index_price(
+        fetch_market_index_price(start_date=feat_start, end_date=feat_end)
+    )
 
     duration_h = bess_cfg.get("resolution_h", 1.0)
     resample_freq = f"{int(duration_h * 60)}min"
 
     prices = (
-        da_processed.resample(resample_freq).mean()
+        da_processed.resample(resample_freq)
+        .mean()
         .join(mid_processed.resample(resample_freq).mean())
         .dropna()
     )
@@ -378,7 +424,11 @@ def _run_bess_pipeline(config: dict) -> dict:
     # Step 5: Daily BESS simulation using ML forecasts
     periods_per_day = int(24 / duration_h)
     dst_delta = int(1 / duration_h)
-    valid_period_counts = {periods_per_day - dst_delta, periods_per_day, periods_per_day + dst_delta}
+    valid_period_counts = {
+        periods_per_day - dst_delta,
+        periods_per_day,
+        periods_per_day + dst_delta,
+    }
 
     sorted_times = features_df["time"].sort_values()
     deltas_h = sorted_times.diff().dropna().dt.total_seconds() / 3600
@@ -404,7 +454,10 @@ def _run_bess_pipeline(config: dict) -> dict:
 
         raw_forecast = ml_da_forecast(da_model, X_day)
         forecast = _resample_forecast(
-            raw_forecast, source_resolution_h, duration_h, n_periods,
+            raw_forecast,
+            source_resolution_h,
+            duration_h,
+            n_periods,
         )
         if forecast is None:
             continue
@@ -426,15 +479,17 @@ def _run_bess_pipeline(config: dict) -> dict:
             config=bess_cfg,
         )
         prev_soc_pct = asset.soc_pct
-        daily_results.append({
-            "date": date,
-            "da_revenue": result["benchmark_da_revenue"],
-            "intraday_pnl": result["intraday_da_improvement"],
-            "execution_costs_paid": result["execution_costs_paid"],
-            "degradation_cost": result["total_degradation_cost"],
-            "intraday_throughput_mwh": result["accumulated_intraday_throughput_mwh"],
-            "net_pnl": result["net_pnl"],
-        })
+        daily_results.append(
+            {
+                "date": date,
+                "da_revenue": result["benchmark_da_revenue"],
+                "intraday_pnl": result["intraday_da_improvement"],
+                "execution_costs_paid": result["execution_costs_paid"],
+                "degradation_cost": result["total_degradation_cost"],
+                "intraday_throughput_mwh": result["accumulated_intraday_throughput_mwh"],
+                "net_pnl": result["net_pnl"],
+            }
+        )
 
     results_df = pd.DataFrame(daily_results)
     if results_df.empty:
@@ -451,20 +506,24 @@ def _run_bess_pipeline(config: dict) -> dict:
 
 def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = False) -> dict:
     signal_threshold = config["signal"]["threshold"] if config else DEFAULT_SIGNAL_THRESHOLD
-    top_n                = config["signal"]["top_n"]                                  if config else 5
-    vol_multiplier       = config["signal"].get("vol_multiplier", 1.0)                if config else 1.0
-    vol_window           = config["signal"].get("vol_window", 336)                    if config else 336
-    transaction_cost     = config["signal"].get("transaction_cost", 0.0)              if config else 0.0
-    baseline_hedge_ratio = config.get("execution", {}).get("baseline_hedge_ratio", 0.50) if config else 0.50
-    take_profit_pct      = config.get("execution", {}).get("take_profit_pct", 0.90)      if config else 0.90
-    stop_loss_price_delta = config.get("execution", {}).get("stop_loss_price_delta", 5.00) if config else 5.00
-    slippage             = config.get("execution", {}).get("slippage", 0.50)             if config else 0.50
-    model_type       = config["model"]["type"]         if config else "xgboost"
-    model_params     = config["model"]["hyperparameters"] if config else None
-    val_type         = config["validation"]["type"]    if config else "walk_forward"
-    wf_train_days    = config["validation"]["train_days"] if config else 200
-    wf_test_days     = config["validation"]["test_days"]  if config else 30
-    wf_step_days     = config["validation"]["step_days"]  if config else 30
+    top_n = config["signal"]["top_n"] if config else 5
+    vol_multiplier = config["signal"].get("vol_multiplier", 1.0) if config else 1.0
+    vol_window = config["signal"].get("vol_window", 336) if config else 336
+    transaction_cost = config["signal"].get("transaction_cost", 0.0) if config else 0.0
+    baseline_hedge_ratio = (
+        config.get("execution", {}).get("baseline_hedge_ratio", 0.50) if config else 0.50
+    )
+    take_profit_pct = config.get("execution", {}).get("take_profit_pct", 0.90) if config else 0.90
+    stop_loss_price_delta = (
+        config.get("execution", {}).get("stop_loss_price_delta", 5.00) if config else 5.00
+    )
+    slippage = config.get("execution", {}).get("slippage", 0.50) if config else 0.50
+    model_type = config["model"]["type"] if config else "xgboost"
+    model_params = config["model"]["hyperparameters"] if config else None
+    val_type = config["validation"]["type"] if config else "walk_forward"
+    wf_train_days = config["validation"]["train_days"] if config else 200
+    wf_test_days = config["validation"]["test_days"] if config else 30
+    wf_step_days = config["validation"]["step_days"] if config else 30
 
     paths = setup_experiment_paths(config, mode="virtual")
 
@@ -497,9 +556,9 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
             wf_step_days=wf_step_days,
         )
 
-        results['model'] = model
-        results['predictions_df'] = predictions_df
-        results['X_test'] = X_test
+        results["model"] = model
+        results["predictions_df"] = predictions_df
+        results["X_test"] = X_test
 
         logger.info("Generating trading signals")
         penalty_buffer = compute_penalty_buffer(
@@ -525,8 +584,8 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
             top_n=top_n,
         )
 
-        results['signals'] = signals
-        results['schedule_df'] = schedule_df
+        results["signals"] = signals
+        results["schedule_df"] = schedule_df
 
         logger.info("Running backtest")
         pnl_series, trading_metrics = run_backtest(
@@ -544,39 +603,48 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
             slippage=slippage,
         )
 
-        results['pnl_series'] = pnl_series
-        results['trading_metrics'] = trading_metrics
+        results["pnl_series"] = pnl_series
+        results["trading_metrics"] = trading_metrics
 
         logger.info("Calculating model metrics")
         from sklearn.metrics import mean_absolute_error, mean_squared_error
-        mae  = mean_absolute_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
-        rmse = np.sqrt(mean_squared_error(predictions_df["actual_spread"], predictions_df["predicted_spread"]))
 
-        actual    = predictions_df["actual_spread"].values
+        mae = mean_absolute_error(
+            predictions_df["actual_spread"], predictions_df["predicted_spread"]
+        )
+        rmse = np.sqrt(
+            mean_squared_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
+        )
+
+        actual = predictions_df["actual_spread"].values
         predicted = predictions_df["predicted_spread"].values
         directional_accuracy = float(np.mean(np.sign(actual) == np.sign(predicted)))
 
         ts = predictions_df["time"].values
         model_metrics = {
-            'mae':                  mae,
-            'rmse':                 rmse,
-            'directional_accuracy': directional_accuracy,
-            'test_period_start':    str(pd.to_datetime(ts[0],  utc=True)),
-            'test_period_end':      str(pd.to_datetime(ts[-1], utc=True)),
-            'test_n_periods':       int(len(predictions_df)),
+            "mae": mae,
+            "rmse": rmse,
+            "directional_accuracy": directional_accuracy,
+            "test_period_start": str(pd.to_datetime(ts[0], utc=True)),
+            "test_period_end": str(pd.to_datetime(ts[-1], utc=True)),
+            "test_n_periods": int(len(predictions_df)),
         }
-        results['model_metrics'] = model_metrics
+        results["model_metrics"] = model_metrics
 
         if SAVE_OUTPUTS_DEFAULT:
             logger.info("Saving outputs")
-            save_model(model, {
-                'model_type':       model_type,
-                'signal_threshold': signal_threshold,
-                'n_features':       X_test.shape[1],
-                'n_samples':        len(X_test),
-                'features':         list(X_test.columns),
-                'mode':             'virtual',
-            }, paths)
+            save_model(
+                model,
+                {
+                    "model_type": model_type,
+                    "signal_threshold": signal_threshold,
+                    "n_features": X_test.shape[1],
+                    "n_samples": len(X_test),
+                    "features": list(X_test.columns),
+                    "mode": "virtual",
+                },
+                paths,
+            )
 
             save_outputs(predictions_df, signals, pnl_series, paths)
             save_metrics(model_metrics, trading_metrics, paths)
@@ -601,11 +669,21 @@ def _run_download(config: dict) -> dict:
     full_end = max(str(p["end"]) for p in periods)
 
     fetch_wind_forecast(source=sources["wind_source"], start_date=full_start, end_date=full_end)
-    fetch_generation_actual(source=sources["generation_source"], start_date=full_start, end_date=full_end)
-    fetch_day_ahead_price(source=sources["day_ahead_price_source"], start_date=full_start, end_date=full_end)
-    fetch_market_index_price(source=sources["market_index_source"], start_date=full_start, end_date=full_end)
-    fetch_demand_actual(source=sources["demand_actual_source"], start_date=full_start, end_date=full_end)
-    fetch_imbalance_price(source=sources["imbalance_source"], start_date=full_start, end_date=full_end)
+    fetch_generation_actual(
+        source=sources["generation_source"], start_date=full_start, end_date=full_end
+    )
+    fetch_day_ahead_price(
+        source=sources["day_ahead_price_source"], start_date=full_start, end_date=full_end
+    )
+    fetch_market_index_price(
+        source=sources["market_index_source"], start_date=full_start, end_date=full_end
+    )
+    fetch_demand_actual(
+        source=sources["demand_actual_source"], start_date=full_start, end_date=full_end
+    )
+    fetch_imbalance_price(
+        source=sources["imbalance_source"], start_date=full_start, end_date=full_end
+    )
 
     for p in periods:
         fetch_demand_forecast(
@@ -627,7 +705,9 @@ def _run_features(config: dict) -> dict:
     return {"mode": "features", "features_file": paths["features_file"]}
 
 
-def run_full_pipeline(mode: str | None = None, config: dict | None = None, skip_features: bool = False) -> dict:
+def run_full_pipeline(
+    mode: str | None = None, config: dict | None = None, skip_features: bool = False
+) -> dict:
     """Run the trading pipeline.
 
     Args:
@@ -679,9 +759,9 @@ def print_pipeline_results(results: dict):
     print(f"ELECTRICITY TRADING PIPELINE RESULTS  (mode: {results['mode']})")
     print("=" * 60)
 
-    mm = results['model_metrics']
-    tm = results['trading_metrics']
-    ds = tm.get('daily_summary', {})
+    mm = results["model_metrics"]
+    tm = results["trading_metrics"]
+    ds = tm.get("daily_summary", {})
 
     print("\nMODEL PERFORMANCE  (spread prediction, £/MWh):")
     print(f"  MAE:           {mm['mae']:.2f}")
@@ -695,13 +775,16 @@ def print_pipeline_results(results: dict):
     print(f"  Total PnL:     £{tm['total_pnl']:>12,.2f}")
     print(f"  Active trades:  {tm['n_trades']:>11,}")
     print(f"  Win rate:       {tm['win_rate']:>11.1%}")
-    print(f"  Profit factor:  {tm['profit_factor']:>11.2f}" if tm['profit_factor'] is not None
-          else f"  Profit factor:  {'n/a':>11}")
+    print(
+        f"  Profit factor:  {tm['profit_factor']:>11.2f}"
+        if tm["profit_factor"] is not None
+        else f"  Profit factor:  {'n/a':>11}"
+    )
     print(f"  Sharpe ratio:   {tm['sharpe_ratio']:>11.3f}")
     print(f"  Max drawdown:  £{tm['max_drawdown']:>12,.2f}")
     print(f"  Avg win:       £{tm['avg_win']:>12,.2f}")
     print(f"  Avg loss:      £{tm['avg_loss']:>12,.2f}")
-    if tm.get('halted_at_period') is not None:
+    if tm.get("halted_at_period") is not None:
         print(f"  *** Simulation halted at period {tm['halted_at_period']} (drawdown limit) ***")
 
     if ds:
@@ -710,23 +793,27 @@ def print_pipeline_results(results: dict):
         print(f"  Std daily:     £{ds['std_daily_pnl']:>12,.0f}")
         print(f"  Best day:      £{ds['best_day_pnl']:>12,.0f}")
         print(f"  Worst day:     £{ds['worst_day_pnl']:>12,.0f}")
-        print(f"  Pos/Neg days:   {ds['positive_days']} / {ds['negative_days']}  (of {ds['total_days']})")
+        print(
+            f"  Pos/Neg days:   {ds['positive_days']} / {ds['negative_days']}  (of {ds['total_days']})"
+        )
 
-    sig = tm['signal_distribution']
+    sig = tm["signal_distribution"]
     print("\nSIGNAL DISTRIBUTION (after Top-5 filter):")
     print(f"  Long:    {sig['long']}")
     print(f"  Short:   {sig['short']}")
     print(f"  Neutral: {sig['neutral']}")
 
-    if 'schedule_df' in results and not results['schedule_df'].empty:
-        sched = results['schedule_df']
-        print(f"\nDAILY BIDDING SCHEDULE ({len(sched)} trade slots across {sched['market_date'].nunique()} days):")
+    if "schedule_df" in results and not results["schedule_df"].empty:
+        sched = results["schedule_df"]
+        print(
+            f"\nDAILY BIDDING SCHEDULE ({len(sched)} trade slots across {sched['market_date'].nunique()} days):"
+        )
         print(sched.head(10).to_string(index=False))
         if len(sched) > 10:
             print(f"  … ({len(sched) - 10} more rows)")
 
     if SAVE_OUTPUTS_DEFAULT:
-        p = results.get('paths', {})
+        p = results.get("paths", {})
         print("\nOUTPUTS SAVED:")
         print(f"  Model:       {p.get('model_file',       MODEL_FILE)}")
         print(f"  Predictions: {p.get('predictions_file', PREDICTIONS_FILE)}")
@@ -745,20 +832,20 @@ def load_experiment_results(config: dict | None = None) -> dict:
     try:
         if paths["metrics_file"].exists():
             with open(paths["metrics_file"]) as f:
-                results['metrics'] = json.load(f)
+                results["metrics"] = json.load(f)
 
         model = load_model(paths)
         if model:
-            results['model'] = model
+            results["model"] = model
 
         if paths["predictions_file"].exists():
-            results['predictions_df'] = pd.read_csv(paths["predictions_file"])
+            results["predictions_df"] = pd.read_csv(paths["predictions_file"])
 
         if paths["signals_file"].exists():
-            results['signals_df'] = pd.read_csv(paths["signals_file"])
+            results["signals_df"] = pd.read_csv(paths["signals_file"])
 
         if paths["pnl_file"].exists():
-            results['pnl_df'] = pd.read_csv(paths["pnl_file"])
+            results["pnl_df"] = pd.read_csv(paths["pnl_file"])
 
         logger.info(f"Loaded results from {paths['trading_dir']}")
         return results

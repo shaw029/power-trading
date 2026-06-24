@@ -136,9 +136,7 @@ def train_with_validation(
     """
     if validation_type == "static":
         market_day = (
-            pd.to_datetime(df["time"], utc=True)
-            .dt.tz_convert("Europe/London")
-            .dt.normalize()
+            pd.to_datetime(df["time"], utc=True).dt.tz_convert("Europe/London").dt.normalize()
         )
         dates = sorted(market_day.unique())
         split_idx = int(len(dates) * 0.8)
@@ -150,13 +148,18 @@ def train_with_validation(
 
         logger.info(
             "Static split — train: %d rows (%d days) | test: %d rows (%d days)",
-            len(train_df), len(train_dates), len(test_df), len(test_dates),
+            len(train_df),
+            len(train_dates),
+            len(test_df),
+            len(test_dates),
         )
 
         model = _fit_model(train_df[features], train_df[target_col], model_type, model_params)
         predictions = model.predict(test_df[features])
         return (
-            _make_predictions_df(test_df, test_df[target_col], predictions, actual_col, predicted_col),
+            _make_predictions_df(
+                test_df, test_df[target_col], predictions, actual_col, predicted_col
+            ),
             model,
             test_df[features],
         )
@@ -182,10 +185,15 @@ def train_with_validation(
             fold_mae = mean_absolute_error(y_test, predictions)
             logger.info(
                 "Fold %d — train: %d rows | test: %d rows | MAE: %.2f £/MWh",
-                fold_idx + 1, len(train_df), len(test_df), fold_mae,
+                fold_idx + 1,
+                len(train_df),
+                len(test_df),
+                fold_mae,
             )
 
-            folds.append(_make_predictions_df(test_df, y_test, predictions, actual_col, predicted_col))
+            folds.append(
+                _make_predictions_df(test_df, y_test, predictions, actual_col, predicted_col)
+            )
             X_test_last = X_test
 
         if not folds:
@@ -197,9 +205,7 @@ def train_with_validation(
 
         logger.info("Walk-forward complete: %d folds", len(folds))
         predictions_df = (
-            pd.concat(folds, ignore_index=True)
-            .sort_values("time")
-            .reset_index(drop=True)
+            pd.concat(folds, ignore_index=True).sort_values("time").reset_index(drop=True)
         )
         return predictions_df, model, X_test_last
 
@@ -271,7 +277,9 @@ def train_model(
     )
 
     mae = mean_absolute_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
-    rmse = np.sqrt(mean_squared_error(predictions_df["actual_spread"], predictions_df["predicted_spread"]))
+    rmse = np.sqrt(
+        mean_squared_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
+    )
     logger.info("Overall — MAE: %.2f £/MWh | RMSE: %.2f £/MWh", mae, rmse)
 
     if hasattr(model, "feature_importances_"):
@@ -343,8 +351,12 @@ def train_da_price_model(
         predicted_col="predicted_da_price",
     )
 
-    mae = mean_absolute_error(predictions_df["actual_da_price"], predictions_df["predicted_da_price"])
-    rmse = np.sqrt(mean_squared_error(predictions_df["actual_da_price"], predictions_df["predicted_da_price"]))
+    mae = mean_absolute_error(
+        predictions_df["actual_da_price"], predictions_df["predicted_da_price"]
+    )
+    rmse = np.sqrt(
+        mean_squared_error(predictions_df["actual_da_price"], predictions_df["predicted_da_price"])
+    )
     logger.info("DA price model — MAE: %.2f £/MWh | RMSE: %.2f £/MWh", mae, rmse)
 
     if hasattr(model, "feature_importances_"):

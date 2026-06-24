@@ -760,7 +760,9 @@ def _fetch_entsoe_load_forecast_day(market_day: pd.Timestamp) -> pd.DataFrame:
     Uses outBiddingZone_Domain (not in_Domain/out_Domain used by price queries).
     Returns a DataFrame with columns: time (UTC), value (MW).
     """
-    london_day = market_day.tz_localize("Europe/London") if market_day.tzinfo is None else market_day
+    london_day = (
+        market_day.tz_localize("Europe/London") if market_day.tzinfo is None else market_day
+    )
     utc_start = london_day.normalize().tz_convert("UTC")
     utc_end = (london_day.normalize() + pd.Timedelta(days=1)).tz_convert("UTC")
 
@@ -812,12 +814,8 @@ def _fetch_entsoe_load_forecast_day(market_day: pd.Timestamp) -> pd.DataFrame:
             for point in period:
                 if _strip_ns(point.tag) != "Point":
                     continue
-                position = next(
-                    (el.text for el in point if _strip_ns(el.tag) == "position"), None
-                )
-                quantity = next(
-                    (el.text for el in point if _strip_ns(el.tag) == "quantity"), None
-                )
+                position = next((el.text for el in point if _strip_ns(el.tag) == "position"), None)
+                quantity = next((el.text for el in point if _strip_ns(el.tag) == "quantity"), None)
                 if position and quantity:
                     try:
                         offset_h = (int(position) - 1) * resolution_h
@@ -835,7 +833,9 @@ def _fetch_entsoe_load_forecast_day(market_day: pd.Timestamp) -> pd.DataFrame:
     return df.sort_values("time").drop_duplicates(subset=["time"])
 
 
-def fetch_entsoe_demand_forecast(start_date: str = START_DATE, end_date: str = END_DATE) -> pd.DataFrame:
+def fetch_entsoe_demand_forecast(
+    start_date: str = START_DATE, end_date: str = END_DATE
+) -> pd.DataFrame:
     """Fetch ENTSO-E Total Load Forecast (A65) for GB over the configured date range.
 
     Caches one JSON file per market day under data/raw/entsoe_demand_forecast/.

@@ -74,7 +74,9 @@ def build_features(df: pd.DataFrame, save_path: Path | str | None = None) -> pd.
     # -------------------------------------------------------------------------
     # Save
     # -------------------------------------------------------------------------
-    output_path = Path(save_path) if save_path is not None else VERSIONED_FEATURES_DIR / "features.parquet"
+    output_path = (
+        Path(save_path) if save_path is not None else VERSIONED_FEATURES_DIR / "features.parquet"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(output_path, index=False)
 

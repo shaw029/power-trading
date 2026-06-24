@@ -41,9 +41,7 @@ class BESSAsset:
 
     def charge(self, mw: float, duration_h: float) -> None:
         if mw > self.power_mw:
-            raise ValueError(
-                f"Charge power {mw} MW exceeds limit {self.power_mw} MW"
-            )
+            raise ValueError(f"Charge power {mw} MW exceeds limit {self.power_mw} MW")
         gross_mwh = mw * duration_h
         stored_mwh = gross_mwh * self.charge_efficiency
         new_soc = self._soc_mwh + stored_mwh
@@ -51,17 +49,14 @@ class BESSAsset:
             new_soc, self._max_soc_mwh, abs_tol=_SOC_TOL
         ):
             raise ValueError(
-                f"Charge would exceed max SOC: "
-                f"{new_soc:.4f} MWh > {self._max_soc_mwh} MWh"
+                f"Charge would exceed max SOC: " f"{new_soc:.4f} MWh > {self._max_soc_mwh} MWh"
             )
         self._soc_mwh = min(new_soc, self._max_soc_mwh)
         self._degradation_cost += gross_mwh * self.degradation_cost_per_mwh
 
     def discharge(self, mw: float, duration_h: float) -> None:
         if mw > self.power_mw:
-            raise ValueError(
-                f"Discharge power {mw} MW exceeds limit {self.power_mw} MW"
-            )
+            raise ValueError(f"Discharge power {mw} MW exceeds limit {self.power_mw} MW")
         released_mwh = mw * duration_h
         drawn_mwh = released_mwh / self.discharge_efficiency
         new_soc = self._soc_mwh - drawn_mwh
@@ -69,8 +64,7 @@ class BESSAsset:
             new_soc, self._min_soc_mwh, abs_tol=_SOC_TOL
         ):
             raise ValueError(
-                f"Discharge would breach min SOC: "
-                f"{new_soc:.4f} MWh < {self._min_soc_mwh} MWh"
+                f"Discharge would breach min SOC: " f"{new_soc:.4f} MWh < {self._min_soc_mwh} MWh"
             )
         self._soc_mwh = max(new_soc, self._min_soc_mwh)
         self._degradation_cost += released_mwh * self.degradation_cost_per_mwh

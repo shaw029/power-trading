@@ -467,7 +467,10 @@ class TestHybridExecution:
         ssp = np.array([70.0] * 3)
         sbp = np.array([40.0] * 3)
         _, metrics = run_backtest(
-            sigs, da, ssp, sbp,
+            sigs,
+            da,
+            ssp,
+            sbp,
             starting_capital=self._CAP,
             risk_pct=self._RISK,
             cost_per_trade=0.0,
@@ -487,7 +490,10 @@ class TestHybridExecution:
         # mid_adj=42.5; tp_hit: 42.5>=32 True; loss=50-42.5=7.5>=5 True
         # Both fire → counted as TP, not SL
         _, metrics = self._run(
-            signal=1, mid=43.0, pred_spread=-20.0, stop_loss_price_delta=5.0,
+            signal=1,
+            mid=43.0,
+            pred_spread=-20.0,
+            stop_loss_price_delta=5.0,
         )
         assert metrics["execution_breakdown"]["active_tp_triggered"] == 1
         assert metrics["execution_breakdown"]["active_sl_triggered"] == 0
@@ -496,7 +502,10 @@ class TestHybridExecution:
         # Exit price is mid_adj regardless of which flag wins
         # mid_adj=42.5; passive=10*(42.5-50)=-75; active=10*(42.5-50)=-75 → gross=-150
         pnl, _ = self._run(
-            signal=1, mid=43.0, pred_spread=-20.0, stop_loss_price_delta=5.0,
+            signal=1,
+            mid=43.0,
+            pred_spread=-20.0,
+            stop_loss_price_delta=5.0,
         )
         assert pnl[0] == pytest.approx(-150.0)
 
@@ -507,7 +516,10 @@ class TestHybridExecution:
         # mid_adj=56.5; tp_hit: 56.5<=32 False; loss=56.5-50=6.5>=5 True
         # Only SL fires — positive pred_spread no longer inflates tp_level above DA
         _, metrics = self._run(
-            signal=-1, mid=56.0, pred_spread=20.0, stop_loss_price_delta=5.0,
+            signal=-1,
+            mid=56.0,
+            pred_spread=20.0,
+            stop_loss_price_delta=5.0,
         )
         assert metrics["execution_breakdown"]["active_tp_triggered"] == 0
         assert metrics["execution_breakdown"]["active_sl_triggered"] == 1
@@ -515,7 +527,10 @@ class TestHybridExecution:
     def test_short_positive_pred_spread_sl_exit_uses_mid_adj(self):
         # mid_adj=56.5; passive=10*(50-56.5)=-65; active=10*(50-56.5)=-65 → gross=-130
         pnl, _ = self._run(
-            signal=-1, mid=56.0, pred_spread=20.0, stop_loss_price_delta=5.0,
+            signal=-1,
+            mid=56.0,
+            pred_spread=20.0,
+            stop_loss_price_delta=5.0,
         )
         assert pnl[0] == pytest.approx(-130.0)
 
@@ -529,7 +544,10 @@ class TestHybridExecution:
         sbp = np.array([75.0])
         pnl_base, _ = run_backtest(sigs, da, ssp, sbp, cost_per_trade=0.0)
         pnl_nan, _ = run_backtest(
-            sigs, da, ssp, sbp,
+            sigs,
+            da,
+            ssp,
+            sbp,
             cost_per_trade=0.0,
             mid_prices=np.array([np.nan]),
             predicted_spreads=np.array([20.0]),
@@ -543,7 +561,10 @@ class TestHybridExecution:
         sbp = np.array([75.0])
         pnl_base, _ = run_backtest(sigs, da, ssp, sbp, cost_per_trade=0.0)
         pnl_nan, _ = run_backtest(
-            sigs, da, ssp, sbp,
+            sigs,
+            da,
+            ssp,
+            sbp,
             cost_per_trade=0.0,
             mid_prices=np.array([60.0]),
             predicted_spreads=np.array([np.nan]),
@@ -559,7 +580,10 @@ class TestHybridExecution:
         sbp = np.array([75.0] * 2)
         with pytest.raises(ValueError, match="same length"):
             run_backtest(
-                sigs, da, ssp, sbp,
+                sigs,
+                da,
+                ssp,
+                sbp,
                 mid_prices=np.array([60.0]),
                 predicted_spreads=np.array([20.0, 20.0]),
             )
@@ -574,7 +598,10 @@ class TestHybridExecution:
         sbp = np.array([65.0])
         pnl_base, _ = run_backtest(sigs, da, ssp, sbp, cost_per_trade=0.0)
         pnl_hybrid, _ = run_backtest(
-            sigs, da, ssp, sbp,
+            sigs,
+            da,
+            ssp,
+            sbp,
             cost_per_trade=0.0,
             mid_prices=np.array([75.0]),
             predicted_spreads=np.array([20.0]),
@@ -640,7 +667,10 @@ class TestNaNPriceInputs:
         ssp = np.array([70.0, 70.0])
         sbp = np.array([75.0, 75.0])
         pnl, metrics = run_backtest(
-            sigs, da, ssp, sbp,
+            sigs,
+            da,
+            ssp,
+            sbp,
             starting_capital=self._CAP,
             risk_pct=self._RISK,
             cost_per_trade=0.0,

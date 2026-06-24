@@ -37,9 +37,14 @@ class TestComputeImpliedSocClamping:
 def _unit_asset(soc=0.5, power=50.0, deg=0.0):
     """Lossless 100 MWh / `power` MW battery for arithmetic-clean LP checks."""
     return BESSAsset(
-        capacity_mwh=100, power_mw=power, charge_efficiency=1.0,
-        discharge_efficiency=1.0, degradation_cost_per_mwh=deg, initial_soc_pct=soc,
-        min_soc_pct=0.0, max_soc_pct=1.0,
+        capacity_mwh=100,
+        power_mw=power,
+        charge_efficiency=1.0,
+        discharge_efficiency=1.0,
+        degradation_cost_per_mwh=deg,
+        initial_soc_pct=soc,
+        min_soc_pct=0.0,
+        max_soc_pct=1.0,
     )
 
 
@@ -99,7 +104,7 @@ class TestReoptimizationCapturesSpread:
         )
         log = result["dispatch_log"]
         assert log[0]["final_mw"] == pytest.approx(-50.0)  # charge 50 MW
-        assert log[1]["final_mw"] == pytest.approx(50.0)   # discharge 50 MW
+        assert log[1]["final_mw"] == pytest.approx(50.0)  # discharge 50 MW
         # bought 50 MWh @10, sold 50 MWh @100 (MID == DA here)
         assert result["intraday_da_improvement"] == pytest.approx(50 * 100 - 50 * 10)
         assert result["accumulated_intraday_throughput_mwh"] == pytest.approx(100.0)
@@ -248,22 +253,29 @@ class TestLedgerReconcilesOverRandomDays:
         worst = 0.0
         for _ in range(100):
             asset = BESSAsset(
-                capacity_mwh=20.0, power_mw=10.0,
-                charge_efficiency=0.92, discharge_efficiency=0.92,
+                capacity_mwh=20.0,
+                power_mw=10.0,
+                charge_efficiency=0.92,
+                discharge_efficiency=0.92,
                 degradation_cost_per_mwh=2.0,
                 initial_soc_pct=random.uniform(0.1, 0.9),
-                min_soc_pct=0.05, max_soc_pct=0.95,
+                min_soc_pct=0.05,
+                max_soc_pct=0.95,
             )
             fc = [random.uniform(-50, 200) for _ in range(24)]
             mid = [f + random.uniform(-30, 30) for f in fc]
             sched = optimize_da_schedule(fc, asset, duration_h=1.0)
             asset.reset()
             result = run_intraday_session(
-                da_schedule=sched, da_price_actual=fc, mid_prices=mid,
+                da_schedule=sched,
+                da_price_actual=fc,
+                mid_prices=mid,
                 asset=asset,
                 config={
-                    "degradation_cost_per_mwh": 2.0, "resolution_h": 1.0,
-                    "margin_buy": 1.0, "margin_sell": 1.0,
+                    "degradation_cost_per_mwh": 2.0,
+                    "resolution_h": 1.0,
+                    "margin_buy": 1.0,
+                    "margin_sell": 1.0,
                 },
             )
             recomputed = (

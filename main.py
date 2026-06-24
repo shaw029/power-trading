@@ -20,13 +20,15 @@ from src.utils.config import load_config
 def main():
     parser = argparse.ArgumentParser(description="Day-Ahead Power Trading Pipeline")
     parser.add_argument(
-        "--mode", "-m",
+        "--mode",
+        "-m",
         choices=["download", "features", "model", "virtual", "bess", "all"],
         default=None,
         help="Pipeline mode (default: from config.yaml strategy_type)",
     )
     parser.add_argument(
-        "--config", "-c",
+        "--config",
+        "-c",
         default="configs/config.yaml",
         help="Path to a YAML experiment config (default: configs/config.yaml)",
     )

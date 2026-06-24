@@ -170,7 +170,9 @@ class TestDAOptimizer:
         assert sum(pos_period) > 0, "Should net discharge during positive-price hours"
 
         revenue = sum(schedule[h] * prices[h] for h in range(24))
-        assert revenue > 0, "Revenue must be positive when buying at negative and selling at positive prices"
+        assert (
+            revenue > 0
+        ), "Revenue must be positive when buying at negative and selling at positive prices"
 
     def test_all_negative_prices_charges_only(self, battery: BESSAsset) -> None:
         prices = [-50.0] * 12 + [-10.0] * 12
@@ -198,7 +200,10 @@ class TestDAOptimizer:
         prices = [10.0, 90.0] * 24  # 48 half-hour periods
         target = 0.5
         schedule = optimize_da_schedule(
-            prices, battery, duration_h=duration_h, target_daily_cycles=target,
+            prices,
+            battery,
+            duration_h=duration_h,
+            target_daily_cycles=target,
         )
 
         discharge_energy = sum(mw * duration_h for mw in schedule if mw > 0)

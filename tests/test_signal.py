@@ -243,7 +243,12 @@ class TestGenerateSignal:
         penalty = np.array([0.0])
         assert generate_signal(spread, penalty, threshold=5.0)[0] == 1
         vol = np.array([8.0])
-        assert generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)[0] == 0
+        assert (
+            generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)[
+                0
+            ]
+            == 0
+        )
 
     def test_vol_threshold_floor_is_static_threshold(self):
         # vol=2, multiplier=1.0 → vol_gate=2 < threshold=5 → floor kicks in → gate=5
@@ -251,7 +256,9 @@ class TestGenerateSignal:
         spread = np.array([6.0])
         penalty = np.array([0.0])
         vol = np.array([2.0])
-        result = generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)
+        result = generate_signal(
+            spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0
+        )
         assert result[0] == 1
 
     def test_vol_multiplier_scales_gate(self):
@@ -260,7 +267,9 @@ class TestGenerateSignal:
         penalty = np.array([0.0, 0.0])
         vol = np.array([4.0, 4.0])
         spread = np.array([7.0, 9.0])
-        result = generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=2.0)
+        result = generate_signal(
+            spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=2.0
+        )
         assert result[0] == 0
         assert result[1] == 1
 
@@ -269,12 +278,16 @@ class TestGenerateSignal:
         spread = np.array([6.0])
         penalty = np.array([0.0])
         vol = np.array([np.nan])
-        result = generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)
+        result = generate_signal(
+            spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0
+        )
         assert result[0] == 1
 
     def test_vol_threshold_length_mismatch_raises(self):
         with pytest.raises(ValueError, match="length"):
-            generate_signal(np.array([1.0, 2.0]), np.array([0.0, 0.0]), vol_threshold=np.array([1.0]))
+            generate_signal(
+                np.array([1.0, 2.0]), np.array([0.0, 0.0]), vol_threshold=np.array([1.0])
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -327,8 +340,8 @@ class TestBuildDailySchedule:
         sigs = np.array([-1, -1, -1, -1])
         _, filtered = build_daily_schedule(spread, sigs, ts, top_n=2)
         retained = np.where(filtered == -1)[0]
-        assert 3 in retained   # -10.0 → highest conviction
-        assert 2 in retained   # -8.0 → second
+        assert 3 in retained  # -10.0 → highest conviction
+        assert 2 in retained  # -8.0 → second
         assert 1 not in retained
         assert 0 not in retained
 
@@ -338,10 +351,10 @@ class TestBuildDailySchedule:
         spread = np.array([20.0, -20.0, 5.1, -5.1])
         sigs = np.array([1, -1, 1, -1])
         _, filtered = build_daily_schedule(spread, sigs, ts, top_n=1)
-        assert filtered[0] == 1    # top LONG: spread=20
-        assert filtered[1] == -1   # top SHORT: spread=-20
-        assert filtered[2] == 0    # weaker LONG dropped
-        assert filtered[3] == 0    # weaker SHORT dropped
+        assert filtered[0] == 1  # top LONG: spread=20
+        assert filtered[1] == -1  # top SHORT: spread=-20
+        assert filtered[2] == 0  # weaker LONG dropped
+        assert filtered[3] == 0  # weaker SHORT dropped
 
     def test_schedule_df_has_required_columns(self):
         ts = pd.date_range("2018-01-10", periods=4, freq="30min", tz="UTC")
@@ -430,34 +443,40 @@ class TestGenerateSignalFromDataframe:
     def test_top_n_none_returns_all_gated_signals(self):
         # Without top_n, all signals that pass the gate are kept
         ts = pd.date_range("2018-01-10", periods=6, freq="30min", tz="UTC")
-        df = pd.DataFrame({
-            "time": ts,
-            "predicted_spread": [10.0, 9.0, 8.0, 7.0, 6.0, 1.0],
-            "penalty_buffer": np.zeros(6),
-        })
+        df = pd.DataFrame(
+            {
+                "time": ts,
+                "predicted_spread": [10.0, 9.0, 8.0, 7.0, 6.0, 1.0],
+                "penalty_buffer": np.zeros(6),
+            }
+        )
         result = generate_signal_from_dataframe(df, threshold=5.0, top_n=None)
         assert (result["signal"] == 1).sum() == 5  # all five > 5.0 are kept
 
     def test_top_n_with_timestamps_applies_conviction_ranking(self):
         # 4 LONG signals on the same day; top_n=2 → only the 2 highest |spread| survive
         ts = pd.date_range("2018-01-10", periods=4, freq="30min", tz="UTC")
-        df = pd.DataFrame({
-            "time": ts,
-            "predicted_spread": [10.0, 9.0, 8.0, 7.0],
-            "penalty_buffer": np.zeros(4),
-        })
+        df = pd.DataFrame(
+            {
+                "time": ts,
+                "predicted_spread": [10.0, 9.0, 8.0, 7.0],
+                "penalty_buffer": np.zeros(4),
+            }
+        )
         result = generate_signal_from_dataframe(df, threshold=5.0, top_n=2)
         signals = list(result["signal"])
-        assert signals[0] == 1   # highest conviction retained
-        assert signals[1] == 1   # second highest retained
-        assert signals[2] == 0   # dropped
-        assert signals[3] == 0   # dropped
+        assert signals[0] == 1  # highest conviction retained
+        assert signals[1] == 1  # second highest retained
+        assert signals[2] == 0  # dropped
+        assert signals[3] == 0  # dropped
 
     def test_top_n_without_timestamps_skips_ranking(self):
         # No timestamp column → top_n is ignored, all gated signals returned
-        df = pd.DataFrame({
-            "predicted_spread": [10.0, 9.0, 8.0, 7.0],
-            "penalty_buffer": np.zeros(4),
-        })
+        df = pd.DataFrame(
+            {
+                "predicted_spread": [10.0, 9.0, 8.0, 7.0],
+                "penalty_buffer": np.zeros(4),
+            }
+        )
         result = generate_signal_from_dataframe(df, threshold=5.0, top_n=1)
         assert (result["signal"] == 1).sum() == 4  # all pass gate, no ranking applied

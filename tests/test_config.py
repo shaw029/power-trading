@@ -4,7 +4,6 @@ import pytest
 
 from src.utils.config import validate_config, get_periods, get_sources, _BESS_DEFAULTS
 
-
 _MINIMAL_DATA = {
     "data": {
         "periods": [{"start": "2018-01-01", "end": "2019-01-01", "demand_source": "ENTSOE"}],
@@ -44,25 +43,29 @@ class TestBessConfig:
             assert bess[key] == expected
 
     def test_bess_block_custom_values(self):
-        cfg = validate_config(_cfg(
-            strategy_type="bess",
-            bess={
-                "capacity_mwh": 200.0,
-                "power_mw": 100.0,
-                "charge_efficiency": 0.96,
-                "discharge_efficiency": 0.96,
-                "degradation_cost_per_mwh": 5.00,
-                "initial_soc_pct": 0.80,
-            },
-        ))
+        cfg = validate_config(
+            _cfg(
+                strategy_type="bess",
+                bess={
+                    "capacity_mwh": 200.0,
+                    "power_mw": 100.0,
+                    "charge_efficiency": 0.96,
+                    "discharge_efficiency": 0.96,
+                    "degradation_cost_per_mwh": 5.00,
+                    "initial_soc_pct": 0.80,
+                },
+            )
+        )
         assert cfg["bess"]["capacity_mwh"] == 200.0
         assert cfg["bess"]["charge_efficiency"] == 0.96
 
     def test_bess_partial_override_fills_defaults(self):
-        cfg = validate_config(_cfg(
-            strategy_type="bess",
-            bess={"capacity_mwh": 50.0},
-        ))
+        cfg = validate_config(
+            _cfg(
+                strategy_type="bess",
+                bess={"capacity_mwh": 50.0},
+            )
+        )
         assert cfg["bess"]["capacity_mwh"] == 50.0
         assert cfg["bess"]["power_mw"] == _BESS_DEFAULTS["power_mw"]
 
@@ -82,28 +85,56 @@ class TestDataPeriods:
 
     def test_missing_field_raises(self):
         with pytest.raises(ValueError, match="missing required field"):
-            validate_config({"strategy_type": "virtual", "data": {"periods": [
-                {"start": "2018-01-01", "end": "2019-01-01"},
-            ]}})
+            validate_config(
+                {
+                    "strategy_type": "virtual",
+                    "data": {
+                        "periods": [
+                            {"start": "2018-01-01", "end": "2019-01-01"},
+                        ]
+                    },
+                }
+            )
 
     def test_bad_demand_source_raises(self):
         with pytest.raises(ValueError, match="demand_source"):
-            validate_config({"strategy_type": "virtual", "data": {"periods": [
-                {"start": "2018-01-01", "end": "2019-01-01", "demand_source": "BOGUS"},
-            ]}})
+            validate_config(
+                {
+                    "strategy_type": "virtual",
+                    "data": {
+                        "periods": [
+                            {"start": "2018-01-01", "end": "2019-01-01", "demand_source": "BOGUS"},
+                        ]
+                    },
+                }
+            )
 
     def test_overlapping_periods_raises(self):
         with pytest.raises(ValueError, match="overlap"):
-            validate_config({"strategy_type": "virtual", "data": {"periods": [
-                {"start": "2018-01-01", "end": "2019-01-01", "demand_source": "ENTSOE"},
-                {"start": "2018-06-01", "end": "2019-06-01", "demand_source": "ENTSOE"},
-            ]}})
+            validate_config(
+                {
+                    "strategy_type": "virtual",
+                    "data": {
+                        "periods": [
+                            {"start": "2018-01-01", "end": "2019-01-01", "demand_source": "ENTSOE"},
+                            {"start": "2018-06-01", "end": "2019-06-01", "demand_source": "ENTSOE"},
+                        ]
+                    },
+                }
+            )
 
     def test_start_after_end_raises(self):
         with pytest.raises(ValueError, match="must be before"):
-            validate_config({"strategy_type": "virtual", "data": {"periods": [
-                {"start": "2019-01-01", "end": "2018-01-01", "demand_source": "ENTSOE"},
-            ]}})
+            validate_config(
+                {
+                    "strategy_type": "virtual",
+                    "data": {
+                        "periods": [
+                            {"start": "2019-01-01", "end": "2018-01-01", "demand_source": "ENTSOE"},
+                        ]
+                    },
+                }
+            )
 
     def test_valid_periods(self):
         cfg = validate_config(_cfg())
@@ -112,10 +143,17 @@ class TestDataPeriods:
         assert periods[0]["demand_source"] == "ENTSOE"
 
     def test_adjacent_periods_allowed(self):
-        cfg = validate_config({"strategy_type": "virtual", "data": {"periods": [
-            {"start": "2017-01-01", "end": "2018-01-01", "demand_source": "ENTSOE"},
-            {"start": "2018-01-01", "end": "2019-01-01", "demand_source": "NESO_API"},
-        ]}})
+        cfg = validate_config(
+            {
+                "strategy_type": "virtual",
+                "data": {
+                    "periods": [
+                        {"start": "2017-01-01", "end": "2018-01-01", "demand_source": "ENTSOE"},
+                        {"start": "2018-01-01", "end": "2019-01-01", "demand_source": "NESO_API"},
+                    ]
+                },
+            }
+        )
         assert len(get_periods(cfg)) == 2
 
 

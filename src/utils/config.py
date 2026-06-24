@@ -61,7 +61,9 @@ SAVE_OUTPUTS_DEFAULT = True
 DATA_DIR = PROJECT_ROOT / "data"
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 
-RAW_DATA_DIR = Path(os.environ.get("RAW_DATA_DIR", "")) if os.environ.get("RAW_DATA_DIR") else DATA_DIR / "raw"
+RAW_DATA_DIR = (
+    Path(os.environ.get("RAW_DATA_DIR", "")) if os.environ.get("RAW_DATA_DIR") else DATA_DIR / "raw"
+)
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 
 # CSV paths for local-file sources
@@ -75,16 +77,16 @@ IMBALANCE_PRICE_CSV = RAW_DATA_DIR / "imbalance_price.csv"
 
 # Versioned fallback paths
 VERSIONED_FEATURES_DIR = ARTIFACTS_DIR / CURRENT_VERSION / "features"
-VERSIONED_MODELS_DIR   = ARTIFACTS_DIR / CURRENT_VERSION / "model"
-VERSIONED_TRADING_DIR  = ARTIFACTS_DIR / CURRENT_VERSION / "trading"
+VERSIONED_MODELS_DIR = ARTIFACTS_DIR / CURRENT_VERSION / "model"
+VERSIONED_TRADING_DIR = ARTIFACTS_DIR / CURRENT_VERSION / "trading"
 
-FEATURES_DATASET  = VERSIONED_FEATURES_DIR / "features.parquet"
-MODEL_FILE        = VERSIONED_MODELS_DIR   / "model.joblib"
+FEATURES_DATASET = VERSIONED_FEATURES_DIR / "features.parquet"
+MODEL_FILE = VERSIONED_MODELS_DIR / "model.joblib"
 MODEL_METADATA_FILE = VERSIONED_MODELS_DIR / "metadata.json"
-PREDICTIONS_FILE  = VERSIONED_TRADING_DIR  / "predictions.csv"
-SIGNALS_FILE      = VERSIONED_TRADING_DIR  / "signals.csv"
-PNL_FILE          = VERSIONED_TRADING_DIR  / "pnl.csv"
-METRICS_FILE      = VERSIONED_TRADING_DIR  / "metrics.json"
+PREDICTIONS_FILE = VERSIONED_TRADING_DIR / "predictions.csv"
+SIGNALS_FILE = VERSIONED_TRADING_DIR / "signals.csv"
+PNL_FILE = VERSIONED_TRADING_DIR / "pnl.csv"
+METRICS_FILE = VERSIONED_TRADING_DIR / "metrics.json"
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -195,9 +197,7 @@ def validate_config(config: dict) -> dict:
         # its default) inside the bess config; without this the engine always
         # fell back to its hard-coded 0.50 default regardless of the YAML.
         bess.setdefault("execution", {})
-        bess["execution"].setdefault(
-            "slippage", config.get("execution", {}).get("slippage", 0.50)
-        )
+        bess["execution"].setdefault("slippage", config.get("execution", {}).get("slippage", 0.50))
         config["bess"] = bess
 
     if config["strategy_type"] == "virtual":
@@ -234,7 +234,9 @@ def validate_config(config: dict) -> dict:
             raise ValueError(f"data.periods[{i}] has an invalid date: {exc}") from exc
 
         if start_dt >= end_dt:
-            raise ValueError(f"data.periods[{i}]: start ({p['start']}) must be before end ({p['end']}).")
+            raise ValueError(
+                f"data.periods[{i}]: start ({p['start']}) must be before end ({p['end']})."
+            )
 
         if str(p["demand_source"]) not in _ALLOWED_SOURCES:
             raise ValueError(
@@ -261,9 +263,7 @@ def validate_config(config: dict) -> dict:
             data[key] = _FIXED_SOURCE_DEFAULTS[key]
             logger.warning("'data.%s' not set — defaulting to '%s'.", key, data[key])
         elif str(data[key]) not in _ALLOWED_SOURCES:
-            raise ValueError(
-                f"data.{key} '{data[key]}' not in {sorted(_ALLOWED_SOURCES)}."
-            )
+            raise ValueError(f"data.{key} '{data[key]}' not in {sorted(_ALLOWED_SOURCES)}.")
 
     return config
 

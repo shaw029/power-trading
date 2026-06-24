@@ -26,11 +26,7 @@ def walk_forward_split(
         (train_df, test_df) with non-overlapping, chronologically ordered rows.
     """
     df = df.sort_values("time").reset_index(drop=True)
-    market_day = (
-        pd.to_datetime(df["time"], utc=True)
-        .dt.tz_convert("Europe/London")
-        .dt.normalize()
-    )
+    market_day = pd.to_datetime(df["time"], utc=True).dt.tz_convert("Europe/London").dt.normalize()
     dates = sorted(market_day.unique())
     n_dates = len(dates)
 

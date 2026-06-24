@@ -94,6 +94,7 @@ def _reoptimize_schedule(
 
     try:
         import highspy  # noqa: F401
+
         solver = pulp.HiGHS(msg=0)
     except ImportError:
         solver = pulp.PULP_CBC_CMD(msg=0)
@@ -159,9 +160,7 @@ def run_intraday_session(
 
     target_daily_cycles = config.get("target_daily_cycles")
     cycle_cap_mwh = (
-        target_daily_cycles * asset.capacity_mwh
-        if target_daily_cycles is not None
-        else None
+        target_daily_cycles * asset.capacity_mwh if target_daily_cycles is not None else None
     )
 
     # ── Decision prices: observed now, proxied (and hurdled) for the future ──
@@ -178,9 +177,7 @@ def run_intraday_session(
     # ── Stage 1 benchmark ────────────────────────────────────────────────────
     # The locked DA schedule settled at the actual cleared DA prices — the
     # trader's benchmark, frozen before any intraday action.
-    benchmark_da_revenue = sum(
-        mw * duration_h * p for mw, p in zip(da_schedule, da_price_actual)
-    )
+    benchmark_da_revenue = sum(mw * duration_h * p for mw, p in zip(da_schedule, da_price_actual))
 
     # ── Stage 2: rolling-horizon re-optimisation ─────────────────────────────
     # Walk the day period by period. At each step the current period's MID has
@@ -206,11 +203,12 @@ def run_intraday_session(
         # Re-optimise from the current SOC over the remaining horizon: current
         # period priced at the observed MID, future periods at the hurdled proxy.
         # The (optional) cycle cap is reduced by the throughput already cycled.
-        sub_sell = [mid_p] + future_sell[h + 1:]
-        sub_buy = [mid_p] + future_buy[h + 1:]
+        sub_sell = [mid_p] + future_sell[h + 1 :]
+        sub_buy = [mid_p] + future_buy[h + 1 :]
         remaining_budget = (
             max(0.0, cycle_cap_mwh - discharge_throughput_mwh)
-            if cycle_cap_mwh is not None else None
+            if cycle_cap_mwh is not None
+            else None
         )
         plan = _reoptimize_schedule(
             da_schedule=da_schedule[h:],
@@ -230,12 +228,16 @@ def run_intraday_session(
         # feasible. In a continuous market the trader only ever commits what can
         # be delivered, so there is no imbalance — the deviation, whatever it ends
         # up being, settles at the observed MID.
-        p_raw = plan[0]            # only the now-visible current period is executed
+        p_raw = plan[0]  # only the now-visible current period is executed
         if p_raw > 0:
-            max_dis_mw = (asset._soc_mwh - asset._min_soc_mwh) * asset.discharge_efficiency / duration_h
+            max_dis_mw = (
+                (asset._soc_mwh - asset._min_soc_mwh) * asset.discharge_efficiency / duration_h
+            )
             p = max(0.0, min(p_raw, max_dis_mw, asset.power_mw))
         elif p_raw < 0:
-            max_chg_mw = (asset._max_soc_mwh - asset._soc_mwh) / asset.charge_efficiency / duration_h
+            max_chg_mw = (
+                (asset._max_soc_mwh - asset._soc_mwh) / asset.charge_efficiency / duration_h
+            )
             p = -max(0.0, min(-p_raw, max_chg_mw, asset.power_mw))
         else:
             p = 0.0
@@ -276,27 +278,29 @@ def run_intraday_session(
             trade_type = "idle"
             rule_label = "Idle"
 
-        dispatch_log.append({
-            "period": h,
-            "action": log_action,
-            "trade_type": trade_type,
-            "mw": log_mw,
-            "price": da_p,
-            "da_price_actual": da_p,
-            "mid_price": mid_p,
-            "da_mw": s,
-            "intraday_mw": dev,
-            # Back-compat aliases for the dashboard trade tape: the intraday
-            # deviation is a single physical re-optimisation leg (no separate
-            # zero-wear netting leg exists under the LP), so spread_mw carries it
-            # and netting_mw stays zero.
-            "spread_mw": dev,
-            "netting_mw": 0.0,
-            "final_mw": p,
-            "rule_label": rule_label,
-            "soc_before": soc_before,
-            "soc_after": asset.soc_pct,
-        })
+        dispatch_log.append(
+            {
+                "period": h,
+                "action": log_action,
+                "trade_type": trade_type,
+                "mw": log_mw,
+                "price": da_p,
+                "da_price_actual": da_p,
+                "mid_price": mid_p,
+                "da_mw": s,
+                "intraday_mw": dev,
+                # Back-compat aliases for the dashboard trade tape: the intraday
+                # deviation is a single physical re-optimisation leg (no separate
+                # zero-wear netting leg exists under the LP), so spread_mw carries it
+                # and netting_mw stays zero.
+                "spread_mw": dev,
+                "netting_mw": 0.0,
+                "final_mw": p,
+                "rule_label": rule_label,
+                "soc_before": soc_before,
+                "soc_after": asset.soc_pct,
+            }
+        )
 
     total_degradation = asset.degradation_cost - initial_deg
 
@@ -308,10 +312,7 @@ def run_intraday_session(
     cycles_saved_mwh = max(0.0, benchmark_throughput - actual_throughput)
 
     net_pnl = (
-        benchmark_da_revenue
-        + intraday_da_improvement
-        - execution_costs_paid
-        - total_degradation
+        benchmark_da_revenue + intraday_da_improvement - execution_costs_paid - total_degradation
     )
 
     return {

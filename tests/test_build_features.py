@@ -152,7 +152,9 @@ class TestDerivedFeatures:
 
     def test_auction_residual_load_equals_demand_minus_wind(self, df, result):
         expected = df["demand_fc_da_d1_10h30"] - df["wind_fc_da_d1_10h30"]
-        np.testing.assert_array_almost_equal(result["auction_residual_load"].values, expected.values)
+        np.testing.assert_array_almost_equal(
+            result["auction_residual_load"].values, expected.values
+        )
 
     def test_wind_auction_drift_present(self, result):
         assert "wind_auction_drift" in result.columns

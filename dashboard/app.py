@@ -10,6 +10,7 @@ schedule vs. actual dispatch, SOC) so the model's behaviour can be inspected.
 
 Run with ``make dashboard`` or ``streamlit run dashboard/app.py``.
 """
+
 import os
 import sys
 from pathlib import Path
@@ -41,7 +42,9 @@ PROCESSED_DATA = Path(
     os.environ.get("PT_PROCESSED_DATA", PROJECT_ROOT / "data/processed/processed_data.parquet")
 )
 FEATURES_CACHE = Path(
-    os.environ.get("PT_FEATURES", PROJECT_ROOT / "artifacts/da_positioning/xgb_wf_v1/features/features.parquet")
+    os.environ.get(
+        "PT_FEATURES", PROJECT_ROOT / "artifacts/da_positioning/xgb_wf_v1/features/features.parquet"
+    )
 )
 CONFIG_PATH = PROJECT_ROOT / "configs" / "config.yaml"
 CONFIG_FALLBACK_PATH = PROJECT_ROOT / "configs" / "config.example.yaml"
@@ -54,6 +57,7 @@ def _load_config() -> dict:
 
 
 # ── Data loading (cached) ────────────────────────────────────────────────────
+
 
 @st.cache_data
 def load_prices() -> pd.DataFrame:
@@ -88,8 +92,7 @@ def load_da_price_forecast(model_cfg: dict, val_cfg: dict) -> pd.Series:
     )
 
     oos_dates = set(
-        pd.to_datetime(predictions_df["time"], utc=True)
-        .dt.tz_convert("Europe/London").dt.date
+        pd.to_datetime(predictions_df["time"], utc=True).dt.tz_convert("Europe/London").dt.date
     )
     features_df = pd.read_parquet(FEATURES_CACHE)
     features_df["time"] = pd.to_datetime(features_df["time"], utc=True)
@@ -98,9 +101,7 @@ def load_da_price_forecast(model_cfg: dict, val_cfg: dict) -> pd.Series:
 
     oos_rows = features_df[london_date.isin(oos_dates)]
     X = oos_rows[feature_cols].dropna()
-    forecast = pd.Series(
-        da_model.predict(X), index=oos_rows.loc[X.index, "time"]
-    ).sort_index()
+    forecast = pd.Series(da_model.predict(X), index=oos_rows.loc[X.index, "time"]).sort_index()
     forecast.index.name = "time"
     return forecast
 
@@ -120,6 +121,7 @@ def _slice_month(df: pd.DataFrame, period: pd.Period) -> pd.DataFrame:
 
 
 # ── BESS simulation ──────────────────────────────────────────────────────────
+
 
 @st.cache_data(show_spinner="Running BESS dispatch over the out-of-sample period…")
 def run_bess_simulation(
@@ -160,8 +162,10 @@ def run_bess_simulation(
 
     resample_freq = f"{int(resolution_h * 3600)}s"
     periods_per_day = int(24 / resolution_h)
-    hourly = combined.resample(resample_freq).mean().dropna(
-        subset=["day_ahead_price", "mid_price", "system_buy_price", "system_sell_price"]
+    hourly = (
+        combined.resample(resample_freq)
+        .mean()
+        .dropna(subset=["day_ahead_price", "mid_price", "system_buy_price", "system_sell_price"])
     )
 
     asset_kwargs = {
@@ -195,7 +199,11 @@ def run_bess_simulation(
     all_da_schedules = []
 
     dst_delta = int(1 / resolution_h)
-    valid_period_counts = {periods_per_day - dst_delta, periods_per_day, periods_per_day + dst_delta}
+    valid_period_counts = {
+        periods_per_day - dst_delta,
+        periods_per_day,
+        periods_per_day + dst_delta,
+    }
 
     asset = BESSAsset(**asset_kwargs)
     prev_soc_pct: float | None = None
@@ -214,7 +222,9 @@ def run_bess_simulation(
 
         da_prices = day_df["day_ahead_price"].tolist()
         schedule = optimize_da_schedule(
-            forecast, asset, duration_h=resolution_h,
+            forecast,
+            asset,
+            duration_h=resolution_h,
             target_daily_cycles=target_daily_cycles,
         )
         if len(schedule) != len(forecast):
@@ -232,15 +242,17 @@ def run_bess_simulation(
         )
         prev_soc_pct = asset.soc_pct
 
-        daily_results.append({
-            "date": pd.Timestamp(date),
-            "cycles_saved_mwh": result["cycles_saved_mwh"],
-            "degradation_cost": result["total_degradation_cost"],
-            "benchmark_da_revenue": result["benchmark_da_revenue"],
-            "intraday_da_improvement": result["intraday_da_improvement"],
-            "execution_costs_paid": result["execution_costs_paid"],
-            "net_pnl": result["net_pnl"],
-        })
+        daily_results.append(
+            {
+                "date": pd.Timestamp(date),
+                "cycles_saved_mwh": result["cycles_saved_mwh"],
+                "degradation_cost": result["total_degradation_cost"],
+                "benchmark_da_revenue": result["benchmark_da_revenue"],
+                "intraday_da_improvement": result["intraday_da_improvement"],
+                "execution_costs_paid": result["execution_costs_paid"],
+                "net_pnl": result["net_pnl"],
+            }
+        )
 
         for entry in result["dispatch_log"]:
             entry["date"] = date
@@ -249,13 +261,15 @@ def run_bess_simulation(
         all_dispatch_logs.extend(result["dispatch_log"])
 
         for h, mw in enumerate(schedule):
-            all_da_schedules.append({
-                "date": date,
-                "hour": h,
-                "timestamp": day_df.index[h],
-                "da_mw": mw,
-                "da_price_pred": forecast[h],
-            })
+            all_da_schedules.append(
+                {
+                    "date": date,
+                    "hour": h,
+                    "timestamp": day_df.index[h],
+                    "da_mw": mw,
+                    "da_price_pred": forecast[h],
+                }
+            )
 
     results_df = pd.DataFrame(daily_results)
     dispatch_df = pd.DataFrame(all_dispatch_logs)
@@ -265,6 +279,7 @@ def run_bess_simulation(
 
 
 # ── Main app ──────────────────────────────────────────────────────────────────
+
 
 def main():
     st.title("BESS Dispatch Dashboard")
@@ -295,32 +310,45 @@ def render_bess(prices: pd.DataFrame):
     default_min_soc = int(round(bess_cfg.get("min_soc_pct", 0.0) * 100))
     default_max_soc = int(round(bess_cfg.get("max_soc_pct", 1.0) * 100))
     min_soc, max_soc = st.sidebar.slider(
-        "SOC Bounds (%)", 0, 100, (default_min_soc, default_max_soc), step=5,
+        "SOC Bounds (%)",
+        0,
+        100,
+        (default_min_soc, default_max_soc),
+        step=5,
     )
     _cfg_cycles = bess_cfg.get("target_daily_cycles")
     limit_cycles = st.sidebar.checkbox("Limit daily cycles", value=_cfg_cycles is not None)
     target_daily_cycles = None
     if limit_cycles:
         target_daily_cycles = st.sidebar.slider(
-            "Target Daily Cycles", 0.5, 4.0,
-            float(_cfg_cycles) if _cfg_cycles is not None else 1.5, step=0.5,
+            "Target Daily Cycles",
+            0.5,
+            4.0,
+            float(_cfg_cycles) if _cfg_cycles is not None else 1.5,
+            step=0.5,
         )
 
     st.sidebar.markdown("### Intraday Re-optimisation Levers")
     basis_margin = st.sidebar.slider(
-        "MID-Proxy Basis (£/MWh)", 0.0, 50.0,
-        float(bess_cfg.get("margin_buy", 0.0)), step=1.0,
+        "MID-Proxy Basis (£/MWh)",
+        0.0,
+        50.0,
+        float(bess_cfg.get("margin_buy", 0.0)),
+        step=1.0,
         help="The DA→MID basis used to proxy the (unobservable) intraday MID from "
-             "the cleared DA price: discharge clears at DA − basis, charge at DA + "
-             "basis. It is the hurdle a deviation must beat — higher = the LP "
-             "deviates from the locked DA plan less often.",
+        "the cleared DA price: discharge clears at DA − basis, charge at DA + "
+        "basis. It is the hurdle a deviation must beat — higher = the LP "
+        "deviates from the locked DA plan less often.",
     )
     slippage = st.sidebar.slider(
-        "Execution Buffer / Slippage (£/MWh)", 0.0, 10.0,
-        float(cfg.get("execution", {}).get("slippage", 0.50)), step=0.50,
+        "Execution Buffer / Slippage (£/MWh)",
+        0.0,
+        10.0,
+        float(cfg.get("execution", {}).get("slippage", 0.50)),
+        step=0.50,
         help="Per-MWh execution cost charged on every deviated MWh, and an extra "
-             "hurdle in the re-optimisation objective, so a higher buffer makes the "
-             "engine deviate from the DA plan less often.",
+        "hurdle in the re-optimisation objective, so a higher buffer makes the "
+        "engine deviate from the DA plan less often.",
     )
 
     # The simulation runs over the whole out-of-sample period and is cached on
@@ -381,7 +409,9 @@ def render_bess(prices: pd.DataFrame):
     end = period.end_time.tz_localize("UTC")
     hourly = (
         prices.loc[start:end, ["day_ahead_price", "mid_price", "system_buy_price"]]
-        .resample("1h").mean().dropna()
+        .resample("1h")
+        .mean()
+        .dropna()
     )
     if hourly.empty:
         st.warning("No valid price data for the selected month.")
@@ -391,7 +421,8 @@ def render_bess(prices: pd.DataFrame):
     with top_left:
         st.plotly_chart(
             chart_realized_shape(dispatch_df, hourly, da_sched_df),
-            use_container_width=True, key=f"realized_shape_{month_str}",
+            use_container_width=True,
+            key=f"realized_shape_{month_str}",
         )
     with top_right:
         st.plotly_chart(
@@ -401,19 +432,22 @@ def render_bess(prices: pd.DataFrame):
                 max_soc_pct=soc_bounds["max_soc_pct"],
                 initial_soc_pct=soc_bounds["initial_soc_pct"],
             ),
-            use_container_width=True, key=f"soc_tracker_{month_str}",
+            use_container_width=True,
+            key=f"soc_tracker_{month_str}",
         )
 
     bottom_left, bottom_right = st.columns(2)
     with bottom_left:
         st.plotly_chart(
             chart_da_commitment_shape(da_sched_df, hourly),
-            use_container_width=True, key=f"da_commit_shape_{month_str}",
+            use_container_width=True,
+            key=f"da_commit_shape_{month_str}",
         )
     with bottom_right:
         st.plotly_chart(
             chart_pnl_waterfall(results_df),
-            use_container_width=True, key=f"waterfall_{month_str}",
+            use_container_width=True,
+            key=f"waterfall_{month_str}",
         )
 
     # Daily attribution: monthly variance view — what each day earned, by source
@@ -426,7 +460,8 @@ def render_bess(prices: pd.DataFrame):
     )
     st.plotly_chart(
         chart_daily_attribution(results_df),
-        use_container_width=True, key=f"daily_attr_{month_str}",
+        use_container_width=True,
+        key=f"daily_attr_{month_str}",
     )
 
     # Operation explorer: a 24-hour viewport dragged across the month via the date strip
@@ -441,11 +476,14 @@ def render_bess(prices: pd.DataFrame):
     )
     st.plotly_chart(
         chart_operation_explorer(
-            hourly, dispatch_df, da_sched_df,
+            hourly,
+            dispatch_df,
+            da_sched_df,
             min_soc_pct=soc_bounds["min_soc_pct"],
             max_soc_pct=soc_bounds["max_soc_pct"],
         ),
-        use_container_width=True, key=f"explorer_{month_str}",
+        use_container_width=True,
+        key=f"explorer_{month_str}",
     )
 
 

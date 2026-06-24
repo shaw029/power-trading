@@ -16,13 +16,15 @@ class TestMidPriceLookaheadBias:
 
     def _build_test_df(self, mid_values):
         n = len(mid_values)
-        return pd.DataFrame({
-            "time": pd.date_range("2018-06-01", periods=n, freq="30min", tz="UTC"),
-            "day_ahead_price": [50.0] * n,
-            "mid_price": mid_values,
-            "system_sell_price": [60.0] * n,
-            "system_buy_price": [65.0] * n,
-        })
+        return pd.DataFrame(
+            {
+                "time": pd.date_range("2018-06-01", periods=n, freq="30min", tz="UTC"),
+                "day_ahead_price": [50.0] * n,
+                "mid_price": mid_values,
+                "system_sell_price": [60.0] * n,
+                "system_buy_price": [65.0] * n,
+            }
+        )
 
     def test_leading_nans_remain_nan(self):
         """NaNs before the first valid mid_price must stay NaN (no bfill)."""

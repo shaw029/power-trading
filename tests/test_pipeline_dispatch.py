@@ -150,6 +150,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr("main.load_config", lambda _: {"strategy_type": "virtual"})
 
         from main import main
+
         main()
 
         _, kwargs = mock_run.call_args
@@ -162,6 +163,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr("main.load_config", lambda _: {"strategy_type": "virtual"})
 
         from main import main
+
         main()
 
         _, kwargs = mock_run.call_args
@@ -174,6 +176,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr("main.load_config", lambda _: {"strategy_type": "bess"})
 
         from main import main
+
         main()
 
         _, kwargs = mock_run.call_args
@@ -186,6 +189,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr("main.load_config", lambda _: {})
 
         from main import main
+
         main()
 
         _, kwargs = mock_run.call_args
@@ -198,6 +202,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr("main.load_config", lambda _: {})
 
         from main import main
+
         main()
 
         _, kwargs = mock_run.call_args
@@ -210,6 +215,7 @@ class TestMainCLIParsing:
         monkeypatch.setattr("main.load_config", lambda _: {})
 
         from main import main
+
         main()
 
         _, kwargs = mock_run.call_args

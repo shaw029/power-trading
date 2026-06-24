@@ -78,7 +78,9 @@ def run_backtest(
         _mid = np.asarray(mid_prices, dtype=float)
         _pred = np.asarray(predicted_spreads, dtype=float)
         if len(_mid) != n or len(_pred) != n:
-            raise ValueError("mid_prices and predicted_spreads must have the same length as signals")
+            raise ValueError(
+                "mid_prices and predicted_spreads must have the same length as signals"
+            )
 
     _SLIPPAGE = slippage
 
@@ -262,7 +264,9 @@ def run_backtest(
     )
     logger.info("  Total PnL:        £%s", f"{total_pnl:>10,.2f}")
     logger.info("  Sharpe:            %.3f", sharpe_ratio)
-    logger.info("  Profit factor:     %s", f"{profit_factor:.2f}" if profit_factor is not None else "n/a")
+    logger.info(
+        "  Profit factor:     %s", f"{profit_factor:.2f}" if profit_factor is not None else "n/a"
+    )
     logger.info("  Max drawdown:     £%s", f"{max_drawdown:>10,.2f}")
     logger.info("  Win rate:          %.1f%%", win_rate * 100)
     logger.info("  Active trades:    %d / %d periods", n_active, n)
