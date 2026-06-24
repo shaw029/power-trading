@@ -48,7 +48,7 @@ def test_app_boots_with_three_tabs(app):
     at.run()
 
     assert not at.exception
-    assert [t.label for t in at.tabs] == ["Latest", "History", "Day-types"]
+    assert [t.label for t in at.tabs] == ["Latest", "History", "Day-types", "Methodology"]
     assert "Cycle target (cycles/day)" in [s.label for s in at.slider]
     assert len(at.metric) >= 4  # Latest KPIs + History KPIs
 

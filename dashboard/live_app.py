@@ -30,6 +30,7 @@ from dashboard.charts import (  # noqa: E402
     chart_operation_explorer,
     chart_pnl_waterfall,
     chart_price_capture,
+    chart_realized_shape,
     chart_soc_tracker,
 )
 from live import classify as classify_mod  # noqa: E402
@@ -43,6 +44,41 @@ from live.assets import (  # noqa: E402
 )
 from live.settle import settle_day  # noqa: E402
 from src.bess.bess_asset import BESSAsset  # noqa: E402
+
+METHODOLOGY = """
+This is a **transparent benchmark** of a GB battery (BESS) trading strategy — not
+a live trading account. No real money, broker or exchange is involved and no
+orders are placed. Every figure is the settlement engine run over published
+market data, so the rules behind each day's PnL are fully stated below.
+
+#### Reference assets
+A single **50 MW** battery at three storage durations, run side by side:
+**1h** (50 MWh), **2h** (100 MWh) and **4h** (200 MWh). Only the energy capacity
+changes; the power rating is fixed at 50 MW.
+
+#### Data sources (live, no subscription)
+- **Nord Pool N2EX** — the GB day-ahead auction price (£/MWh) used to schedule
+  the day-ahead trades.
+- **Elexon** — the Market Index (MID) price used for intraday re-optimisation,
+  plus generation mix and demand for day-type context.
+
+#### How a day is traded
+The day-ahead schedule is optimised against the **actual cleared day-ahead
+price** — published the day before (~11:00), so it is information a real
+participant would have held, not lookahead. During the day the schedule is
+re-optimised against the **observed MID price**.
+
+#### Configurable here
+**Duration, cycle target, degradation cost and the SOC band** are adjustable in
+the sidebar and re-run the engine live. MID basis, slippage, round-trip
+efficiency and power rating are fixed, stated assumptions.
+
+#### Out of scope
+No real execution or order book, no imbalance settlement, and no broker/exchange
+fees beyond the slippage and degradation frictions modelled. Results are
+illustrative of the strategy under these assumptions, not a guarantee of
+replicable trading returns.
+"""
 
 RESOLUTION_H = 1.0
 # Nord Pool serves recent GB day-ahead prices without a subscription back to
@@ -203,27 +239,29 @@ def _render_latest(days, duration, soc_min, soc_max):
     prices_hourly = _prices_hourly(dispatch)
     da_sched = _da_sched_frame(dispatch)
 
-    st.plotly_chart(
-        chart_operation_explorer(
-            prices_hourly, dispatch, da_sched, min_soc_pct=soc_min, max_soc_pct=soc_max
-        ),
-        width="stretch",
-    )
+    # A single settled day is already zoomed in, so no scrollable explorer here —
+    # just the by-hour dispatch shape, the SOC path and the PnL bridge.
+    st.plotly_chart(chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch")
     left, right = st.columns(2)
-    left.plotly_chart(chart_price_capture(dispatch, duration_h=RESOLUTION_H), width="stretch")
-    right.plotly_chart(
+    left.plotly_chart(
         chart_soc_tracker(
             dispatch, min_soc_pct=soc_min, max_soc_pct=soc_max, initial_soc_pct=DEFAULT_START_SOC
         ),
         width="stretch",
     )
-    st.plotly_chart(
+    right.plotly_chart(
         chart_pnl_waterfall(pd.DataFrame([_pnl_row(record["date"], dur_result)])),
         width="stretch",
     )
 
 
-def _render_history(days, duration):
+def _range_dispatch(days, duration) -> pd.DataFrame:
+    """One continuous dispatch frame spanning every settled day in order."""
+    frames = [_dispatch_frame(d["date"], d["result"].durations[duration]) for d in days]
+    return pd.concat(frames, ignore_index=True)
+
+
+def _render_history(days, duration, soc_min, soc_max):
     rows = [_pnl_row(d["date"], d["result"].durations[duration]) for d in days]
     results_df = pd.DataFrame(rows)
     st.subheader(f"History — {len(days)} day(s)  ·  {duration} battery")
@@ -240,6 +278,22 @@ def _render_history(days, duration):
         for d in REFERENCE_DURATIONS
     ]
     st.plotly_chart(chart_duration_comparison(pd.DataFrame(totals)), width="stretch")
+
+    # Range-wide views: the scrollable dispatch explorer (drag the date strip)
+    # and the price-capture profile both read better aggregated over many days
+    # than on a single one.
+    dispatch = _range_dispatch(days, duration)
+    st.plotly_chart(
+        chart_operation_explorer(
+            _prices_hourly(dispatch),
+            dispatch,
+            _da_sched_frame(dispatch),
+            min_soc_pct=soc_min,
+            max_soc_pct=soc_max,
+        ),
+        width="stretch",
+    )
+    st.plotly_chart(chart_price_capture(dispatch, duration_h=RESOLUTION_H), width="stretch")
 
 
 def _render_day_types(days, duration):
@@ -262,6 +316,11 @@ def _render_day_types(days, duration):
 
     st.plotly_chart(chart_daytype_scatter(pd.DataFrame(scatter_rows)), width="stretch")
     st.plotly_chart(chart_daytype_profiles(pd.DataFrame(profile_rows)), width="stretch")
+
+
+def _render_methodology():
+    st.subheader("Methodology")
+    st.markdown(METHODOLOGY)
 
 
 # --------------------------------------------------------------------------- #
@@ -317,13 +376,17 @@ def main():
         st.warning("No days could be settled — live data may be temporarily unavailable.")
         return
 
-    latest_tab, history_tab, daytype_tab = st.tabs(["Latest", "History", "Day-types"])
+    latest_tab, history_tab, daytype_tab, method_tab = st.tabs(
+        ["Latest", "History", "Day-types", "Methodology"]
+    )
     with latest_tab:
         _render_latest(days, duration, soc_min, soc_max)
     with history_tab:
-        _render_history(days, duration)
+        _render_history(days, duration, soc_min, soc_max)
     with daytype_tab:
         _render_day_types(days, duration)
+    with method_tab:
+        _render_methodology()
 
 
 if __name__ == "__main__":
