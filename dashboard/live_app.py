@@ -26,7 +26,6 @@ from dashboard.charts import (  # noqa: E402
     chart_daily_attribution,
     chart_daytype_profiles,
     chart_daytype_scatter,
-    chart_duration_comparison,
     chart_pnl_waterfall,
     chart_price_capture,
     chart_realized_shape,
@@ -119,10 +118,11 @@ def _make_cfg(cycle_target, degradation, soc_min, soc_max) -> dict:
     return cfg
 
 
-def _build_assets(cfg, degradation, soc_min, soc_max) -> dict:
-    assets = {}
-    for duration in REFERENCE_DURATIONS:
-        assets[duration] = BESSAsset(
+def _build_asset(cfg, duration, degradation, soc_min, soc_max) -> dict:
+    """A single-duration ``{duration: BESSAsset}`` map — only the duration the
+    user has selected is settled, so a re-settle solves one LP set, not three."""
+    return {
+        duration: BESSAsset(
             capacity_mwh=REFERENCE_POWER_MW * _duration_hours(duration),
             power_mw=REFERENCE_POWER_MW,
             charge_efficiency=cfg["charge_efficiency"],
@@ -132,20 +132,21 @@ def _build_assets(cfg, degradation, soc_min, soc_max) -> dict:
             min_soc_pct=soc_min,
             max_soc_pct=soc_max,
         )
-    return assets
+    }
 
 
 @st.cache_data(show_spinner="Fetching live data and settling…")
-def _settle_range(date_isos: tuple, cycle_target, degradation, soc_min, soc_max):
-    """Settle every day in ``date_isos`` (oldest first) carrying SOC forward.
+def _settle_range(date_isos: tuple, duration, cycle_target, degradation, soc_min, soc_max):
+    """Settle every day in ``date_isos`` (oldest first) carrying SOC forward, for
+    the single selected ``duration``.
 
-    Cached on the dates plus the four parameter levers, so the engine only
-    re-runs when one of those actually changes. Returns one record per settled
-    day with its per-duration result, context and labels.
+    Cached on the dates, the duration and the four parameter levers, so the engine
+    only re-runs when one of those actually changes. Returns one record per
+    settled day with its result, context and labels.
     """
     cfg = _make_cfg(cycle_target, degradation, soc_min, soc_max)
-    assets = _build_assets(cfg, degradation, soc_min, soc_max)
-    prev = {d: min(max(DEFAULT_START_SOC, soc_min), soc_max) for d in REFERENCE_DURATIONS}
+    assets = _build_asset(cfg, duration, degradation, soc_min, soc_max)
+    prev = {duration: min(max(DEFAULT_START_SOC, soc_min), soc_max)}
 
     out = []
     for iso in date_isos:
@@ -276,12 +277,6 @@ def _render_history(days, duration):
 
     st.plotly_chart(chart_daily_attribution(results_df), width="stretch")
 
-    totals = [
-        {"duration": d, "net_pnl": sum(rec["result"].durations[d].net_pnl for rec in days)}
-        for d in REFERENCE_DURATIONS
-    ]
-    st.plotly_chart(chart_duration_comparison(pd.DataFrame(totals)), width="stretch")
-
     # Price-capture profile aggregated over the whole range: charge/discharge by
     # hour of day against the average DA price.
     dispatch = _range_dispatch(days, duration)
@@ -361,7 +356,7 @@ def main():
     date_isos = tuple(
         (yesterday - dt.timedelta(days=i)).isoformat() for i in range(n_days - 1, -1, -1)
     )
-    days = _settle_range(date_isos, cycle_target, degradation, soc_min, soc_max)
+    days = _settle_range(date_isos, duration, cycle_target, degradation, soc_min, soc_max)
 
     if not days:
         st.warning("No days could be settled — live data may be temporarily unavailable.")
