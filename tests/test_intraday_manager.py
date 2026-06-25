@@ -141,9 +141,9 @@ class TestReoptimizationCapturesSpread:
 
 
 class TestHurdlesBlockMarginalTrades:
-    """The basis hurdle applies only to the *future* (proxied) leg — the current
-    period trades at the observed MID with no hurdle — alongside the execution
-    buffer and degradation that widen the no-trade band on the decision."""
+    """In the default (rolling, no-lookahead) engine a deviation must clear three
+    frictions to be worth taking: the DA-proxy basis on the not-yet-visible future
+    leg, the execution buffer on both legs, and the battery wear."""
 
     def test_future_hurdle_blocks_thin_spread(self):
         # Charging now (observed MID 40) to sell into the future is only worth it
@@ -155,6 +155,20 @@ class TestHurdlesBlockMarginalTrades:
             mid_prices=[40.0, 45.0],
             asset=_unit_asset(soc=0.0),
             config={"degradation_cost_per_mwh": 0.0, "margin_buy": 10.0, "margin_sell": 10.0},
+        )
+        assert result["intraday_da_improvement"] == pytest.approx(0.0, abs=1e-6)
+        assert all(e["intraday_mw"] == pytest.approx(0.0, abs=1e-6) for e in result["dispatch_log"])
+
+    def test_execution_buffer_blocks_thin_spread(self):
+        # The 40 -> 45 spread is real, but slippage is charged on both legs:
+        # buying 50 then selling 50 costs (50+50)*3 = 300 of friction against a
+        # 250 gross gain, so the LP leaves the DA plan alone.
+        result = run_intraday_session(
+            da_schedule=[0.0, 0.0],
+            da_price_actual=[40.0, 45.0],
+            mid_prices=[40.0, 45.0],
+            asset=_unit_asset(soc=0.0),
+            config={"degradation_cost_per_mwh": 0.0, "execution": {"slippage": 3.0}},
         )
         assert result["intraday_da_improvement"] == pytest.approx(0.0, abs=1e-6)
         assert all(e["intraday_mw"] == pytest.approx(0.0, abs=1e-6) for e in result["dispatch_log"])
@@ -286,3 +300,63 @@ class TestLedgerReconcilesOverRandomDays:
             )
             worst = max(worst, abs(recomputed - result["net_pnl"]))
         assert worst < 1e-6, f"ledger failed to reconcile: {worst}"
+
+
+class TestPerfectForesightMode:
+    """The live benchmark opts into ``perfect_foresight=True``: a single LP over
+    the realised MID curve. Because following the DA plan is always feasible, it
+    can never do worse than the benchmark — and being the global optimum, never
+    worse than the rolling heuristic."""
+
+    def test_never_worse_than_da_plan(self):
+        import random
+
+        random.seed(11)
+        for _ in range(50):
+            asset = BESSAsset(
+                capacity_mwh=20.0,
+                power_mw=10.0,
+                charge_efficiency=0.92,
+                discharge_efficiency=0.92,
+                degradation_cost_per_mwh=2.0,
+                initial_soc_pct=random.uniform(0.1, 0.9),
+                min_soc_pct=0.05,
+                max_soc_pct=0.95,
+            )
+            da = [random.uniform(-50, 200) for _ in range(24)]
+            mid = [f + random.uniform(-40, 80) for f in da]
+            sched = optimize_da_schedule(da, asset, duration_h=1.0)
+            asset.reset()
+            result = run_intraday_session(
+                da_schedule=sched,
+                da_price_actual=da,
+                mid_prices=mid,
+                asset=asset,
+                config={"degradation_cost_per_mwh": 2.0, "resolution_h": 1.0},
+                perfect_foresight=True,
+            )
+            # Following the DA plan (zero deviation) is feasible, so net is bounded
+            # below by it. The tolerance only absorbs LP/clamp rounding.
+            follow_da_net = result["benchmark_da_revenue"] - sum(abs(s) for s in sched) * 2.0
+            assert result["net_pnl"] >= follow_da_net - (1e-3 * abs(follow_da_net) + 1.0)
+
+    def test_delivers_committed_discharge_into_a_late_spike(self):
+        # DA commits a discharge at the final, highest-price hour. A tempting but
+        # lower MID earlier would lure the rolling engine into discharging early
+        # and being unable to deliver the committed hour; perfect foresight holds
+        # the energy and delivers it. Start full so there is energy to misallocate.
+        asset = _unit_asset(soc=0.95)
+        da_schedule = [0.0, 0.0, 50.0]  # DA discharge committed in the last hour
+        da_price_actual = [50.0, 50.0, 60.0]
+        mid_prices = [80.0, 40.0, 200.0]  # early lure (80), then a late spike (200)
+        result = run_intraday_session(
+            da_schedule=da_schedule,
+            da_price_actual=da_price_actual,
+            mid_prices=mid_prices,
+            asset=asset,
+            config={"degradation_cost_per_mwh": 0.0, "resolution_h": 1.0},
+            perfect_foresight=True,
+        )
+        # The committed discharge is delivered at the spike, not bought back.
+        assert result["dispatch_log"][2]["final_mw"] > 0
+        assert result["intraday_da_improvement"] >= -1e-6

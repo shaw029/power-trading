@@ -51,10 +51,10 @@ def _reoptimize_schedule(
 
     where ``dev_h = P_h − da_schedule_h`` is the intraday trade, split into a
     sell leg ``dev⁺`` (extra discharge) priced at ``sell_price`` and a buy leg
-    ``dev⁻`` (extra charge) priced at ``buy_price``. ``sell_price``/``buy_price``
-    are the **MID proxy**: the known cleared DA price minus/plus the configured
-    ``margin_sell``/``margin_buy`` basis, so a deviation is only worth taking when
-    the across-period DA spread beats the margins + execution + wear it costs.
+    ``dev⁻`` (extra charge) priced at ``buy_price``. Callers pass either the
+    realised MID for both legs (perfect-foresight benchmark) or the
+    observed-now / DA-proxy-future prices (rolling backtest); a deviation is only
+    worth taking when its spread beats the execution + wear it costs.
 
     The locked DA revenue is constant and therefore dropped from the objective;
     maximising the deviation value is equivalent to maximising net PnL.
@@ -121,35 +121,38 @@ def run_intraday_session(
     mid_prices: list[float],
     asset: BESSAsset,
     config: dict,
+    perfect_foresight: bool = False,
 ) -> dict:
-    """Rolling-horizon intraday engine — observed current MID, proxied future.
+    """Intraday re-optimisation of the locked day-ahead schedule.
 
-    Two-stage trader's model. The continuous intraday market means the *current*
-    period's MID is visible before delivery, so it is observed, not guessed; only
-    the not-yet-visible *future* periods are proxied from the DA curve.
+    The day-ahead financial position is locked at the 11:00 auction; intraday the
+    battery's *physical* dispatch may still deviate from it, the deviation
+    settling in the continuous market. ``benchmark_da_revenue`` is the locked
+    schedule valued at the actual cleared DA prices; everything the
+    re-optimisation adds is the ``intraday_da_improvement`` bucket. The buckets
+    sum exactly to net PnL.
 
-      Stage 1 (D-1 10:30): the day-ahead LP schedules against the *forecast* and
-        locks a financial position at the 11:00 auction. That schedule is the
-        ``benchmark`` and is settled at the actual cleared DA prices.
-      Stage 2 (delivery day, rolling period by period):
-        - **Observe.** The current period's MID has become visible, so the engine
-          re-optimises the *remaining* horizon pricing the current period at the
-          real observed MID (``mid_prices[h]``) and every future period at a *DA
-          proxy* — the cleared DA price ± a configurable basis
-          (``margin_sell``/``margin_buy``). That hurdle is conservatism on the
-          *proxy* only: it tempers netting the DA commitment or opening a new
-          position on a still-*guessed* future price. The visible current period
-          carries no hurdle.
-        - **Execute & roll.** Only the current period is tradeable (its price is
-          visible), so only its decision is executed and locked; SOC and the cycle
-          budget advance and the engine rolls to the next period, where one more
-          real MID has appeared. The executed deviation settles at the observed
-          MID. Replacing the DA proxy for future periods with a genuine MID
-          *forecast* is exactly the Phase-4 extension.
+    Two modes:
 
-    mid_prices            — the real observed continuous-market MID. The current
-                            period is decided and settled at it; future periods
-                            (not yet visible) fall back to the DA proxy.
+    - **Rolling proxy (default, no lookahead).** Models a forecast-driven trader:
+      the *current* period's MID is observed, but future periods are not yet
+      visible, so they are priced from a DA proxy (cleared DA ∓ ``margin``). At
+      each step an LP re-optimises the remaining horizon, only the current period
+      is executed, and the engine rolls forward as one more real MID appears.
+      This is the honest backtest used by the Phase-3 pipeline.
+
+    - **Perfect foresight (``perfect_foresight=True``).** For a benchmark settled
+      on *realised* data the whole MID curve is known, so a single LP optimises
+      over the full day with every period priced at its actual MID. Idealised (it
+      uses future prices) but bounded below by the benchmark — the intraday layer
+      can only add value, never the loss-making forced buy-backs the proxy caused
+      when it depleted SOC ahead of a committed high-price hour. Used by the live
+      GB BESS benchmark.
+
+    mid_prices — the realised continuous-market MID; deviations always settle at
+                 it. In rolling mode only the current period's value drives the
+                 decision (future periods fall back to the DA proxy); in
+                 perfect-foresight mode the whole curve drives the optimisation.
     """
     n_periods = len(da_schedule)
     duration_h = config.get("resolution_h", 1.0)
@@ -163,29 +166,35 @@ def run_intraday_session(
         target_daily_cycles * asset.capacity_mwh if target_daily_cycles is not None else None
     )
 
-    # ── Decision prices: observed now, proxied (and hurdled) for the future ──
-    # The continuous intraday market means the *current* period's MID is observed
-    # before delivery — no guessing. Only the not-yet-visible *future* periods are
-    # uncertain, so they are priced from a DA proxy with a conservative basis:
-    # extra discharge clears at da − margin_sell, extra charge at da + margin_buy.
-    # The hurdle (margin) is conservatism applied to the *proxy* only — it makes
-    # the engine cautious about netting the DA commitment or opening a new position
-    # on a *guessed* future price. The visible current period carries no hurdle.
-    future_sell = [p - margin_sell for p in da_price_actual]
-    future_buy = [p + margin_buy for p in da_price_actual]
-
     # ── Stage 1 benchmark ────────────────────────────────────────────────────
     # The locked DA schedule settled at the actual cleared DA prices — the
     # trader's benchmark, frozen before any intraday action.
     benchmark_da_revenue = sum(mw * duration_h * p for mw, p in zip(da_schedule, da_price_actual))
 
-    # ── Stage 2: rolling-horizon re-optimisation ─────────────────────────────
-    # Walk the day period by period. At each step the current period's MID has
-    # just become visible, so re-optimise the *remaining* horizon — current period
-    # at the observed MID (no hurdle), future periods at the hurdled DA proxy —
-    # then execute and lock only the current period (the one whose price is visible
-    # and therefore tradeable in the continuous market) and roll forward. One more
-    # observed MID arrives each step, so the re-solve genuinely adapts.
+    # ── Stage 2: intraday re-optimisation ────────────────────────────────────
+    # Rolling (default): future periods are not yet visible, so they are priced
+    # from a DA proxy with a conservative basis — extra discharge clears at
+    # da − margin_sell, extra charge at da + margin_buy. Perfect foresight: the
+    # whole realised MID curve is known, so a single LP over the full day prices
+    # every period at its actual MID (see the docstring for why each is used).
+    future_sell = [p - margin_sell for p in da_price_actual]
+    future_buy = [p + margin_buy for p in da_price_actual]
+    foresight_plan = (
+        _reoptimize_schedule(
+            da_schedule=da_schedule,
+            sell_price=mid_prices,
+            buy_price=mid_prices,
+            start_soc_mwh=asset._soc_mwh,
+            asset=asset,
+            duration_h=duration_h,
+            exec_cost=exec_cost,
+            deg_cost=degradation_cost,
+            cycle_budget_mwh=cycle_cap_mwh,
+        )
+        if perfect_foresight
+        else None
+    )
+
     initial_deg = asset.degradation_cost
     intraday_da_improvement = 0.0
     execution_costs_paid = 0.0
@@ -200,35 +209,37 @@ def run_intraday_session(
         mid_p = mid_prices[h]
         soc_before = asset.soc_pct
 
-        # Re-optimise from the current SOC over the remaining horizon: current
-        # period priced at the observed MID, future periods at the hurdled proxy.
-        # The (optional) cycle cap is reduced by the throughput already cycled.
-        sub_sell = [mid_p] + future_sell[h + 1 :]
-        sub_buy = [mid_p] + future_buy[h + 1 :]
-        remaining_budget = (
-            max(0.0, cycle_cap_mwh - discharge_throughput_mwh)
-            if cycle_cap_mwh is not None
-            else None
-        )
-        plan = _reoptimize_schedule(
-            da_schedule=da_schedule[h:],
-            sell_price=sub_sell,
-            buy_price=sub_buy,
-            start_soc_mwh=asset._soc_mwh,
-            asset=asset,
-            duration_h=duration_h,
-            exec_cost=exec_cost,
-            deg_cost=degradation_cost,
-            cycle_budget_mwh=remaining_budget,
-        )
+        if perfect_foresight:
+            # The whole-day LP was solved up front; execute period h's dispatch.
+            p_raw = foresight_plan[h]  # type: ignore[index]
+        else:
+            # Rolling: re-solve the remaining horizon from the current SOC —
+            # current period at the observed MID, future at the hurdled DA proxy —
+            # and execute only the now-visible current period. The cycle cap is
+            # reduced by the throughput already cycled.
+            remaining_budget = (
+                max(0.0, cycle_cap_mwh - discharge_throughput_mwh)
+                if cycle_cap_mwh is not None
+                else None
+            )
+            plan = _reoptimize_schedule(
+                da_schedule=da_schedule[h:],
+                sell_price=[mid_p] + future_sell[h + 1 :],
+                buy_price=[mid_p] + future_buy[h + 1 :],
+                start_soc_mwh=asset._soc_mwh,
+                asset=asset,
+                duration_h=duration_h,
+                exec_cost=exec_cost,
+                deg_cost=degradation_cost,
+                cycle_budget_mwh=remaining_budget,
+            )
+            p_raw = plan[0]
+
         # Clamp the executed period to what is physically deliverable from the
-        # current SOC. The sub-LP can pick a degenerate simultaneous charge+
-        # discharge leg at negative prices whose net would overshoot a bound when
-        # dispatched as a single leg; clamping keeps the executed position
-        # feasible. In a continuous market the trader only ever commits what can
-        # be delivered, so there is no imbalance — the deviation, whatever it ends
-        # up being, settles at the observed MID.
-        p_raw = plan[0]  # only the now-visible current period is executed
+        # current SOC — a safety net. The LP returns an SOC-feasible schedule, so
+        # this should not bind, but it guards against a degenerate simultaneous
+        # charge+discharge leg whose net would overshoot a bound when dispatched as
+        # a single leg. The deviation, whatever it is, settles at the realised MID.
         if p_raw > 0:
             max_dis_mw = (
                 (asset._soc_mwh - asset._min_soc_mwh) * asset.discharge_efficiency / duration_h

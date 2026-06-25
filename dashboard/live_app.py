@@ -64,14 +64,18 @@ changes; the power rating is fixed at 50 MW.
 
 #### How a day is traded
 The day-ahead schedule is optimised against the **actual cleared day-ahead
-price** — published the day before (~11:00), so it is information a real
-participant would have held, not lookahead. During the day the schedule is
-re-optimised against the **observed MID price**.
+price** — published the day before (~11:00), so it is legitimate information, not
+lookahead. The intraday layer then re-optimises the physical dispatch against the
+**realised MID curve** for the whole day. Because this is a benchmark on settled
+historical data, that intraday step is **perfect-foresight** — an idealised
+best-case, consistent with the perfect-foresight DA schedule it sits on. It is
+the value the realised prices made available, not a live-replicable intraday
+strategy.
 
 #### Configurable here
 **Duration, cycle target, degradation cost and the SOC band** are adjustable in
-the sidebar and re-run the engine live. MID basis, slippage, round-trip
-efficiency and power rating are fixed, stated assumptions.
+the sidebar and re-run the engine live. Slippage, round-trip efficiency and power
+rating are fixed, stated assumptions.
 
 #### Out of scope
 No real execution or order book, no imbalance settlement, and no broker/exchange
@@ -360,7 +364,6 @@ def main():
     sb.caption(f"History: last {n_days} days (the full free Nord Pool window).")
     sb.caption(
         "Fixed assumptions: "
-        f"MID basis £{cfg.get('margin_buy', 0):.1f}/MWh · "
         f"slippage £{cfg.get('execution', {}).get('slippage', 0):.2f}/MWh · "
         f"round-trip {cfg['charge_efficiency'] * cfg['discharge_efficiency']:.0%} · "
         f"{REFERENCE_POWER_MW:.0f} MW power."

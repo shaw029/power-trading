@@ -116,12 +116,17 @@ def _settle_duration(
     )
 
     asset.reset(start_soc_pct)
+    # The live benchmark settles on realised prices, so it optimises intraday with
+    # perfect foresight of the MID curve (an idealised upper bound), consistent
+    # with its perfect-foresight DA schedule. The Phase-3 backtest keeps the
+    # default rolling/proxy (no-lookahead) engine.
     result = run_intraday_session(
         da_schedule=schedule,
         da_price_actual=day_ahead_prices,
         mid_prices=mid_prices,
         asset=asset,
         config=bess_cfg,
+        perfect_foresight=True,
     )
     end_soc = asset.soc_pct
     net_pnl = result["net_pnl"]
