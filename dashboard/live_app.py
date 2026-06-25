@@ -27,7 +27,6 @@ from dashboard.charts import (  # noqa: E402
     chart_daytype_profiles,
     chart_daytype_scatter,
     chart_duration_comparison,
-    chart_operation_explorer,
     chart_pnl_waterfall,
     chart_price_capture,
     chart_realized_shape,
@@ -265,7 +264,7 @@ def _range_dispatch(days, duration) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def _render_history(days, duration, soc_min, soc_max):
+def _render_history(days, duration):
     rows = [_pnl_row(d["date"], d["result"].durations[duration]) for d in days]
     results_df = pd.DataFrame(rows)
     st.subheader(f"History — {len(days)} day(s)  ·  {duration} battery")
@@ -283,20 +282,9 @@ def _render_history(days, duration, soc_min, soc_max):
     ]
     st.plotly_chart(chart_duration_comparison(pd.DataFrame(totals)), width="stretch")
 
-    # Range-wide views: the scrollable dispatch explorer (drag the date strip)
-    # and the price-capture profile both read better aggregated over many days
-    # than on a single one.
+    # Price-capture profile aggregated over the whole range: charge/discharge by
+    # hour of day against the average DA price.
     dispatch = _range_dispatch(days, duration)
-    st.plotly_chart(
-        chart_operation_explorer(
-            _prices_hourly(dispatch),
-            dispatch,
-            _da_sched_frame(dispatch),
-            min_soc_pct=soc_min,
-            max_soc_pct=soc_max,
-        ),
-        width="stretch",
-    )
     st.plotly_chart(chart_price_capture(dispatch, duration_h=RESOLUTION_H), width="stretch")
 
 
@@ -385,7 +373,7 @@ def main():
     with latest_tab:
         _render_latest(days, duration, soc_min, soc_max)
     with history_tab:
-        _render_history(days, duration, soc_min, soc_max)
+        _render_history(days, duration)
     with daytype_tab:
         _render_day_types(days, duration)
     with method_tab:
