@@ -1,0 +1,7 @@
+# Streamlit app configuration (used by `streamlit run` and Streamlit Cloud).
+[theme]
+base = "light"
+primaryColor = "#1f77b4"   # matches the charts' day-ahead blue
+
+[browser]
+gatherUsageStats = false
