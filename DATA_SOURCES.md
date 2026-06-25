@@ -14,13 +14,15 @@ data:
       demand_source: NESO_API   # NESO_API | ENTSOE | CSV
   wind_source:            ELEXON    # ELEXON | CSV
   generation_source:      ELEXON    # ELEXON | CSV
-  day_ahead_price_source: ENTSOE    # ENTSOE | CSV
+  day_ahead_price_source: ENTSOE    # ENTSOE | NORDPOOL | CSV
   market_index_source:    ELEXON    # ELEXON | CSV
   demand_actual_source:   ELEXON    # ELEXON | CSV
   imbalance_source:       ELEXON    # ELEXON | CSV
 ```
 
 `demand_source` is set per period because the available feeds differ across date ranges (NESO_API from mid-2017 onwards; ENTSOE for earlier periods). All other sources apply across all periods.
+
+> **Day-ahead price — `ENTSOE` vs `NORDPOOL`:** `ENTSOE` reads the historical archive (the source for the backtest; GB coverage stopped post-Brexit, so it only serves cached/older dates). `NORDPOOL` reads GB (N2EX) day-ahead prices from the Nord Pool data portal — the source for the **live benchmark**: recent ~60 days, GBP, **no API key**. The live Streamlit dashboard (`dashboard/live_app.py`) uses `NORDPOOL` by default; the historical pipeline uses `ENTSOE`.
 
 Per-call override (ignores config default): `fetch_wind_forecast("CSV")`
 
@@ -77,7 +79,8 @@ rm -rf data/raw/B1770/   # imbalance prices (SBP/SSP)
 rm -rf data/raw/FUELHH/  # generation mix
 rm -rf data/raw/ITSDO/                   # demand actual (Elexon)
 rm -rf data/raw/MID/                     # market index price (Elexon)
-rm -rf data/raw/entsoe_day_ahead_price/  # day-ahead price (ENTSO-E)
+rm -rf data/raw/entsoe_day_ahead_price/  # day-ahead price (ENTSO-E, historical)
+rm -rf data/raw/NORDPOOL_DA/             # day-ahead price (Nord Pool N2EX, live GB)
 ```
 
 The raw data directory defaults to `data/raw/`. Override via `.env` to point at a renamed folder:

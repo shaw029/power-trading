@@ -119,11 +119,15 @@ make dashboard          # or: streamlit run dashboard/app.py
 
 ## Live Benchmark
 
-The strategies above are validated on a historical backtest. The **live GB BESS benchmark** runs the same BESS engine forward every day on yesterday's realised GB market data, settling three reference batteries (50 MW at 1h / 2h / 4h duration) against the actual Day-Ahead and intraday prices. It is a continuously updating, out-of-sample track record rather than a one-off backtest.
+The strategies above are validated on a historical backtest. The **live GB BESS benchmark** runs the same BESS engine on the most recent GB market data, settling three reference batteries (50 MW at 1h / 2h / 4h duration) against the actual Day-Ahead and intraday prices.
 
-A scheduled GitHub Actions workflow (`.github/workflows/live-bess.yml`) fetches each delivery day, settles it, and commits the resulting JSON artifacts and figures under `docs/`. A static site (plain HTML/CSS/Plotly.js, no build step) reads those artifacts and is published via **GitHub Pages, served from the `/docs` folder** at `https://<owner>.github.io/<repo>/` — for this repository, https://shaw029.github.io/power-trading/. The site has Latest-day, History, and Day-type views, plus a **Methodology** page giving the full explanation of benchmark scope, the reference assets, and caveats.
+It is an **interactive Streamlit dashboard** (`dashboard/live_app.py`) that fetches live data on demand — GB day-ahead prices from **Nord Pool (N2EX)** and intraday MID / generation / demand from **Elexon**, both public, **no API key** — and re-runs the engine as you change the controls. Four levers are adjustable (duration, cycle target, degradation cost, SOC band); everything else is a stated fixed assumption. It has Latest-day, History, and Day-type tabs plus a **Methodology** tab with the full benchmark scope and caveats.
 
-→ See the **Methodology** view on the published site for the complete write-up, and [DEVELOPMENT.md](DEVELOPMENT.md#live-benchmark) for how to enable Pages, set the required secrets, and trigger a run or backfill.
+```bash
+streamlit run dashboard/live_app.py
+```
+
+It deploys for free on [Streamlit Community Cloud](https://share.streamlit.io) (no secrets needed). → See [DEVELOPMENT.md](DEVELOPMENT.md#live-benchmark) for the deploy steps and how the live `live/` package is structured.
 
 ---
 
@@ -148,9 +152,10 @@ A scheduled GitHub Actions workflow (`.github/workflows/live-bess.yml`) fetches 
 
 ## Acknowledgements
 
-Data is sourced from three open platforms:
+Data is sourced from open platforms:
 
-- **[ENTSO-E Transparency Platform](https://transparency.entsoe.eu)** — GB Day-Ahead auction prices
+- **[Nord Pool data portal](https://data.nordpoolgroup.com)** — GB (N2EX) Day-Ahead auction prices for the live benchmark (recent ~60 days, no key)
+- **[ENTSO-E Transparency Platform](https://transparency.entsoe.eu)** — GB Day-Ahead auction prices for the historical backtest
 - **[Elexon BMRS](https://bmrs.elexon.co.uk)** — Wind forecasts, generation actuals, demand actuals, market index prices, and imbalance settlement prices
 - **[NESO CKAN API](https://data.nationalgrideso.com)** — Demand forecasts
 
