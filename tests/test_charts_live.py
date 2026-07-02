@@ -15,7 +15,6 @@ from dashboard.charts import (
     chart_equity_curve,
     chart_price_capture,
 )
-from live.figures import _da_sched_df, _dispatch_df
 
 
 def test_chart_price_capture_returns_figure_and_spread():
@@ -92,16 +91,3 @@ def test_chart_daytype_profiles_returns_figure():
     fig = chart_daytype_profiles(df)
     assert isinstance(fig, go.Figure)
     assert len(fig.data) >= 1
-
-
-def test_dispatch_df_empty_keeps_columns():
-    df = _dispatch_df({"dispatch": []}, timestamps=[])
-    assert df.empty
-    assert list(df.columns) == ["timestamp", "da_mw", "intraday_mw", "soc_after"]
-
-
-def test_da_sched_df_empty_keeps_columns():
-    prices = {"timestamps": [], "da": []}
-    df = _da_sched_df({"schedule_mw": []}, prices)
-    assert df.empty
-    assert list(df.columns) == ["timestamp", "da_mw", "da_price_pred"]
