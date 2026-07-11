@@ -1,0 +1,212 @@
+"""Turn raw per-BMU Elexon records into fleet performance frames.
+
+Pure pandas — no HTTP and no Streamlit — so everything here is unit-testable.
+The revenue model is a transparent free-data estimate, not audited settlement:
+
+* **Wholesale proxy** — each BMU's Physical Notification (its declared net
+  export, MW) is valued at the half-hourly Market Index (MID) price, as if the
+  whole contracted position traded at MID. Discharge earns, charging pays.
+* **Balancing Mechanism** — Elexon's indicative ``EBOCF`` cashflows are summed
+  as published (offers are usually paid to the unit, bids usually paid back),
+  so no BM settlement arithmetic is re-derived here.
+
+Ancillary-service revenue (Dynamic Containment etc.) is out of scope, so
+sites earning mostly ancillary income will read low against Modo-style
+benchmarks.
+"""
+
+import pandas as pd
+
+from fleet.registry import FLEET, bmu_to_site
+
+# MID is published on a half-hourly grid; PN spans are floored onto it.
+_MID_FREQ = "30min"
+
+
+def _pn_frame(pn_records: list[dict]) -> pd.DataFrame:
+    """PN records → one row per (bmu, period) with signed energy in MWh."""
+    df = pd.DataFrame(pn_records)
+    if df.empty:
+        return pd.DataFrame(columns=["bmUnit", "time", "energy_mwh"])
+    time_from = pd.to_datetime(df["timeFrom"], utc=True)
+    hours = (pd.to_datetime(df["timeTo"], utc=True) - time_from).dt.total_seconds() / 3600.0
+    mean_mw = (df["levelFrom"] + df["levelTo"]) / 2.0
+    return pd.DataFrame(
+        {
+            "bmUnit": df["bmUnit"],
+            "time": time_from.dt.floor(_MID_FREQ),
+            "energy_mwh": mean_mw * hours,
+        }
+    )
+
+
+def _cashflow_totals(records: list[dict]) -> pd.Series:
+    """EBOCF records → total £ per BMU (all bid-offer pairs, nulls ignored)."""
+    totals: dict[str, float] = {}
+    for record in records:
+        pairs = record.get("bidOfferPairCashflows") or {}
+        cash = sum(v for v in pairs.values() if v is not None)
+        bmu = record.get("bmUnit")
+        if bmu:
+            totals[bmu] = totals.get(bmu, 0.0) + cash
+    return pd.Series(totals, dtype=float)
+
+
+def day_site_metrics(
+    date_iso: str,
+    pn_records: list[dict],
+    cashflows: dict[str, list[dict]],
+    mid_prices: pd.DataFrame,
+) -> pd.DataFrame:
+    """Per-site metrics for one settlement day.
+
+    Returns one row per fleet site that shows any activity (PN or BM), with
+    energy, the wholesale-proxy revenue, BM cashflows and £/MW. Sites silent
+    on the day (not yet commissioned, data not published) are omitted rather
+    than reported as zero.
+    """
+    site_of = bmu_to_site()
+
+    pn = _pn_frame(pn_records)
+    pn = pn[pn["bmUnit"].isin(site_of)]
+    if not pn.empty:
+        mid = mid_prices["mid_price"]
+        # A period missing a MID print is valued at the day's mean rather than
+        # dropped, so energy and revenue stay consistent.
+        prices = pn["time"].map(mid).fillna(mid.mean())
+        pn = pn.assign(
+            site=pn["bmUnit"].map(lambda b: site_of[b].site),
+            wholesale_gbp=pn["energy_mwh"] * prices,
+        )
+
+    bid = _cashflow_totals(cashflows.get("bid", []))
+    offer = _cashflow_totals(cashflows.get("offer", []))
+
+    rows = []
+    for site in FLEET:
+        ids = list(site.bmu_ids)
+        site_pn = pn[pn["bmUnit"].isin(ids)] if not pn.empty else pn
+        bm_bid = float(bid.reindex(ids).sum())
+        bm_offer = float(offer.reindex(ids).sum())
+        if site_pn.empty and bm_bid == 0.0 and bm_offer == 0.0:
+            continue
+        energy = site_pn["energy_mwh"] if not site_pn.empty else pd.Series(dtype=float)
+        discharge = float(energy[energy > 0].sum())
+        charge = float(-energy[energy < 0].sum())
+        wholesale = float(site_pn["wholesale_gbp"].sum()) if not site_pn.empty else 0.0
+        total = wholesale + bm_bid + bm_offer
+        rows.append(
+            {
+                "date": date_iso,
+                "site": site.site,
+                "optimiser": site.optimiser,
+                "region": site.region,
+                "power_mw": site.power_mw,
+                "capacity_mwh": site.capacity_mwh,
+                "discharge_mwh": discharge,
+                "charge_mwh": charge,
+                "wholesale_gbp": wholesale,
+                "bm_gbp": bm_bid + bm_offer,
+                "total_gbp": total,
+                "gbp_per_mw": total / site.power_mw,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def filter_daily(
+    daily: pd.DataFrame,
+    start: str | None = None,
+    end: str | None = None,
+    sites: list[str] | None = None,
+    optimisers: list[str] | None = None,
+    regions: list[str] | None = None,
+    day_types: list[str] | None = None,
+    day_labels: dict[str, list[str]] | None = None,
+) -> pd.DataFrame:
+    """Slice the per-site daily frame by period, asset, location and day type.
+
+    Every filter is optional; ``None`` or an empty list means "no filter", so
+    the dashboard's empty multiselects fall through untouched. ``start``/``end``
+    are inclusive ISO dates. ``day_types`` selects dates whose tag list (from
+    ``day_labels``, keyed by ISO date) intersects the selection; the pseudo-tag
+    ``"untagged"`` selects dates with no tags or no entry at all.
+    """
+    df = daily
+    if start is not None:
+        df = df[df["date"] >= start]
+    if end is not None:
+        df = df[df["date"] <= end]
+    if sites:
+        df = df[df["site"].isin(sites)]
+    if optimisers:
+        df = df[df["optimiser"].isin(optimisers)]
+    if regions:
+        df = df[df["region"].isin(regions)]
+    if day_types:
+        labels = day_labels or {}
+        wanted = set(day_types)
+
+        def _matches(date_iso: str) -> bool:
+            tags = labels.get(date_iso) or []
+            if not tags:
+                return "untagged" in wanted
+            return bool(wanted.intersection(tags))
+
+        df = df[df["date"].map(_matches)]
+    return df.reset_index(drop=True)
+
+
+def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
+    """Per-site averages over the window, sorted by £/MW/day descending.
+
+    ``cycles_per_day`` divides discharge throughput by the (approximate)
+    nameplate energy, so treat it as indicative.
+    """
+    grouped = daily.groupby(["site", "optimiser", "region"], as_index=False).agg(
+        power_mw=("power_mw", "first"),
+        capacity_mwh=("capacity_mwh", "first"),
+        days=("date", "nunique"),
+        total_gbp=("total_gbp", "sum"),
+        wholesale_gbp=("wholesale_gbp", "sum"),
+        bm_gbp=("bm_gbp", "sum"),
+        discharge_mwh=("discharge_mwh", "sum"),
+    )
+    grouped["gbp_per_mw_day"] = grouped["total_gbp"] / (grouped["power_mw"] * grouped["days"])
+    grouped["cycles_per_day"] = grouped["discharge_mwh"] / (
+        grouped["capacity_mwh"] * grouped["days"]
+    )
+    return grouped.sort_values("gbp_per_mw_day", ascending=False).reset_index(drop=True)
+
+
+def _summarise_by(daily: pd.DataFrame, key: str) -> pd.DataFrame:
+    """MW-weighted £/MW/day per ``key`` (each site-day weighted by its MW)."""
+    grouped = daily.groupby(key, as_index=False).agg(
+        sites=("site", "nunique"),
+        total_gbp=("total_gbp", "sum"),
+        mw_days=("power_mw", "sum"),
+    )
+    site_mw = daily.drop_duplicates("site").groupby(key)["power_mw"].sum()
+    grouped["power_mw"] = grouped[key].map(site_mw)
+    grouped["gbp_per_mw_day"] = grouped["total_gbp"] / grouped["mw_days"]
+    return grouped.sort_values("gbp_per_mw_day", ascending=False).reset_index(drop=True)
+
+
+def summarise_by_optimiser(daily: pd.DataFrame) -> pd.DataFrame:
+    return _summarise_by(daily, "optimiser")
+
+
+def summarise_by_region(daily: pd.DataFrame) -> pd.DataFrame:
+    return _summarise_by(daily, "region")
+
+
+def fleet_daily(daily: pd.DataFrame) -> pd.DataFrame:
+    """Whole-fleet revenue per day, split wholesale vs BM, plus £/MW/day."""
+    grouped = daily.groupby("date", as_index=False).agg(
+        wholesale_gbp=("wholesale_gbp", "sum"),
+        bm_gbp=("bm_gbp", "sum"),
+        total_gbp=("total_gbp", "sum"),
+        mw=("power_mw", "sum"),
+    )
+    grouped["gbp_per_mw"] = grouped["total_gbp"] / grouped["mw"]
+    return grouped

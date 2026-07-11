@@ -26,11 +26,18 @@ from dashboard.charts import (  # noqa: E402
     chart_daily_attribution,
     chart_daytype_profiles,
     chart_daytype_scatter,
+    chart_fleet_by_optimiser,
+    chart_fleet_by_region,
+    chart_fleet_daily,
+    chart_fleet_leaderboard,
+    chart_operation_explorer,
     chart_pnl_waterfall,
     chart_price_capture,
     chart_realized_shape,
     chart_soc_tracker,
 )
+from fleet import fetch_fleet  # noqa: E402
+from fleet import performance as fleet_perf  # noqa: E402
 from live import classify as classify_mod  # noqa: E402
 from live import fetch_live  # noqa: E402
 from live.assets import (  # noqa: E402
@@ -44,42 +51,22 @@ from live.settle import settle_day  # noqa: E402
 from src.bess.bess_asset import BESSAsset  # noqa: E402
 
 METHODOLOGY = """
-This is a **transparent benchmark** of a GB battery (BESS) trading strategy — not
-a live trading account. No real money, broker or exchange is involved and no
-orders are placed. Every figure is the settlement engine run over published
-market data, so the rules behind each day's PnL are fully stated below.
+A **transparent simulation** — no real money, broker or orders. Every figure is
+the settlement engine run over published market data.
 
-#### Reference assets
-A single **50 MW** battery at three storage durations, run side by side:
-**1h** (50 MWh), **2h** (100 MWh) and **4h** (200 MWh). Only the energy capacity
-changes; the power rating is fixed at 50 MW.
-
-#### Data sources (live, no subscription)
-- **Nord Pool N2EX** — the GB day-ahead auction price (£/MWh) used to schedule
-  the day-ahead trades.
-- **Elexon** — the Market Index (MID) price used for intraday re-optimisation,
-  plus generation mix and demand for day-type context.
-
-#### How a day is traded
-The day-ahead schedule is optimised against the **actual cleared day-ahead
-price** — published the day before (~11:00), so it is legitimate information, not
-lookahead. The intraday layer then re-optimises the physical dispatch against the
-**realised MID curve** for the whole day. Because this is a benchmark on settled
-historical data, that intraday step is **perfect-foresight** — an idealised
-best-case, consistent with the perfect-foresight DA schedule it sits on. It is
-the value the realised prices made available, not a live-replicable intraday
-strategy.
-
-#### Configurable here
-**Duration, cycle target, degradation cost and the SOC band** are adjustable in
-the sidebar and re-run the engine live. Slippage, round-trip efficiency and power
-rating are fixed, stated assumptions.
-
-#### Out of scope
-No real execution or order book, no imbalance settlement, and no broker/exchange
-fees beyond the slippage and degradation frictions modelled. Results are
-illustrative of the strategy under these assumptions, not a guarantee of
-replicable trading returns.
+- **Asset** — one 50 MW battery; the parameter panel picks its duration
+  (1h / 2h / 4h).
+- **Data (live, free)** — Nord Pool N2EX day-ahead price; Elexon MID price plus
+  generation and demand for day-type context.
+- **Trading** — the day-ahead schedule optimises against the actual cleared DA
+  price (published the day before, so legitimate information). The intraday
+  layer then re-optimises against the realised MID curve with **perfect
+  foresight** — an idealised best case, not a live-replicable strategy.
+- **Levers** — duration, cycle target, degradation cost, SOC band (the panel
+  at the top of the tab). Fixed: slippage, round-trip efficiency, 50 MW power.
+- **Out of scope** — real execution, imbalance settlement, and any fees beyond
+  the slippage and degradation modelled. Illustrative, not a guarantee of
+  replicable returns.
 """
 
 RESOLUTION_H = 1.0
@@ -167,6 +154,37 @@ def _settle_range(date_isos: tuple, duration, cycle_target, degradation, soc_min
             }
         )
     return out
+
+
+@st.cache_data(show_spinner="Fetching live GB fleet data…")
+def _fleet_range(date_isos: tuple) -> pd.DataFrame:
+    """Per-site daily metrics for every real fleet battery over ``date_isos``.
+
+    Independent of the sidebar levers (these are real assets, not the
+    parameterised benchmark), so it is cached on the dates alone. Days whose
+    Elexon data is unavailable are skipped; a day with prices/PN but no
+    published BM cashflows yet still settles with BM = 0.
+    """
+    frames = []
+    for iso in date_isos:
+        date = dt.date.fromisoformat(iso)
+        try:
+            pn = fetch_fleet.fetch_fleet_pn(date)
+            mid = fetch_fleet.fetch_day_mid_prices(date)
+        except Exception:
+            continue
+        if not pn or mid.empty:
+            continue
+        try:
+            cashflows = fetch_fleet.fetch_fleet_bm_cashflows(date)
+        except Exception:
+            cashflows = {"bid": [], "offer": []}
+        day = fleet_perf.day_site_metrics(iso, pn, cashflows, mid)
+        if not day.empty:
+            frames.append(day)
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -265,7 +283,7 @@ def _range_dispatch(days, duration) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def _render_history(days, duration):
+def _render_history(days, duration, soc_min, soc_max):
     rows = [_pnl_row(d["date"], d["result"].durations[duration]) for d in days]
     results_df = pd.DataFrame(rows)
     st.subheader(f"History — {len(days)} day(s)  ·  {duration} battery")
@@ -281,6 +299,32 @@ def _render_history(days, duration):
     # hour of day against the average DA price.
     dispatch = _range_dispatch(days, duration)
     st.plotly_chart(chart_price_capture(dispatch, duration_h=RESOLUTION_H), width="stretch")
+
+    # Dispatch explorer over a user-chosen window. Rendering the full history at
+    # once made the tab sluggish (why the 60-day explorer was dropped), so only
+    # the selected slice — defaulting to the last 7 days — is drawn.
+    st.markdown("#### Dispatch explorer")
+    dates = [d["date"] for d in days]
+    if len(dates) > 1:
+        start_iso, end_iso = st.select_slider(
+            "Explorer window (days)",
+            options=dates,
+            value=(dates[max(0, len(dates) - 7)], dates[-1]),
+        )
+    else:
+        start_iso = end_iso = dates[0]
+    window = [d for d in days if start_iso <= d["date"] <= end_iso]
+    win_dispatch = _range_dispatch(window, duration)
+    st.plotly_chart(
+        chart_operation_explorer(
+            _prices_hourly(win_dispatch),
+            win_dispatch,
+            _da_sched_frame(win_dispatch),
+            min_soc_pct=soc_min,
+            max_soc_pct=soc_max,
+        ),
+        width="stretch",
+    )
 
 
 def _render_day_types(days, duration):
@@ -305,72 +349,298 @@ def _render_day_types(days, duration):
     st.plotly_chart(chart_daytype_profiles(pd.DataFrame(profile_rows)), width="stretch")
 
 
-def _render_methodology():
-    st.subheader("Methodology")
-    st.markdown(METHODOLOGY)
+FLEET_METHODOLOGY = """
+Estimated performance of real GB grid-scale batteries, built entirely from free
+public Elexon per-unit data.
+
+- **Revenue = wholesale proxy + Balancing Mechanism.** The wholesale proxy
+  values each unit's Physical Notification at the half-hourly MID price
+  (actual traded prices are private). BM revenue is Elexon's indicative
+  per-unit bid/offer cashflows (`EBOCF`), summed as published.
+- **Excluded** — ancillary services (Dynamic Containment etc.), capacity
+  market and private PPAs, so ancillary-heavy sites read low here.
+- **Metadata** — optimiser, region and approximate MWh are a hand-curated
+  snapshot and can go stale; cycle counts are indicative.
+"""
+
+
+# Quick-pick period presets for the global filter bar, in display order.
+_PERIOD_PRESETS: dict[str, int] = {"7D": 7, "14D": 14, "30D": 30, "60D": 60}
+
+
+def _global_filters(date_isos: tuple) -> tuple[str, str, list[str]]:
+    """The shared filter bar above the tabs: period + day type.
+
+    Both products cover the same market days, so these two filters apply to
+    everything below. They slice what is *displayed*; the benchmark engine
+    always settles the full window so its SOC chain stays intact.
+
+    The period offers quick presets (last 7/14/30/60 days) plus a calendar
+    range picker under "Custom". Day types are multi-select pills; nothing
+    selected means every day. Rendered borderless so it can sit in the page
+    header, to the right of the title.
+    """
+    first = dt.date.fromisoformat(date_isos[0])
+    last = dt.date.fromisoformat(date_isos[-1])
+
+    cols = st.columns([2.2, 2.2, 3.6], vertical_alignment="bottom")
+    preset = cols[0].segmented_control(
+        "Period",
+        list(_PERIOD_PRESETS) + ["Custom"],
+        default="60D",
+        help="Quick windows count back from the most recent settled day.",
+    )
+    # A segmented control can be deselected entirely; treat that as "all".
+    preset = preset or "60D"
+
+    if preset == "Custom":
+        picked = cols[1].date_input(
+            "Custom range",
+            value=(first, last),
+            min_value=first,
+            max_value=last,
+        )
+        # While the user is mid-selection the widget returns a single date.
+        if isinstance(picked, tuple):
+            if len(picked) == 2:
+                start, end = picked[0].isoformat(), picked[1].isoformat()
+            else:
+                start = end = (picked[0] if picked else first).isoformat()
+        else:
+            start = end = picked.isoformat()
+    else:
+        n = _PERIOD_PRESETS[preset]
+        start, end = date_isos[max(0, len(date_isos) - n)], date_isos[-1]
+
+    day_types = cols[2].pills(
+        "Day types",
+        sorted(classify_mod.TAGS) + ["untagged"],
+        selection_mode="multi",
+        help=(
+            "Day character from the classifier — none selected means all "
+            "days. 'untagged' covers days with no clear character or no "
+            "classification data."
+        ),
+    )
+
+    n_days = sum(1 for d in date_isos if start <= d <= end)
+    tags = ", ".join(day_types) if day_types else "all day types"
+    st.caption(f"Showing **{start} → {end}** · {n_days} day(s) · {tags}")
+
+    return start, end, list(day_types or [])
+
+
+def _matches_day_types(labels: list[str] | None, day_types: list[str]) -> bool:
+    """Shared day-type predicate: empty selection matches everything and
+    ``untagged`` matches days with no tags."""
+    if not day_types:
+        return True
+    if not labels:
+        return "untagged" in day_types
+    return bool(set(day_types).intersection(labels))
+
+
+def _filter_days(days: list, start: str, end: str, day_types: list[str]) -> list:
+    """Apply the global filters to the settled benchmark days (view only)."""
+    return [
+        d
+        for d in days
+        if start <= d["date"] <= end and _matches_day_types(d["labels"], day_types)
+    ]
+
+
+def _fleet_filters(fleet_df: pd.DataFrame) -> tuple[list[str], list[str], list[str]]:
+    """The fleet's own filter row: which assets, not which days."""
+    cols = st.columns(3)
+    sites = cols[0].multiselect(
+        "Sites", sorted(fleet_df["site"].unique()), placeholder="All sites"
+    )
+    optimisers = cols[1].multiselect(
+        "Optimisers", sorted(fleet_df["optimiser"].unique()), placeholder="All optimisers"
+    )
+    regions = cols[2].multiselect(
+        "Regions", sorted(fleet_df["region"].unique()), placeholder="All regions"
+    )
+    return sites, optimisers, regions
+
+
+def _render_fleet(
+    fleet_df: pd.DataFrame,
+    day_labels: dict[str, list[str]],
+    start: str,
+    end: str,
+    day_types: list[str],
+):
+    with st.container(border=True):
+        sites, optimisers, regions = _fleet_filters(fleet_df)
+    fleet_df = fleet_perf.filter_daily(
+        fleet_df,
+        start=start,
+        end=end,
+        sites=sites,
+        optimisers=optimisers,
+        regions=regions,
+        day_types=day_types,
+        day_labels=day_labels,
+    )
+    if fleet_df.empty:
+        st.info("No fleet days match the current filters — widen the period or clear a filter.")
+        return
+
+    n_days = fleet_df["date"].nunique()
+    site_df = fleet_perf.summarise_by_site(fleet_df)
+    st.subheader(f"{len(site_df)} site(s)  ·  {n_days} day(s)")
+    st.caption(
+        "Estimates from public per-unit Elexon data (Physical Notifications × MID "
+        "+ indicative BM cashflows); ancillary revenue excluded — see Methodology."
+    )
+
+    tracked_mw = float(site_df["power_mw"].sum())
+    fleet_gbp = float(site_df["total_gbp"].sum())
+    # Not every site settles every day in a filtered window, so the fleet
+    # average is weighted by each site's actual MW-days, not MW × window days.
+    mw_days = float((site_df["power_mw"] * site_df["days"]).sum())
+    cols = st.columns(4)
+    cols[0].metric("Fleet tracked", f"{tracked_mw:,.0f} MW")
+    cols[1].metric("Est. fleet revenue", f"£{fleet_gbp:,.0f}")
+    cols[2].metric("Fleet avg", f"£{fleet_gbp / mw_days:,.0f}/MW/day")
+    best = site_df.iloc[0]
+    cols[3].metric(
+        "Top site", best["site"], f"£{best['gbp_per_mw_day']:,.0f}/MW/day", delta_color="off"
+    )
+
+    st.plotly_chart(chart_fleet_leaderboard(site_df), width="stretch")
+    left, right = st.columns(2)
+    left.plotly_chart(chart_fleet_by_optimiser(fleet_perf.summarise_by_optimiser(fleet_df)), width="stretch")
+    right.plotly_chart(chart_fleet_by_region(fleet_perf.summarise_by_region(fleet_df)), width="stretch")
+    st.plotly_chart(chart_fleet_daily(fleet_perf.fleet_daily(fleet_df)), width="stretch")
+
+    st.markdown("#### Site detail")
+    table = site_df[
+        [
+            "site", "optimiser", "region", "power_mw", "capacity_mwh", "days",
+            "gbp_per_mw_day", "total_gbp", "wholesale_gbp", "bm_gbp", "cycles_per_day",
+        ]
+    ].rename(
+        columns={
+            "site": "Site",
+            "optimiser": "Optimiser",
+            "region": "Region",
+            "power_mw": "MW",
+            "capacity_mwh": "MWh (approx)",
+            "days": "Days",
+            "gbp_per_mw_day": "£/MW/day",
+            "total_gbp": "Total £",
+            "wholesale_gbp": "Wholesale £",
+            "bm_gbp": "BM £",
+            "cycles_per_day": "Cycles/day",
+        }
+    )
+    st.dataframe(
+        table.style.format(
+            {
+                "MW": "{:,.0f}",
+                "MWh (approx)": "{:,.0f}",
+                "£/MW/day": "£{:,.0f}",
+                "Total £": "£{:,.0f}",
+                "Wholesale £": "£{:,.0f}",
+                "BM £": "£{:,.0f}",
+                "Cycles/day": "{:.2f}",
+            }
+        ),
+        width="stretch",
+        hide_index=True,
+    )
 
 
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
-def main():
-    st.set_page_config(page_title="Live GB BESS Benchmark", layout="wide")
-    st.title("Live GB BESS Benchmark")
-    st.caption(
-        "Reference 50 MW GB batteries settled on live market data "
-        "(Nord Pool N2EX day-ahead + Elexon MID/generation/demand)."
-    )
-
+def _benchmark_parameters() -> tuple:
+    """The benchmark's parameter panel — lives inside the benchmark tab (like
+    the fleet's filter panel) so nothing looks global that isn't."""
     cfg = bess_config()
-    sb = st.sidebar
-    sb.header("Parameters")
-    # Always load the full free Nord Pool window — no reason to show less history.
-    n_days = _MAX_HISTORY_DAYS
-    duration = sb.radio(
+    cols = st.columns([1, 1, 1, 1])
+    duration = cols[0].radio(
         "Duration",
         list(REFERENCE_DURATIONS),
         index=list(REFERENCE_DURATIONS).index(REFERENCE_DURATION),
         horizontal=True,
     )
-    cycle_target = sb.slider(
+    cycle_target = cols[1].slider(
         "Cycle target (cycles/day)", 0.5, 3.0, float(cfg.get("target_daily_cycles") or 1.5), 0.5
     )
-    degradation = sb.slider(
+    degradation = cols[2].slider(
         "Degradation cost (£/MWh)", 0.0, 20.0, float(cfg["degradation_cost_per_mwh"]), 0.5
     )
-    soc_min, soc_max = sb.slider(
+    soc_min, soc_max = cols[3].slider(
         "SOC band (%)", 0, 100, (int(cfg["min_soc_pct"] * 100), int(cfg["max_soc_pct"] * 100)), 5
     )
-    soc_min, soc_max = soc_min / 100.0, soc_max / 100.0
-
-    sb.divider()
-    sb.caption(f"History: last {n_days} days (the full free Nord Pool window).")
-    sb.caption(
-        "Fixed assumptions: "
+    st.caption(
+        "Changing a lever re-settles the whole simulation. Fixed assumptions: "
         f"slippage £{cfg.get('execution', {}).get('slippage', 0):.2f}/MWh · "
         f"round-trip {cfg['charge_efficiency'] * cfg['discharge_efficiency']:.0%} · "
-        f"{REFERENCE_POWER_MW:.0f} MW power."
+        f"{REFERENCE_POWER_MW:.0f} MW power · last {_MAX_HISTORY_DAYS} days "
+        "(the full free Nord Pool window)."
     )
+    return duration, cycle_target, degradation, soc_min / 100.0, soc_max / 100.0
+
+
+def _render_methodology():
+    st.subheader("Simulated benchmark")
+    st.markdown(METHODOLOGY)
+    st.divider()
+    st.subheader("Live GB fleet")
+    st.markdown(FLEET_METHODOLOGY)
+
+
+def main():
+    st.set_page_config(page_title="Live GB BESS", layout="wide")
 
     yesterday = dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=1)
     date_isos = tuple(
-        (yesterday - dt.timedelta(days=i)).isoformat() for i in range(n_days - 1, -1, -1)
+        (yesterday - dt.timedelta(days=i)).isoformat()
+        for i in range(_MAX_HISTORY_DAYS - 1, -1, -1)
     )
-    days = _settle_range(date_isos, duration, cycle_target, degradation, soc_min, soc_max)
 
-    if not days:
-        st.warning("No days could be settled — live data may be temporarily unavailable.")
-        return
+    # Page header: title on the left, the global filters on the right.
+    title_col, filters_col = st.columns([1.3, 3.7], vertical_alignment="bottom")
+    with title_col:
+        st.title("Live GB BESS")
+    with filters_col:
+        start, end, day_types = _global_filters(date_isos)
 
-    latest_tab, history_tab, daytype_tab, method_tab = st.tabs(
-        ["Latest", "History", "Day-types", "Methodology"]
+    bench_tab, fleet_tab, method_tab = st.tabs(
+        ["Simulated benchmark", "Live GB fleet", "Methodology"]
     )
-    with latest_tab:
-        _render_latest(days, duration, soc_min, soc_max)
-    with history_tab:
-        _render_history(days, duration)
-    with daytype_tab:
-        _render_day_types(days, duration)
+
+    with bench_tab:
+        with st.container(border=True):
+            duration, cycle_target, degradation, soc_min, soc_max = _benchmark_parameters()
+        days = _settle_range(date_isos, duration, cycle_target, degradation, soc_min, soc_max)
+        shown_days = _filter_days(days, start, end, day_types)
+        if not days:
+            st.warning("No days could be settled — live data may be temporarily unavailable.")
+        elif not shown_days:
+            st.info("No settled days match the current filters — widen the period or day types.")
+        else:
+            _render_latest(shown_days, duration, soc_min, soc_max)
+            st.divider()
+            _render_history(shown_days, duration, soc_min, soc_max)
+            st.divider()
+            _render_day_types(shown_days, duration)
+
+    with fleet_tab:
+        fleet_df = _fleet_range(date_isos)
+        if fleet_df.empty:
+            st.warning(
+                "No fleet data could be fetched — Elexon per-unit data may be "
+                "temporarily unavailable."
+            )
+        else:
+            day_labels = {d["date"]: d["labels"] for d in days}
+            _render_fleet(fleet_df, day_labels, start, end, day_types)
+
     with method_tab:
         _render_methodology()
 

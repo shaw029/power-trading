@@ -912,3 +912,140 @@ def chart_price_capture(
     fig.update_yaxes(title_text="Energy (MWh)", secondary_y=False)
     fig.update_yaxes(title_text="Avg DA Price (£/MWh)", secondary_y=True)
     return fig
+
+
+# --------------------------------------------------------------------------- #
+# Live GB fleet tab (real batteries, per-BMU Elexon data)
+# --------------------------------------------------------------------------- #
+def chart_fleet_leaderboard(site_df: pd.DataFrame):
+    """Ranked horizontal leaderboard of real GB battery sites by est. £/MW/day.
+
+    ``site_df`` is the per-site summary frame from
+    :func:`fleet.performance.summarise_by_site`. Bars encode one magnitude, so
+    they share a single hue and flip to the cost red only when a site's window
+    average is negative; the optimiser is carried in the y-label, not a hue.
+    """
+    df = site_df.sort_values("gbp_per_mw_day")
+    labels = [f"{s}  ·  {o}" for s, o in zip(df["site"], df["optimiser"])]
+    colors = [COLORS["cost"] if v < 0 else COLORS["da"] for v in df["gbp_per_mw_day"]]
+
+    fig = go.Figure(
+        go.Bar(
+            x=df["gbp_per_mw_day"],
+            y=labels,
+            orientation="h",
+            marker_color=colors,
+            text=[f"£{v:,.0f}" for v in df["gbp_per_mw_day"]],
+            textposition="outside",
+            customdata=df[["power_mw", "days", "total_gbp"]].values,
+            hovertemplate=(
+                "%{y}<br>£%{x:,.0f}/MW/day"
+                "<br>%{customdata[0]:,.0f} MW · %{customdata[1]:.0f} days"
+                "<br>Total £%{customdata[2]:,.0f}<extra></extra>"
+            ),
+        )
+    )
+    fig.update_layout(
+        title="Site leaderboard — estimated £/MW/day (wholesale proxy + BM)",
+        xaxis_title="Estimated revenue (£/MW/day)",
+        template="plotly_white",
+        height=max(DEFAULT_CHART_HEIGHT, 26 * len(df) + 120),
+        margin=dict(l=10, r=10),
+    )
+    return fig
+
+
+def _chart_fleet_grouped(df: pd.DataFrame, key: str, title: str):
+    """Shared magnitude bar for the optimiser/region groupings."""
+    df = df.sort_values("gbp_per_mw_day", ascending=False)
+    colors = [COLORS["cost"] if v < 0 else COLORS["da"] for v in df["gbp_per_mw_day"]]
+    fig = go.Figure(
+        go.Bar(
+            x=df[key],
+            y=df["gbp_per_mw_day"],
+            marker_color=colors,
+            text=[f"£{v:,.0f}" for v in df["gbp_per_mw_day"]],
+            textposition="outside",
+            customdata=df[["sites", "power_mw", "total_gbp"]].values,
+            hovertemplate=(
+                "%{x}<br>£%{y:,.0f}/MW/day"
+                "<br>%{customdata[0]:.0f} site(s) · %{customdata[1]:,.0f} MW"
+                "<br>Total £%{customdata[2]:,.0f}<extra></extra>"
+            ),
+        )
+    )
+    fig.update_layout(
+        title=title,
+        yaxis_title="Estimated revenue (£/MW/day)",
+        template="plotly_white",
+        height=DEFAULT_CHART_HEIGHT,
+    )
+    return fig
+
+
+def chart_fleet_by_optimiser(opt_df: pd.DataFrame):
+    """MW-weighted est. £/MW/day by optimiser (route-to-market party).
+
+    ``opt_df`` comes from :func:`fleet.performance.summarise_by_optimiser`;
+    every site-day is weighted by its MW, so a 500 MW site moves its
+    optimiser's average more than a 50 MW one.
+    """
+    return _chart_fleet_grouped(
+        opt_df, "optimiser", "By optimiser — MW-weighted estimated £/MW/day"
+    )
+
+
+def chart_fleet_by_region(region_df: pd.DataFrame):
+    """MW-weighted est. £/MW/day by region — the locational split."""
+    return _chart_fleet_grouped(
+        region_df, "region", "By region — MW-weighted estimated £/MW/day"
+    )
+
+
+def chart_fleet_daily(daily_df: pd.DataFrame):
+    """Whole-fleet estimated revenue per day, stacked wholesale proxy vs BM.
+
+    ``daily_df`` is :func:`fleet.performance.fleet_daily`. The two components
+    can take opposite signs (e.g. paying to charge in the BM while long in the
+    wholesale proxy), so bars use plotly's signed stacking (``barmode
+    "relative"``) with a net-total line over the top.
+    """
+    dates = pd.to_datetime(daily_df["date"])
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=dates,
+            y=daily_df["wholesale_gbp"],
+            name="Wholesale proxy (PN × MID)",
+            marker_color=COLORS["da"],
+            hovertemplate="%{x|%Y-%m-%d}<br>Wholesale £%{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=dates,
+            y=daily_df["bm_gbp"],
+            name="Balancing Mechanism",
+            marker_color=COLORS["intraday"],
+            hovertemplate="%{x|%Y-%m-%d}<br>BM £%{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=daily_df["total_gbp"],
+            name="Net total",
+            mode="lines",
+            line=dict(color=COLORS["net"], width=2),
+            hovertemplate="%{x|%Y-%m-%d}<br>Net £%{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title="Fleet estimated revenue by day — wholesale proxy vs Balancing Mechanism",
+        barmode="relative",
+        yaxis_title="Estimated revenue (£/day)",
+        template="plotly_white",
+        height=DEFAULT_CHART_HEIGHT,
+        legend=dict(orientation="h", x=0, y=1.12),
+    )
+    return fig
