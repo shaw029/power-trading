@@ -64,21 +64,22 @@ def app(monkeypatch):
     # Drop any cached real data from other runs so the mocks take effect.
     live_app._fetch_day.clear()
     live_app._settle_range.clear()
-    live_app._fleet_range.clear()
+    live_app._fleet_day.clear()
+    live_app._day_labels.clear()
     return live_app
 
 
-def test_app_boots_with_all_tabs(app):
+def test_app_boots_on_latest_day_page(app):
     from streamlit.testing.v1 import AppTest
 
     at = AppTest.from_file("dashboard/live_app.py", default_timeout=60)
     at.run()
 
     assert not at.exception
-    # Three flat tabs: the two products plus their shared methodology page.
-    assert [t.label for t in at.tabs] == ["Simulated benchmark", "Live GB fleet", "Methodology"]
+    # The default page is the benchmark's Latest day view: the sidebar carries
+    # the parameter form and the page shows the four-KPI row.
     assert "Cycle target (cycles/day)" in [s.label for s in at.slider]
-    assert len(at.metric) >= 8  # benchmark Latest + History + fleet KPI rows
+    assert len(at.metric) >= 4  # Net PnL · DA benchmark · Cycles · Capture
 
 
 def test_filter_days_by_period_and_day_type():
@@ -104,5 +105,9 @@ def test_duration_change_does_not_error(app):
 
     at = AppTest.from_file("dashboard/live_app.py", default_timeout=60)
     at.run()
-    at.radio[0].set_value("4h").run()
+    # The levers sit in a sidebar form: pick a new duration, then Apply.
+    at.radio[0].set_value("4h")
+    apply_btn = next(b for b in at.button if b.label == "Apply")
+    apply_btn.set_value(True).run()
     assert not at.exception
+    assert "4h" in at.radio[0].value

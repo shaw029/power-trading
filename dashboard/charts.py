@@ -9,20 +9,112 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# Default figure height (px) shared by the standard single-panel builders; the
-# taller multi-panel/explorer views set their own height explicitly.
-DEFAULT_CHART_HEIGHT = 400
-
-# Shared palette. "da"/"intraday" give the frozen benchmark and the consolidated
-# intraday improvement their own identity in the waterfall; the remaining buckets
-# fall back to the existing green (gain) / red (cost) scheme.
+# --------------------------------------------------------------------------- #
+# Design system
+#
+# One semantic palette shared by every builder, CVD-validated on the light
+# surface the app renders on. A colour always means the same market object:
+# blue = day-ahead, amber = MID/intraday settlement price, teal = discharge /
+# sell / gain, orange = charge / buy, violet = state of charge, red = cost.
+# --------------------------------------------------------------------------- #
 COLORS = {
-    "da": "#1f77b4",
-    "intraday": "#2ecc71",
-    "gain": "#2ecc71",
-    "cost": "#e74c3c",
-    "net": "#2c3e50",
+    "da": "#2a78d6",  # day-ahead price & DA-leg volume
+    "forecast": "#86b6ef",  # DA forecast (lighter step of the DA blue)
+    "mid": "#c98500",  # MID / intraday settlement price
+    "discharge": "#1baf7a",  # sell / +MW
+    "charge": "#eb6834",  # buy / −MW
+    "soc": "#4a3aa7",  # state of charge
+    "intraday": "#1baf7a",  # intraday improvement leg (same teal as discharge)
+    "gain": "#1baf7a",
+    "cost": "#e34948",
+    "net": "#0b0b0b",  # net/total line rides in primary ink
+    "ghost": "#c3c2b7",  # reference/ghost bars
 }
+
+# Fixed-order categorical slots for label-keyed series (day-types etc.).
+# Assigned in order, never cycled; overflow folds into muted grey.
+CATEGORICAL = [
+    "#2a78d6",
+    "#1baf7a",
+    "#eda100",
+    "#008300",
+    "#4a3aa7",
+    "#e34948",
+    "#e87ba4",
+    "#eb6834",
+]
+_OVERFLOW = "#898781"
+
+# Chart chrome (light surface).
+_INK = "#0b0b0b"
+_INK_2 = "#52514e"
+_MUTED = "#898781"
+_GRID = "#e1e0d9"
+_AXIS = "#c3c2b7"
+_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
+
+# Height scale (px): compact panels, the standard single-panel builder, and
+# tall multi-panel views.
+HEIGHT_SM = 320
+DEFAULT_CHART_HEIGHT = 380
+HEIGHT_LG = 460
+
+
+def apply_theme(fig: go.Figure, height: int = DEFAULT_CHART_HEIGHT, title: str | None = None):
+    """Stamp the shared look onto a figure: transparent surfaces so charts sit
+    on the app background, hairline grid, muted axis ink, a left-aligned title
+    and a horizontal legend directly under it."""
+    fig.update_layout(
+        template="plotly_white",
+        height=height,
+        font=dict(family=_FONT, size=12, color=_INK_2),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=64 if title else 40, b=10),
+        legend=dict(
+            orientation="h",
+            x=0,
+            xanchor="left",
+            y=1.0,
+            yanchor="bottom",
+            font=dict(size=11, color=_INK_2),
+        ),
+        hoverlabel=dict(
+            bgcolor="#ffffff", bordercolor=_GRID, font=dict(family=_FONT, size=12, color=_INK)
+        ),
+    )
+    if title:
+        fig.update_layout(
+            title=dict(
+                text=title,
+                x=0,
+                xanchor="left",
+                y=1.0,
+                yanchor="top",
+                pad=dict(t=8),
+                font=dict(size=15, color=_INK),
+            )
+        )
+    fig.update_xaxes(
+        gridcolor=_GRID,
+        linecolor=_AXIS,
+        zerolinecolor=_AXIS,
+        title_font=dict(size=12, color=_MUTED),
+        tickfont=dict(size=11, color=_MUTED),
+    )
+    fig.update_yaxes(
+        gridcolor=_GRID,
+        linecolor=_AXIS,
+        zerolinecolor=_AXIS,
+        title_font=dict(size=12, color=_MUTED),
+        tickfont=dict(size=11, color=_MUTED),
+    )
+    return fig
+
+
+def _dispatch_bar_colors(values) -> list[str]:
+    """+MW discharges (teal), −MW charges (orange)."""
+    return [COLORS["discharge"] if v > 0 else COLORS["charge"] for v in values]
 
 
 def chart_da_commitment_shape(
@@ -42,51 +134,49 @@ def chart_da_commitment_shape(
     fc_by_hour = sched.groupby("hod")["da_price_pred"].mean()
     da_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["day_ahead_price"].mean()
 
-    colors = ["#e74c3c" if v > 0 else "#2ecc71" for v in mean_mw.values]
-
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=mean_mw.index,
-            y=mean_mw.values,
-            name="Mean DA commitment MW",
-            yaxis="y2",
-            marker_color=colors,
-            opacity=0.5,
-        )
+    # Price panel above, committed volume below, sharing the hour axis — no
+    # dual y-axis; the two measures live on their own scales.
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, row_heights=[0.55, 0.45]
     )
     fig.add_trace(
         go.Scatter(
             x=da_by_hour.index,
             y=da_by_hour.values,
-            name="Mean DA price (actual)",
-            yaxis="y",
-            line=dict(color="#1f77b4", width=2),
-        )
+            name="DA price (actual)",
+            line=dict(color=COLORS["da"], width=2),
+            hovertemplate="%{x:02d}:00<br>DA actual £%{y:.1f}<extra></extra>",
+        ),
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
             x=fc_by_hour.index,
             y=fc_by_hour.values,
-            name="Mean DA forecast",
-            yaxis="y",
-            line=dict(color="#7fb3e0", width=1.5, dash="dash"),
-        )
-    )
-    fig.update_layout(
-        title="DA Commitment Shape — committed dispatch & DA price by hour",
-        xaxis=dict(title="Hour of Day", dtick=1),
-        yaxis=dict(title="DA Price (£/MWh)", side="left", title_font=dict(color="#1f77b4")),
-        yaxis2=dict(
-            title="Mean DA Commitment (MW, + discharge / − charge)",
-            side="right",
-            overlaying="y",
-            title_font=dict(color="#555"),
+            name="DA forecast",
+            line=dict(color=COLORS["forecast"], width=2, dash="dash"),
+            hovertemplate="%{x:02d}:00<br>DA forecast £%{y:.1f}<extra></extra>",
         ),
-        legend=dict(x=0, y=1.12, orientation="h"),
-        template="plotly_white",
-        height=DEFAULT_CHART_HEIGHT,
+        row=1,
+        col=1,
     )
+    fig.add_trace(
+        go.Bar(
+            x=mean_mw.index,
+            y=mean_mw.values,
+            name="DA commitment (+ discharge / − charge)",
+            marker_color=_dispatch_bar_colors(mean_mw.values),
+            hovertemplate="%{x:02d}:00<br>Committed %{y:+.1f} MW<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    apply_theme(fig, height=HEIGHT_LG, title="Day-ahead commitment — price and dispatch by hour")
+    fig.update_xaxes(dtick=2)
+    fig.update_xaxes(title_text="Hour of day", row=2, col=1)
+    fig.update_yaxes(title_text="£/MWh", row=1, col=1)
+    fig.update_yaxes(title_text="MW", row=2, col=1)
     return fig
 
 
@@ -125,62 +215,63 @@ def chart_realized_shape(
     da_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["day_ahead_price"].mean()
     mid_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["mid_price"].mean()
 
-    colors = ["#e74c3c" if v > 0 else "#2ecc71" for v in mean_mw.values]
-
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=da_commit.index,
-            y=da_commit.values,
-            name="DA commitment (ghost)",
-            yaxis="y2",
-            marker_color="#999999",
-            opacity=0.25,
-        )
-    )
-    fig.add_trace(
-        go.Bar(
-            x=mean_mw.index,
-            y=mean_mw.values,
-            name="Mean realised dispatch MW",
-            yaxis="y2",
-            marker_color=colors,
-            opacity=0.65,
-        )
+    # Prices on top, dispatch below (shared hour axis, no dual y-axis). The
+    # ghost bars are the DA commitment; the gap to the solid bars is the net
+    # intraday reshaping.
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, row_heights=[0.5, 0.5]
     )
     fig.add_trace(
         go.Scatter(
             x=da_by_hour.index,
             y=da_by_hour.values,
-            name="Mean DA price (decision proxy)",
-            yaxis="y",
-            line=dict(color="#1f77b4", width=2),
-        )
+            name="DA price (decision proxy)",
+            line=dict(color=COLORS["da"], width=2),
+            hovertemplate="%{x:02d}:00<br>DA £%{y:.1f}<extra></extra>",
+        ),
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
             x=mid_by_hour.index,
             y=mid_by_hour.values,
-            name="Mean MID price (settlement)",
-            yaxis="y",
-            line=dict(color="#9467bd", width=2),
-        )
-    )
-    fig.update_layout(
-        title="Realised Dispatch Shape — physical dispatch & execution prices by hour",
-        xaxis=dict(title="Hour of Day", dtick=1),
-        yaxis=dict(title="Price (£/MWh)", side="left"),
-        yaxis2=dict(
-            title="Mean Dispatch (MW, + discharge / − charge)",
-            side="right",
-            overlaying="y",
-            title_font=dict(color="#555"),
+            name="MID price (settlement)",
+            line=dict(color=COLORS["mid"], width=2),
+            hovertemplate="%{x:02d}:00<br>MID £%{y:.1f}<extra></extra>",
         ),
-        barmode="overlay",
-        legend=dict(x=0, y=1.12, orientation="h"),
-        template="plotly_white",
-        height=DEFAULT_CHART_HEIGHT,
+        row=1,
+        col=1,
     )
+    fig.add_trace(
+        go.Bar(
+            x=da_commit.index,
+            y=da_commit.values,
+            name="DA commitment (ghost)",
+            marker_color=COLORS["ghost"],
+            opacity=0.55,
+            hovertemplate="%{x:02d}:00<br>DA commitment %{y:+.1f} MW<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=mean_mw.index,
+            y=mean_mw.values,
+            name="Realised dispatch (+ discharge / − charge)",
+            marker_color=_dispatch_bar_colors(mean_mw.values),
+            hovertemplate="%{x:02d}:00<br>Realised %{y:+.1f} MW<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    apply_theme(fig, height=HEIGHT_LG, title="Realised dispatch — execution prices and physical dispatch by hour")
+    fig.update_layout(barmode="overlay")
+    fig.update_xaxes(dtick=2)
+    fig.update_xaxes(title_text="Hour of day", row=2, col=1)
+    fig.update_yaxes(title_text="£/MWh", row=1, col=1)
+    fig.update_yaxes(title_text="MW", row=2, col=1)
     return fig
 
 
@@ -204,39 +295,35 @@ def chart_soc_tracker(
             y=soc.values * 100,
             mode="lines",
             name="SOC",
-            line=dict(color="#1f77b4", width=1),
+            line=dict(color=COLORS["soc"], width=2),
             fill="tozeroy",
-            fillcolor="rgba(31,119,180,0.1)",
+            fillcolor="rgba(74,58,167,0.08)",
+            hovertemplate="%{x|%d %b %H:%M}<br>SOC %{y:.1f}%<extra></extra>",
         )
     )
     fig.add_hline(
         y=initial_soc_pct * 100,
         line_dash="dash",
-        line_color="grey",
-        annotation_text=f"Initial SOC ({initial_soc_pct * 100:.0f}%)",
+        line_color=_MUTED,
+        annotation_text=f"Start ({initial_soc_pct * 100:.0f}%)",
     )
     fig.add_hline(
         y=min_pct,
         line_dash="dot",
-        line_color="#e74c3c",
-        annotation_text=f"Min SOC ({min_pct:.0f}%)",
+        line_color=COLORS["cost"],
+        annotation_text=f"Min ({min_pct:.0f}%)",
         annotation_position="bottom right",
     )
     fig.add_hline(
         y=max_pct,
         line_dash="dot",
-        line_color="#e74c3c",
-        annotation_text=f"Max SOC ({max_pct:.0f}%)",
+        line_color=COLORS["cost"],
+        annotation_text=f"Max ({max_pct:.0f}%)",
         annotation_position="top right",
     )
-    fig.update_layout(
-        title="State of Charge — Selected Month",
-        xaxis_title="Date",
-        yaxis_title="SOC (%)",
-        yaxis=dict(range=[max(0, min_pct - 10), min(105, max_pct + 10)]),
-        template="plotly_white",
-        height=350,
-    )
+    apply_theme(fig, height=HEIGHT_SM, title="State of charge")
+    fig.update_layout(showlegend=False)
+    fig.update_yaxes(title_text="SOC (%)", range=[max(0, min_pct - 10), min(105, max_pct + 10)])
     return fig
 
 
@@ -334,8 +421,8 @@ def chart_operation_explorer(
         go.Scatter(
             x=prices_hourly.index,
             y=prices_hourly["day_ahead_price"].values,
-            name="DA Price",
-            line=dict(color="#1f77b4", width=2),
+            name="DA price",
+            line=dict(color=COLORS["da"], width=2),
         ),
         row=2,
         col=1,
@@ -344,8 +431,8 @@ def chart_operation_explorer(
         go.Scatter(
             x=da_price_pred.index,
             y=da_price_pred.values,
-            name="DA Forecast",
-            line=dict(color="#7fb3e0", width=1.2, dash="dash"),
+            name="DA forecast",
+            line=dict(color=COLORS["forecast"], width=1.5, dash="dash"),
         ),
         row=2,
         col=1,
@@ -354,18 +441,18 @@ def chart_operation_explorer(
         go.Scatter(
             x=prices_hourly.index,
             y=prices_hourly["mid_price"].values,
-            name="MID Price (settlement)",
-            line=dict(color="#27ae60", width=1.6),
+            name="MID price (settlement)",
+            line=dict(color=COLORS["mid"], width=2),
         ),
         row=2,
         col=1,
     )
 
     # DA-leg markers sit on the DA price line; intraday re-opt markers sit on the
-    # MID line where they settle. DA blue, Intraday green; ▲ = buy (charge),
-    # ▼ = sell (discharge).
-    da_mk = dict(color="#1f3b6d", line=dict(width=0.5, color="white"))
-    id_mk = dict(color="#1e8449", line=dict(width=0.5, color="white"))
+    # MID line where they settle. DA in a darker DA blue, intraday in a darker
+    # teal; ▲ = buy (charge), ▼ = sell (discharge).
+    da_mk = dict(color="#1c5cab", line=dict(width=1, color="white"))
+    id_mk = dict(color="#0f7f57", line=dict(width=1, color="white"))
     fig.add_trace(
         go.Scatter(
             x=buy_da_x,
@@ -431,7 +518,7 @@ def chart_operation_explorer(
             x=times,
             y=da_y,
             name="DA commitment volume",
-            marker_color="#1f77b4",
+            marker_color=COLORS["da"],
             hovertemplate="%{x|%d %b %H:%M}<br>DA %{y:+.1f} MW<extra></extra>",
         ),
         row=3,
@@ -442,7 +529,7 @@ def chart_operation_explorer(
             x=times,
             y=dev_y,
             name="Intraday re-opt deviation",
-            marker_color="#27ae60",
+            marker_color=COLORS["intraday"],
             hovertemplate="%{x|%d %b %H:%M}<br>Intraday re-opt %{y:+.1f} MW<extra></extra>",
         ),
         row=3,
@@ -455,7 +542,7 @@ def chart_operation_explorer(
             y=dispatch["soc_after"].values * 100,
             name="SOC",
             mode="lines",
-            line=dict(color="#34495e", width=2),
+            line=dict(color=COLORS["soc"], width=2),
             hovertemplate="%{x|%d %b %H:%M}<br>SOC %{y:.1f}%<extra></extra>",
         ),
         row=4,
@@ -464,7 +551,7 @@ def chart_operation_explorer(
     fig.add_hline(
         y=min_soc_pct * 100,
         line_dash="dot",
-        line_color="#e74c3c",
+        line_color=COLORS["cost"],
         annotation_text=f"Min SOC ({min_soc_pct * 100:.0f}%)",
         annotation_position="bottom right",
         row=4,
@@ -473,7 +560,7 @@ def chart_operation_explorer(
     fig.add_hline(
         y=max_soc_pct * 100,
         line_dash="dot",
-        line_color="#e74c3c",
+        line_color=COLORS["cost"],
         annotation_text=f"Max SOC ({max_soc_pct * 100:.0f}%)",
         annotation_position="top right",
         row=4,
@@ -495,13 +582,17 @@ def chart_operation_explorer(
         if ann.text == "Market Prices":
             ann.update(y=ann.y - 0.022)
 
+    apply_theme(fig, height=780)
     fig.update_yaxes(title_text="£/MWh", row=2, col=1)
     fig.update_yaxes(title_text="MW (+ discharge / − charge)", row=3, col=1)
     fig.update_yaxes(title_text="SOC (%)", range=[0, 105], row=4, col=1)
+    # Restore the strip row's hidden axis, which the theme pass re-styled.
+    fig.update_yaxes(visible=False, fixedrange=True, range=[5, 6], row=1, col=1)
+    for ann in fig.layout.annotations:
+        ann.update(font=dict(size=13, color=_INK))
     fig.update_layout(
-        template="plotly_white",
-        height=850,
-        legend=dict(x=0, y=1.05, orientation="h"),
+        # Ten legend entries wrap to two rows; give them their own headroom.
+        margin=dict(t=96),
         # "closest" shows only the point under the cursor, so a trade reads once
         # (the marker) instead of unified hover restacking the price line, the
         # marker and the volume bar — which repeated each buy/sell.
@@ -556,6 +647,7 @@ def chart_pnl_waterfall(results_df: pd.DataFrame):
             marker_color=bar_colors,
             text=[f"£{v:,.0f}" for v in values],
             textposition="outside",
+            textfont=dict(size=12, color=_INK),
             hovertemplate="%{x}<br>£%{y:,.0f}<extra></extra>",
         )
     )
@@ -570,17 +662,13 @@ def chart_pnl_waterfall(results_df: pd.DataFrame):
             x1=i + 0.7,
             y0=top,
             y1=top,
-            line=dict(color="#999999", width=0.8),
+            line=dict(color=_AXIS, width=1),
         )
         running += v
 
-    fig.update_layout(
-        title="PnL Waterfall — Trader's Ledger",
-        yaxis_title="£",
-        template="plotly_white",
-        height=450,
-        showlegend=False,
-    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="PnL bridge — where the money came from")
+    fig.update_layout(showlegend=False)
+    fig.update_yaxes(title_text="£")
     return fig
 
 
@@ -600,10 +688,10 @@ def chart_daily_attribution(results_df: pd.DataFrame):
     x = df["date"]
 
     components = [
-        ("DA Benchmark", df["benchmark_da_revenue"], COLORS["da"]),
-        ("Intraday DA Improvement", df["intraday_da_improvement"], COLORS["intraday"]),
-        ("Execution Costs", -df["execution_costs_paid"], "#7f8c8d"),
-        ("Degradation", -df["degradation_cost"], "#c0392b"),
+        ("DA benchmark", df["benchmark_da_revenue"], COLORS["da"]),
+        ("Intraday improvement", df["intraday_da_improvement"], COLORS["intraday"]),
+        ("Execution costs", -df["execution_costs_paid"], COLORS["ghost"]),
+        ("Degradation", -df["degradation_cost"], COLORS["cost"]),
     ]
 
     fig = go.Figure()
@@ -623,22 +711,14 @@ def chart_daily_attribution(results_df: pd.DataFrame):
             y=df["net_pnl"],
             name="Net PnL",
             mode="lines+markers",
-            line=dict(color="#2c3e50", width=2),
+            line=dict(color=COLORS["net"], width=2),
             marker=dict(size=5),
             hovertemplate="%{x|%d %b}<br>Net £%{y:,.0f}<extra></extra>",
         )
     )
-    fig.update_layout(
-        title="Daily PnL Attribution — selected month",
-        xaxis_title="Date",
-        yaxis_title="PnL (£)",
-        barmode="relative",
-        bargap=0.15,
-        template="plotly_white",
-        height=380,
-        legend=dict(orientation="h", x=0, y=1.12),
-        hovermode="x unified",
-    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Daily PnL attribution")
+    fig.update_layout(barmode="relative", bargap=0.15, hovermode="x unified")
+    fig.update_yaxes(title_text="PnL (£)")
     return fig
 
 
@@ -651,14 +731,13 @@ def chart_daily_attribution(results_df: pd.DataFrame):
 # reuse the shared COLORS palette to stay on-brand with the rest of the file.
 # ---------------------------------------------------------------------------
 
-# Ordered fallback palette for the per-series builders below, drawn from the
-# shared COLORS values so a new category gets an on-brand colour.
-_SERIES_PALETTE = [COLORS["da"], COLORS["intraday"], COLORS["cost"], COLORS["net"]]
-
-
 def _palette_for(labels: list[str]) -> dict[str, str]:
-    """Assign a stable colour to each label, cycling the shared palette."""
-    return {label: _SERIES_PALETTE[i % len(_SERIES_PALETTE)] for i, label in enumerate(labels)}
+    """Assign the fixed-order categorical slots to each label. Slots are never
+    cycled — labels beyond the eighth fold into the muted overflow grey."""
+    return {
+        label: CATEGORICAL[i] if i < len(CATEGORICAL) else _OVERFLOW
+        for i, label in enumerate(labels)
+    }
 
 
 def chart_duration_comparison(
@@ -686,17 +765,14 @@ def chart_duration_comparison(
             marker_color=[palette[v] for v in durations],
             text=[f"{v:,.0f}" for v in d[value_col].values],
             textposition="outside",
+            textfont=dict(size=12, color=_INK),
             hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>",
         )
     )
-    fig.update_layout(
-        title=title,
-        xaxis_title="Duration",
-        yaxis_title=value_label,
-        template="plotly_white",
-        height=DEFAULT_CHART_HEIGHT,
-        showlegend=False,
-    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title_text="Duration")
+    fig.update_yaxes(title_text=value_label)
     return fig
 
 
@@ -725,21 +801,16 @@ def chart_daytype_scatter(
                 y=sub[pnl_col].values,
                 mode="markers",
                 name=label,
-                marker=dict(color=palette[label], size=8, line=dict(width=0.5, color="white")),
+                marker=dict(color=palette[label], size=9, line=dict(width=1, color="white")),
                 hovertemplate=(
                     label + "<br>Spread £%{x:,.1f}<br>Net PnL £%{y:,.0f}<extra></extra>"
                 ),
             )
         )
-    fig.update_layout(
-        title="Day-Ahead Spread vs Net PnL by Day-Type",
-        xaxis_title="DA Price Spread (£/MWh)",
-        yaxis_title="Net PnL (£)",
-        template="plotly_white",
-        height=DEFAULT_CHART_HEIGHT,
-        legend=dict(orientation="h", x=0, y=1.12),
-        hovermode="closest",
-    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Day-ahead spread vs net PnL by day-type")
+    fig.update_layout(hovermode="closest")
+    fig.update_xaxes(title_text="DA price spread (£/MWh)")
+    fig.update_yaxes(title_text="Net PnL (£)")
     return fig
 
 
@@ -776,15 +847,9 @@ def chart_equity_curve(
                 hovertemplate=(label + "<br>%{x|%d %b}<br>Cumulative £%{y:,.0f}<extra></extra>"),
             )
         )
-    fig.update_layout(
-        title="Equity Curve — Cumulative PnL by Duration",
-        xaxis_title="Date",
-        yaxis_title="Cumulative PnL (£)",
-        template="plotly_white",
-        height=DEFAULT_CHART_HEIGHT,
-        legend=dict(orientation="h", x=0, y=1.12),
-        hovermode="x unified",
-    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Equity curve — cumulative PnL by duration")
+    fig.update_layout(hovermode="x unified")
+    fig.update_yaxes(title_text="Cumulative PnL (£)")
     return fig
 
 
@@ -821,15 +886,10 @@ def chart_daytype_profiles(
                 hovertemplate=label + "<br>Hour %{x}<br>%{y:,.2f}<extra></extra>",
             )
         )
-    fig.update_layout(
-        title="Mean Profile by Day-Type",
-        xaxis=dict(title="Hour of Day", dtick=2),
-        yaxis_title=value_label,
-        template="plotly_white",
-        height=DEFAULT_CHART_HEIGHT,
-        legend=dict(orientation="h", x=0, y=1.12),
-        hovermode="x unified",
-    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Mean daily profile by day-type")
+    fig.update_layout(hovermode="x unified")
+    fig.update_xaxes(title_text="Hour of day", dtick=2)
+    fig.update_yaxes(title_text=value_label)
     return fig
 
 
@@ -867,28 +927,9 @@ def chart_price_capture(
     w_chg = (charge[price_col] * chg_e).sum() / chg_e.sum() if chg_e.sum() > 0 else 0.0
     spread = w_dis - w_chg
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=[float(dis_mwh.get(h, 0.0)) for h in hours],
-            name="Discharge (sell) MWh",
-            marker_color=COLORS["intraday"],
-            opacity=0.85,
-            hovertemplate="%{x:02d}:00<br>Discharge %{y:,.1f} MWh<extra></extra>",
-        ),
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=[float(chg_mwh.get(h, 0.0)) for h in hours],
-            name="Charge (buy) MWh",
-            marker_color=COLORS["da"],
-            opacity=0.85,
-            hovertemplate="%{x:02d}:00<br>Charge %{y:,.1f} MWh<extra></extra>",
-        ),
-        secondary_y=False,
+    # Price on top, energy below on a shared hour axis — no dual y-axis.
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, row_heights=[0.4, 0.6]
     )
     fig.add_trace(
         go.Scatter(
@@ -896,21 +937,44 @@ def chart_price_capture(
             y=[float(avg_da.get(h)) if h in avg_da.index else None for h in hours],
             name="Avg DA price",
             mode="lines",
-            line=dict(color="#333333", width=2, dash="dash"),
+            line=dict(color=COLORS["da"], width=2),
             hovertemplate="%{x:02d}:00<br>Avg DA £%{y:.1f}<extra></extra>",
         ),
-        secondary_y=True,
+        row=1,
+        col=1,
     )
-    fig.update_layout(
-        title=f"Price Capture — charge/discharge vs DA price (achieved spread £{spread:,.2f}/MWh)",
-        barmode="group",
-        template="plotly_white",
-        height=DEFAULT_CHART_HEIGHT,
-        legend=dict(orientation="h", x=0, y=1.12),
+    fig.add_trace(
+        go.Bar(
+            x=hours,
+            y=[float(dis_mwh.get(h, 0.0)) for h in hours],
+            name="Discharge (sell)",
+            marker_color=COLORS["discharge"],
+            hovertemplate="%{x:02d}:00<br>Discharge %{y:,.1f} MWh<extra></extra>",
+        ),
+        row=2,
+        col=1,
     )
-    fig.update_xaxes(title_text="Hour of Day", dtick=2)
-    fig.update_yaxes(title_text="Energy (MWh)", secondary_y=False)
-    fig.update_yaxes(title_text="Avg DA Price (£/MWh)", secondary_y=True)
+    fig.add_trace(
+        go.Bar(
+            x=hours,
+            y=[float(chg_mwh.get(h, 0.0)) for h in hours],
+            name="Charge (buy)",
+            marker_color=COLORS["charge"],
+            hovertemplate="%{x:02d}:00<br>Charge %{y:,.1f} MWh<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    apply_theme(
+        fig,
+        height=HEIGHT_LG,
+        title=f"Price capture — achieved spread £{spread:,.2f}/MWh",
+    )
+    fig.update_layout(barmode="group")
+    fig.update_xaxes(dtick=2)
+    fig.update_xaxes(title_text="Hour of day", row=2, col=1)
+    fig.update_yaxes(title_text="£/MWh", row=1, col=1)
+    fig.update_yaxes(title_text="Energy (MWh)", row=2, col=1)
     return fig
 
 
@@ -937,6 +1001,7 @@ def chart_fleet_leaderboard(site_df: pd.DataFrame):
             marker_color=colors,
             text=[f"£{v:,.0f}" for v in df["gbp_per_mw_day"]],
             textposition="outside",
+            textfont=dict(size=11, color=_INK),
             customdata=df[["power_mw", "days", "total_gbp"]].values,
             hovertemplate=(
                 "%{y}<br>£%{x:,.0f}/MW/day"
@@ -945,13 +1010,13 @@ def chart_fleet_leaderboard(site_df: pd.DataFrame):
             ),
         )
     )
-    fig.update_layout(
-        title="Site leaderboard — estimated £/MW/day (wholesale proxy + BM)",
-        xaxis_title="Estimated revenue (£/MW/day)",
-        template="plotly_white",
+    apply_theme(
+        fig,
         height=max(DEFAULT_CHART_HEIGHT, 26 * len(df) + 120),
-        margin=dict(l=10, r=10),
+        title="Site leaderboard — estimated £/MW/day",
     )
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title_text="Estimated revenue (£/MW/day)")
     return fig
 
 
@@ -966,6 +1031,7 @@ def _chart_fleet_grouped(df: pd.DataFrame, key: str, title: str):
             marker_color=colors,
             text=[f"£{v:,.0f}" for v in df["gbp_per_mw_day"]],
             textposition="outside",
+            textfont=dict(size=11, color=_INK),
             customdata=df[["sites", "power_mw", "total_gbp"]].values,
             hovertemplate=(
                 "%{x}<br>£%{y:,.0f}/MW/day"
@@ -974,12 +1040,9 @@ def _chart_fleet_grouped(df: pd.DataFrame, key: str, title: str):
             ),
         )
     )
-    fig.update_layout(
-        title=title,
-        yaxis_title="Estimated revenue (£/MW/day)",
-        template="plotly_white",
-        height=DEFAULT_CHART_HEIGHT,
-    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
+    fig.update_layout(showlegend=False)
+    fig.update_yaxes(title_text="Estimated revenue (£/MW/day)")
     return fig
 
 
@@ -1040,12 +1103,11 @@ def chart_fleet_daily(daily_df: pd.DataFrame):
             hovertemplate="%{x|%Y-%m-%d}<br>Net £%{y:,.0f}<extra></extra>",
         )
     )
-    fig.update_layout(
-        title="Fleet estimated revenue by day — wholesale proxy vs Balancing Mechanism",
-        barmode="relative",
-        yaxis_title="Estimated revenue (£/day)",
-        template="plotly_white",
+    apply_theme(
+        fig,
         height=DEFAULT_CHART_HEIGHT,
-        legend=dict(orientation="h", x=0, y=1.12),
+        title="Fleet estimated revenue by day — wholesale proxy vs Balancing Mechanism",
     )
+    fig.update_layout(barmode="relative", hovermode="x unified")
+    fig.update_yaxes(title_text="Estimated revenue (£/day)")
     return fig
