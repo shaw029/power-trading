@@ -29,7 +29,6 @@ from dashboard.charts import (  # noqa: E402
     chart_daily_attribution,
     chart_daytype_profiles,
     chart_daytype_scatter,
-    chart_equity_curve,
     chart_fleet_by_optimiser,
     chart_fleet_by_region,
     chart_fleet_daily,
@@ -445,8 +444,6 @@ def _page_history():
         help="Highest single-day net PnL in the shown window.",
     )
 
-    equity = results_df[["date", "net_pnl"]].assign(duration=duration)
-    st.plotly_chart(chart_equity_curve(equity), width="stretch")
     st.plotly_chart(chart_daily_attribution(results_df), width="stretch")
 
     # Price-capture profile aggregated over the whole range: charge/discharge by
