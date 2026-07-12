@@ -25,7 +25,7 @@ COLORS = {
     "charge": "#eb6834",  # buy / −MW
     "soc": "#4a3aa7",  # state of charge
     "intraday": "#1baf7a",  # intraday improvement leg (same teal as discharge)
-    "bm": "#4a3aa7",  # Balancing Mechanism — distinct from the intraday teal
+    "bm": "#008300",  # Balancing Mechanism — its own green; violet stays SOC-only
     "gain": "#1baf7a",
     "cost": "#e34948",
     "net": "#0b0b0b",  # net/total line rides in primary ink
@@ -216,8 +216,6 @@ def chart_realized_shape(
     da_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["day_ahead_price"].mean()
     mid_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["mid_price"].mean()
 
-    colors = ["#e74c3c" if v > 0 else "#2ecc71" for v in mean_mw.values]
-
     fig = go.Figure()
     fig.add_trace(
         go.Bar(
@@ -225,8 +223,8 @@ def chart_realized_shape(
             y=da_commit.values,
             name="DA commitment (ghost)",
             yaxis="y2",
-            marker_color="#999999",
-            opacity=0.25,
+            marker_color=COLORS["ghost"],
+            opacity=0.45,
         )
     )
     fig.add_trace(
@@ -235,7 +233,7 @@ def chart_realized_shape(
             y=mean_mw.values,
             name="Mean realised dispatch MW",
             yaxis="y2",
-            marker_color=colors,
+            marker_color=_dispatch_bar_colors(mean_mw.values),
             opacity=0.65,
         )
     )
@@ -245,7 +243,7 @@ def chart_realized_shape(
             y=da_by_hour.values,
             name="Mean DA price (decision proxy)",
             yaxis="y",
-            line=dict(color="#1f77b4", width=2),
+            line=dict(color=COLORS["da"], width=2),
         )
     )
     fig.add_trace(
@@ -254,7 +252,7 @@ def chart_realized_shape(
             y=mid_by_hour.values,
             name="Mean MID price (settlement)",
             yaxis="y",
-            line=dict(color="#9467bd", width=2),
+            line=dict(color=COLORS["mid"], width=2),
         )
     )
     fig.update_layout(
@@ -295,9 +293,9 @@ def chart_soc_tracker(
             y=soc.values * 100,
             mode="lines",
             name="SOC",
-            line=dict(color="#1f77b4", width=1),
+            line=dict(color=COLORS["soc"], width=1),
             fill="tozeroy",
-            fillcolor="rgba(31,119,180,0.1)",
+            fillcolor="rgba(74,58,167,0.1)",
         )
     )
     fig.add_hline(
@@ -309,14 +307,14 @@ def chart_soc_tracker(
     fig.add_hline(
         y=min_pct,
         line_dash="dot",
-        line_color="#e74c3c",
+        line_color=COLORS["cost"],
         annotation_text=f"Min SOC ({min_pct:.0f}%)",
         annotation_position="bottom right",
     )
     fig.add_hline(
         y=max_pct,
         line_dash="dot",
-        line_color="#e74c3c",
+        line_color=COLORS["cost"],
         annotation_text=f"Max SOC ({max_pct:.0f}%)",
         annotation_position="top right",
     )
@@ -937,7 +935,7 @@ def chart_price_capture(
             x=hours,
             y=[float(dis_mwh.get(h, 0.0)) for h in hours],
             name="Discharge (sell) MWh",
-            marker_color="#2ecc71",
+            marker_color=COLORS["discharge"],
             opacity=0.85,
             hovertemplate="%{x:02d}:00<br>Discharge %{y:,.1f} MWh<extra></extra>",
         ),
@@ -948,7 +946,7 @@ def chart_price_capture(
             x=hours,
             y=[float(chg_mwh.get(h, 0.0)) for h in hours],
             name="Charge (buy) MWh",
-            marker_color="#1f77b4",
+            marker_color=COLORS["charge"],
             opacity=0.85,
             hovertemplate="%{x:02d}:00<br>Charge %{y:,.1f} MWh<extra></extra>",
         ),
@@ -960,7 +958,7 @@ def chart_price_capture(
             y=[float(avg_da.get(h)) if h in avg_da.index else None for h in hours],
             name="Avg DA price",
             mode="lines",
-            line=dict(color="#333333", width=2, dash="dash"),
+            line=dict(color=COLORS["da"], width=2, dash="dash"),
             hovertemplate="%{x:02d}:00<br>Avg DA £%{y:.1f}<extra></extra>",
         ),
         secondary_y=True,
