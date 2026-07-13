@@ -347,10 +347,20 @@ def _page_latest():
         return
     params, shown, caption = view
     duration = params["duration"]
-    record = shown[-1]
-    dur_result = record["result"].durations[duration]
 
     _page_header("Latest settled day", caption)
+
+    # Defaults to the most recent settled day, but any day in the filtered
+    # window can be inspected without leaving the page.
+    dates = [d["date"] for d in shown]
+    picked = st.selectbox(
+        "Day",
+        options=dates,
+        index=len(dates) - 1,
+        help="Defaults to the latest settled day — pick any other day to inspect it.",
+    )
+    record = next(d for d in shown if d["date"] == picked)
+    dur_result = record["result"].durations[duration]
     if record["labels"]:
         st.write(" ".join(f"`{label}`" for label in record["labels"]))
 

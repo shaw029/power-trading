@@ -901,6 +901,7 @@ def chart_price_capture(
     mw_col: str = "final_mw",
     price_col: str = "da_price",
     hour_col: str = "hour",
+    mid_col: str = "mid_price",
 ):
     """Charge/discharge energy by hour of day against the average DA price.
 
@@ -916,6 +917,13 @@ def chart_price_capture(
     """
     df = dispatch_df[[hour_col, mw_col, price_col]].dropna()
     hours = list(range(24))
+
+    # Average realised MID by hour, when the frame carries it (live dashboard).
+    avg_mid = None
+    if mid_col in dispatch_df.columns:
+        mid_df = dispatch_df[[hour_col, mid_col]].dropna()
+        if not mid_df.empty:
+            avg_mid = mid_df.groupby(hour_col)[mid_col].mean()
 
     discharge = df[df[mw_col] > 0]
     charge = df[df[mw_col] < 0]
@@ -963,6 +971,18 @@ def chart_price_capture(
         ),
         secondary_y=True,
     )
+    if avg_mid is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=hours,
+                y=[float(avg_mid.get(h)) if h in avg_mid.index else None for h in hours],
+                name="Avg MID price",
+                mode="lines",
+                line=dict(color=COLORS["mid"], width=2, dash="dot"),
+                hovertemplate="%{x:02d}:00<br>Avg MID £%{y:.1f}<extra></extra>",
+            ),
+            secondary_y=True,
+        )
     fig.update_layout(
         title=f"Price Capture — charge/discharge vs DA price (achieved spread £{spread:,.2f}/MWh)",
         barmode="group",
@@ -972,7 +992,7 @@ def chart_price_capture(
     )
     fig.update_xaxes(title_text="Hour of Day", dtick=2)
     fig.update_yaxes(title_text="Energy (MWh)", secondary_y=False)
-    fig.update_yaxes(title_text="Avg DA Price (£/MWh)", secondary_y=True)
+    fig.update_yaxes(title_text="Avg Price (£/MWh)", secondary_y=True)
     return fig
 
 
