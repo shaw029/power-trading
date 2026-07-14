@@ -132,6 +132,26 @@ def day_site_metrics(
     return pd.DataFrame(rows)
 
 
+def site_profile(pn_records: list[dict]) -> pd.DataFrame:
+    """Net output per fleet site per half-hour, in MW (positive = discharge).
+
+    Each PN span's energy is assigned to the half-hour it starts in (the same
+    flooring as the revenue maths), so a span straddling a boundary shifts a
+    little energy one slot early — fine for shape comparison, do not use this
+    for settlement. One row per (site, time) with any activity.
+    """
+    site_of = bmu_to_site()
+    pn = _pn_frame(pn_records)
+    pn = pn[pn["bmUnit"].isin(site_of)]
+    if pn.empty:
+        return pd.DataFrame(columns=["site", "time", "mw"])
+    pn = pn.assign(site=pn["bmUnit"].map(lambda b: site_of[b].site))
+    grouped = pn.groupby(["site", "time"], as_index=False)["energy_mwh"].sum()
+    slot_hours = pd.Timedelta(_MID_FREQ).total_seconds() / 3600.0
+    grouped["mw"] = grouped["energy_mwh"] / slot_hours
+    return grouped[["site", "time", "mw"]]
+
+
 def filter_daily(
     daily: pd.DataFrame,
     start: str | None = None,

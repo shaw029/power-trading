@@ -129,6 +129,29 @@ def test_filter_daily_by_period_site_optimiser_region():
     assert set(performance.filter_daily(daily, durations=["1h"])["site"]) == {"B"}
 
 
+def test_site_profile_sums_bmus_and_converts_to_mw():
+    # Two BMUs discharging 50 MW plus one charging 30 MW in the same half-hour
+    # collapse to one site row at net 70 MW; energy → MW uses the 0.5 h slot.
+    pn = [
+        _pn_record("E_PILLB-1", 18, 0, 50.0),
+        _pn_record("E_PILLB-2", 18, 0, 50.0),
+        _pn_record("E_PILLB-1", 18, 30, -30.0),
+    ]
+    profile = performance.site_profile(pn)
+    assert list(profile["site"].unique()) == ["Pillswood"]
+    assert len(profile) == 2
+    t18 = profile[profile["time"] == pd.Timestamp(f"{_DATE}T18:00:00Z")]
+    assert t18["mw"].iloc[0] == pytest.approx(100.0)
+    t1830 = profile[profile["time"] == pd.Timestamp(f"{_DATE}T18:30:00Z")]
+    assert t1830["mw"].iloc[0] == pytest.approx(-30.0)
+
+
+def test_site_profile_empty_records():
+    profile = performance.site_profile([])
+    assert list(profile.columns) == ["site", "time", "mw"]
+    assert profile.empty
+
+
 def test_duration_label_rounds_to_whole_hours():
     assert performance.duration_label(100.0, 107.0) == "1h"  # Capenhurst-style
     assert performance.duration_label(98.0, 196.0) == "2h"

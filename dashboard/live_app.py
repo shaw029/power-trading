@@ -26,11 +26,13 @@ import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dashboard.charts import (  # noqa: E402
+    chart_cycles_vs_revenue,
     chart_daily_attribution,
     chart_daytype_capture,
     chart_daytype_frequency,
     chart_daytype_matrix,
     chart_daytype_profiles,
+    chart_daytype_ratio,
     chart_fleet_by_optimiser,
     chart_fleet_by_region,
     chart_fleet_daily,
@@ -39,6 +41,9 @@ from dashboard.charts import (  # noqa: E402
     chart_pnl_waterfall,
     chart_price_capture,
     chart_realized_shape,
+    chart_shape_overlay,
+    chart_sim_vs_fleet_daily,
+    chart_sim_vs_fleet_sites,
     chart_soc_tracker,
 )
 from fleet import fetch_fleet  # noqa: E402
@@ -686,6 +691,19 @@ def _filter_days(days: list, start: str, end: str, day_types: list[str]) -> list
     ]
 
 
+def _with_duration(fleet_df: pd.DataFrame) -> pd.DataFrame:
+    """Cached day frames can predate the duration column; derive it on the fly
+    so a running server survives the upgrade without a cache clear."""
+    if "duration" in fleet_df.columns:
+        return fleet_df
+    return fleet_df.assign(
+        duration=[
+            fleet_perf.duration_label(mw, mwh)
+            for mw, mwh in zip(fleet_df["power_mw"], fleet_df["capacity_mwh"])
+        ]
+    )
+
+
 def _fleet_filters(
     fleet_df: pd.DataFrame,
 ) -> tuple[list[str], list[str], list[str], list[str]]:
@@ -717,15 +735,7 @@ def _render_fleet(
     end: str,
     day_types: list[str],
 ):
-    # Cached day frames can predate the duration column; derive it on the fly
-    # so a running server survives the upgrade without a cache clear.
-    if "duration" not in fleet_df.columns:
-        fleet_df = fleet_df.assign(
-            duration=[
-                fleet_perf.duration_label(mw, mwh)
-                for mw, mwh in zip(fleet_df["power_mw"], fleet_df["capacity_mwh"])
-            ]
-        )
+    fleet_df = _with_duration(fleet_df)
     with st.container(border=True):
         sites, optimisers, regions, durations = _fleet_filters(fleet_df)
     fleet_df = fleet_perf.filter_daily(
@@ -852,6 +862,190 @@ def _render_fleet(
         width="stretch",
         hide_index=True,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Sim vs fleet comparison page
+# --------------------------------------------------------------------------- #
+@st.cache_data(show_spinner=False)
+def _fleet_profile_day(date_iso: str) -> pd.DataFrame:
+    """Per-site half-hourly net MW for one day, from the cached PN records."""
+    date = dt.date.fromisoformat(date_iso)
+    try:
+        pn = fetch_fleet.fetch_fleet_pn(date)
+    except Exception:
+        return pd.DataFrame(columns=["site", "time", "mw"])
+    return fleet_perf.site_profile(pn)
+
+
+def _fleet_hourly_shape(dates: list[str], sites: pd.DataFrame) -> pd.DataFrame | None:
+    """Mean net output by hour across ``dates`` for the comparison sites,
+    as a share of their combined nameplate MW. Hours with no PN activity are
+    genuine zeros, so the (date, hour) grid is filled before averaging."""
+    frames = [_fleet_profile_day(d) for d in dates]
+    profile = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if profile.empty:
+        return None
+    profile = profile[profile["site"].isin(sites["site"])]
+    if profile.empty:
+        return None
+    nameplate = float(sites["power_mw"].sum())
+    profile = profile.assign(
+        date=profile["time"].dt.strftime("%Y-%m-%d"), hour=profile["time"].dt.hour
+    )
+    by_slot = profile.groupby(["date", "hour"])["mw"].sum()
+    grid = pd.MultiIndex.from_product([dates, range(24)], names=["date", "hour"])
+    hourly = by_slot.reindex(grid, fill_value=0.0).groupby("hour").mean()
+    return pd.DataFrame({"hour": hourly.index, "fleet": hourly.values / nameplate})
+
+
+def _page_sim_vs_fleet():
+    view = _benchmark_view()
+    if view is None:
+        return
+    params, shown, caption = view
+    duration = params["duration"]
+
+    _page_header("Sim vs fleet", caption)
+    st.caption(
+        "The simulation is a **perfect-foresight DA+MID ceiling** for one idealised "
+        "battery; fleet numbers are free-data estimates spanning several markets. "
+        "Only like legs are compared: each site's **wholesale leg (PN × MID)** "
+        "against the sim of the **same duration** over the **same days**. BM revenue "
+        "is shown alongside but never enters a ratio, and ancillary revenue is "
+        "invisible on both sides."
+    )
+
+    date_isos = _dates()
+    fleet_df = _with_duration(_fleet_range(date_isos))
+    if fleet_df.empty:
+        st.warning("No fleet data could be fetched — Elexon per-unit data may be unavailable.")
+        return
+    fleet_df = fleet_df[fleet_df["duration"] == duration]
+    if fleet_df.empty:
+        st.info(
+            f"No {duration} sites in the tracked fleet — pick another duration "
+            "in the sidebar to compare."
+        )
+        return
+
+    sim_by_date = {r["date"]: r["result"].durations[duration] for r in shown}
+    common = sorted(set(sim_by_date) & set(fleet_df["date"].unique()))
+    if not common:
+        st.info("No overlapping settled days between the sim and the fleet window.")
+        return
+    fleet_df = fleet_df[fleet_df["date"].isin(common)]
+
+    include_flagged = st.toggle(
+        "Include ⚠ ancillary-tilted sites",
+        value=False,
+        help="Low-cycling sites likely earn in markets neither side can see; "
+        "including them fakes a bigger sim-vs-fleet gap.",
+    )
+    site_df = fleet_perf.summarise_by_site(fleet_df)
+    excluded = set() if include_flagged else set(site_df.loc[site_df["likely_ancillary"], "site"])
+    comp_sites = site_df[~site_df["site"].isin(excluded)]
+    if comp_sites.empty:
+        st.info("Every matched site is ⚠ flagged — toggle them on to compare anyway.")
+        return
+    comp_daily = fleet_df[~fleet_df["site"].isin(excluded)]
+
+    sim_gbp_by_day = {d: r.net_pnl / REFERENCE_POWER_MW for d, r in sim_by_date.items()}
+    sim_gbp = float(pd.Series({d: sim_gbp_by_day[d] for d in common}).mean())
+    sim_cycles = float(pd.Series([sim_by_date[d].cycles for d in common]).mean())
+
+    mw_days = float((comp_sites["power_mw"] * comp_sites["days"]).sum())
+    fleet_wholesale = float(comp_sites["wholesale_gbp"].sum()) / mw_days
+
+    cols = st.columns(4)
+    cols[0].metric(
+        "Sim ceiling",
+        f"£{sim_gbp:,.0f}/MW/day",
+        help=f"Perfect-foresight {duration} benchmark over the {len(common)} common days.",
+    )
+    cols[1].metric(
+        "Fleet wholesale avg",
+        f"£{fleet_wholesale:,.0f}/MW/day",
+        help="PN × MID leg only, MW-weighted over the comparison sites — the leg "
+        "the sim actually plays.",
+    )
+    cols[2].metric(
+        "Realisation",
+        f"{fleet_wholesale / sim_gbp:.0%}" if sim_gbp > 1e-9 else "—",
+        help="Fleet wholesale average as a share of the sim ceiling.",
+    )
+    cols[3].metric(
+        "Sites compared",
+        f"{len(comp_sites)} × {duration}",
+        f"{len(excluded)} ⚠ excluded" if excluded else "none excluded",
+        delta_color="off",
+    )
+
+    comp = comp_sites.assign(
+        wholesale=comp_sites["wholesale_gbp"] / (comp_sites["power_mw"] * comp_sites["days"]),
+        bm=comp_sites["bm_gbp"] / (comp_sites["power_mw"] * comp_sites["days"]),
+    )
+    comp = comp.assign(ratio=comp["wholesale"] / sim_gbp if sim_gbp > 1e-9 else 0.0)
+    st.plotly_chart(
+        chart_sim_vs_fleet_sites(comp, sim_gbp, f"sim {duration} ceiling"), width="stretch"
+    )
+
+    per_day = comp_daily.groupby("date").agg(
+        wholesale_gbp=("wholesale_gbp", "sum"), mw=("power_mw", "sum")
+    )
+    daily = pd.DataFrame(
+        {
+            "date": common,
+            "sim": [sim_gbp_by_day[d] for d in common],
+            "fleet": [
+                float(per_day.loc[d, "wholesale_gbp"] / per_day.loc[d, "mw"])
+                if d in per_day.index
+                else 0.0
+                for d in common
+            ],
+        }
+    )
+    st.plotly_chart(chart_sim_vs_fleet_daily(daily), width="stretch")
+
+    left, right = st.columns(2)
+    shape = _fleet_hourly_shape(common, comp_sites)
+    if shape is not None:
+        sim_hours: dict[int, list[float]] = {}
+        for d in common:
+            for i, entry in enumerate(sim_by_date[d].dispatch_log):
+                sim_hours.setdefault(i % 24, []).append(
+                    entry["final_mw"] / REFERENCE_POWER_MW
+                )
+        shape["sim"] = shape["hour"].map(
+            lambda h: float(pd.Series(sim_hours.get(h, [0.0])).mean())
+        )
+        left.plotly_chart(chart_shape_overlay(shape), width="stretch")
+    scatter = site_df.assign(excluded=site_df["site"].isin(excluded))
+    right.plotly_chart(
+        chart_cycles_vs_revenue(scatter, sim_cycles, sim_gbp), width="stretch"
+    )
+
+    labels = _day_labels(tuple(date_isos))
+    fleet_by_day = dict(zip(daily["date"], daily["fleet"]))
+    ratio_rows = []
+    for tag in sorted(classify_mod.TAGS):
+        tag_days = [d for d in common if tag in (labels.get(d) or [])]
+        if not tag_days:
+            continue
+        sim_mean = float(pd.Series([sim_gbp_by_day[d] for d in tag_days]).mean())
+        if sim_mean <= 1e-9:
+            continue
+        fleet_mean = float(pd.Series([fleet_by_day[d] for d in tag_days]).mean())
+        ratio_rows.append(
+            {
+                "tag": tag,
+                "family": "driver" if tag in classify_mod.DRIVER_TAGS else "price",
+                "ratio": fleet_mean / sim_mean,
+                "days": len(tag_days),
+            }
+        )
+    if ratio_rows:
+        st.plotly_chart(chart_daytype_ratio(pd.DataFrame(ratio_rows)), width="stretch")
 
 
 # --------------------------------------------------------------------------- #
@@ -1025,6 +1219,12 @@ def main():
                 title="Fleet performance",
                 icon=":material/battery_charging_full:",
                 url_path="fleet",
+            ),
+            st.Page(
+                _page_sim_vs_fleet,
+                title="Sim vs fleet",
+                icon=":material/compare_arrows:",
+                url_path="sim-vs-fleet",
             ),
         ],
         "About": [

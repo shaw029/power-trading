@@ -9,13 +9,18 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from dashboard.charts import (
+    chart_cycles_vs_revenue,
     chart_daytype_capture,
     chart_daytype_frequency,
     chart_daytype_matrix,
     chart_daytype_profiles,
+    chart_daytype_ratio,
     chart_duration_comparison,
     chart_equity_curve,
     chart_price_capture,
+    chart_shape_overlay,
+    chart_sim_vs_fleet_daily,
+    chart_sim_vs_fleet_sites,
 )
 
 
@@ -91,6 +96,77 @@ def test_chart_daytype_matrix_returns_figure():
     fig = chart_daytype_matrix(matrix)
     assert isinstance(fig, go.Figure)
     assert fig.data[0].z.tolist() == [[2, 0], [1, 3]]
+
+
+def test_chart_sim_vs_fleet_sites_stacks_legs_and_marks_ceiling():
+    df = pd.DataFrame(
+        {
+            "site": ["A", "B"],
+            "optimiser": ["OptX", "OptY"],
+            "wholesale": [80.0, 40.0],
+            "bm": [20.0, 35.0],
+            "ratio": [0.8, 0.4],
+        }
+    )
+    fig = chart_sim_vs_fleet_sites(df, sim_gbp=100.0, sim_label="sim 2h ceiling")
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 2  # wholesale + BM traces; the ceiling is a vline
+    assert fig.layout.shapes[0].x0 == 100.0
+
+
+def test_chart_sim_vs_fleet_daily_returns_figure():
+    df = pd.DataFrame(
+        {
+            "date": ["2025-01-01", "2025-01-02"],
+            "sim": [120.0, 90.0],
+            "fleet": [70.0, 65.0],
+        }
+    )
+    fig = chart_sim_vs_fleet_daily(df)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 2
+
+
+def test_chart_shape_overlay_returns_figure():
+    df = pd.DataFrame(
+        {
+            "hour": list(range(24)),
+            "fleet": [0.1] * 12 + [-0.1] * 12,
+            "sim": [0.5] * 12 + [-0.5] * 12,
+        }
+    )
+    fig = chart_shape_overlay(df)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 2
+
+
+def test_chart_cycles_vs_revenue_ghosts_excluded_sites():
+    df = pd.DataFrame(
+        {
+            "site": ["A", "B", "C"],
+            "optimiser": ["X", "Y", "Z"],
+            "cycles_per_day": [1.1, 0.9, 0.1],
+            "gbp_per_mw_day": [90.0, 70.0, 5.0],
+            "excluded": [False, False, True],
+        }
+    )
+    fig = chart_cycles_vs_revenue(df, sim_cycles=1.4, sim_gbp=120.0)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 3  # sites, ghosts, sim star
+
+
+def test_chart_daytype_ratio_returns_figure():
+    df = pd.DataFrame(
+        {
+            "tag": ["windy", "volatile"],
+            "family": ["driver", "price"],
+            "ratio": [0.6, 0.45],
+            "days": [10, 4],
+        }
+    )
+    fig = chart_daytype_ratio(df)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 1
 
 
 def test_chart_equity_curve_returns_figure():

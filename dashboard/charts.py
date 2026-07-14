@@ -1306,3 +1306,218 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
     fig.update_layout(barmode="relative", hovermode="x unified")
     fig.update_yaxes(title_text="Estimated revenue (£/day)")
     return fig
+
+
+# --------------------------------------------------------------------------- #
+# Sim vs fleet comparison
+# --------------------------------------------------------------------------- #
+def chart_sim_vs_fleet_sites(df: pd.DataFrame, sim_gbp: float, sim_label: str) -> go.Figure:
+    """Per-site £/MW/day split wholesale vs BM, against the sim ceiling.
+
+    ``df`` has one row per site: ``site``, ``optimiser``, ``wholesale`` and
+    ``bm`` (£/MW/day over the common days) and ``ratio`` (wholesale ÷ sim).
+    Only the wholesale leg is comparable to the simulation — the BM segment is
+    revenue from a market the sim does not play, so it is stacked separately
+    and excluded from the ratio labels. ``sim_gbp`` is drawn as a reference
+    line, not a bar: it is a perfect-foresight ceiling, not a competitor.
+    """
+    df = df.sort_values("wholesale")
+    labels = [f"{s}  ·  {o}" for s, o in zip(df["site"], df["optimiser"])]
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=df["wholesale"],
+            y=labels,
+            orientation="h",
+            name="Wholesale leg (PN × MID)",
+            marker_color=COLORS["da"],
+            text=[f"{r:.0%}" for r in df["ratio"]],
+            textposition="outside",
+            textfont=dict(size=11, color=_INK),
+            hovertemplate=(
+                "%{y}<br>Wholesale £%{x:,.0f}/MW/day"
+                "<br>%{text} of the sim ceiling<extra></extra>"
+            ),
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=df["bm"],
+            y=labels,
+            orientation="h",
+            name="BM (not in the sim)",
+            marker_color=COLORS["bm"],
+            hovertemplate="%{y}<br>BM £%{x:,.0f}/MW/day<extra></extra>",
+        )
+    )
+    fig.add_vline(
+        x=sim_gbp,
+        line=dict(color=COLORS["net"], width=2, dash="dash"),
+        annotation_text=sim_label,
+        annotation_position="top",
+    )
+    apply_theme(
+        fig,
+        height=max(DEFAULT_CHART_HEIGHT, 30 * len(df) + 140),
+        title="Sites vs the sim ceiling — like legs compared, BM shown apart",
+    )
+    fig.update_layout(barmode="relative")
+    fig.update_xaxes(title_text="Estimated revenue (£/MW/day)")
+    return fig
+
+
+def chart_sim_vs_fleet_daily(df: pd.DataFrame) -> go.Figure:
+    """Daily £/MW/day: sim ceiling vs the matched fleet wholesale average.
+
+    The area between the lines is the day's foresight-plus-skill gap; shading
+    it makes decoupling episodes visible at a glance.
+    """
+    dates = pd.to_datetime(df["date"])
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=df["fleet"],
+            name="Fleet wholesale avg",
+            mode="lines",
+            line=dict(color=COLORS["da"], width=2),
+            hovertemplate="%{x|%Y-%m-%d}<br>Fleet £%{y:,.0f}/MW<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=df["sim"],
+            name="Sim ceiling",
+            mode="lines",
+            line=dict(color=COLORS["net"], width=2, dash="dash"),
+            fill="tonexty",
+            fillcolor="rgba(137, 135, 129, 0.15)",
+            hovertemplate="%{x|%Y-%m-%d}<br>Sim £%{y:,.0f}/MW<extra></extra>",
+        )
+    )
+    apply_theme(
+        fig,
+        height=DEFAULT_CHART_HEIGHT,
+        title="Daily £/MW/day — sim ceiling vs fleet wholesale (gap shaded)",
+    )
+    fig.update_layout(hovermode="x unified")
+    fig.update_yaxes(title_text="Estimated revenue (£/MW/day)")
+    return fig
+
+
+def chart_shape_overlay(df: pd.DataFrame) -> go.Figure:
+    """Mean hourly dispatch shape: sim vs fleet, as a share of nameplate MW.
+
+    Both series are normalised (net MW ÷ nameplate MW, positive = discharge)
+    so a 50 MW sim and a multi-GW fleet share one axis honestly.
+    """
+    fig = go.Figure()
+    for col, name, color, dash in (
+        ("fleet", "Fleet (aggregate PN)", COLORS["da"], None),
+        ("sim", "Sim dispatch", COLORS["net"], "dash"),
+    ):
+        fig.add_trace(
+            go.Scatter(
+                x=df["hour"],
+                y=df[col],
+                name=name,
+                mode="lines+markers",
+                line=dict(color=color, width=2, dash=dash),
+                marker=dict(size=5),
+                hovertemplate=name + "<br>Hour %{x}<br>%{y:.1%} of nameplate<extra></extra>",
+            )
+        )
+    fig.add_hline(y=0.0, line=dict(color=_AXIS, width=1))
+    apply_theme(
+        fig,
+        height=DEFAULT_CHART_HEIGHT,
+        title="When batteries move — mean net output by hour (discharge positive)",
+    )
+    fig.update_layout(hovermode="x unified")
+    fig.update_xaxes(title_text="Hour of day (UTC)", dtick=2)
+    fig.update_yaxes(title_text="Net output (share of nameplate)", tickformat=".0%")
+    return fig
+
+
+def chart_cycles_vs_revenue(df: pd.DataFrame, sim_cycles: float, sim_gbp: float) -> go.Figure:
+    """Work-rate vs earnings: each site by cycles/day and £/MW/day, sim starred.
+
+    ``df`` columns: ``site``, ``optimiser``, ``cycles_per_day``,
+    ``gbp_per_mw_day`` and ``excluded`` (⚠ ancillary-tilted sites, shown as
+    ghosts so the eye discounts them without losing them).
+    """
+    fig = go.Figure()
+    for excluded, name, color in (
+        (False, "Sites", COLORS["da"]),
+        (True, "⚠ ancillary-tilted (excluded)", COLORS["ghost"]),
+    ):
+        sub = df[df["excluded"] == excluded]
+        if sub.empty:
+            continue
+        hover = [f"{s} · {o}" for s, o in zip(sub["site"], sub["optimiser"])]
+        fig.add_trace(
+            go.Scatter(
+                x=sub["cycles_per_day"],
+                y=sub["gbp_per_mw_day"],
+                mode="markers",
+                name=name,
+                marker=dict(color=color, size=10, line=dict(width=1, color="white")),
+                customdata=hover,
+                hovertemplate=(
+                    "%{customdata}<br>%{x:.2f} cycles/day · £%{y:,.0f}/MW/day<extra></extra>"
+                ),
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=[sim_cycles],
+            y=[sim_gbp],
+            mode="markers",
+            name="Sim (perfect foresight)",
+            marker=dict(color=COLORS["net"], size=14, symbol="star"),
+            hovertemplate=(
+                "Sim<br>%{x:.2f} cycles/day · £%{y:,.0f}/MW/day<extra></extra>"
+            ),
+        )
+    )
+    apply_theme(
+        fig, height=DEFAULT_CHART_HEIGHT, title="Cycles vs revenue — work-rate against earnings"
+    )
+    fig.update_layout(hovermode="closest")
+    fig.update_xaxes(title_text="Cycles per day")
+    fig.update_yaxes(title_text="Estimated revenue (£/MW/day)")
+    return fig
+
+
+def chart_daytype_ratio(df: pd.DataFrame) -> go.Figure:
+    """Fleet-wholesale ÷ sim-ceiling ratio per day-type tag.
+
+    Shows where reality gets closest to perfect foresight; same family colours
+    as the Day types page. ``df`` columns: ``tag``, ``family``, ``ratio``,
+    ``days``.
+    """
+    order = _daytype_order(df, "ratio")
+    d = df.set_index("tag").loc[order].reset_index()
+    fig = go.Figure(
+        go.Bar(
+            x=d["ratio"],
+            y=d["tag"],
+            orientation="h",
+            marker_color=[FAMILY_COLORS[f] for f in d["family"]],
+            text=[f"{r:.0%}" for r in d["ratio"]],
+            textposition="outside",
+            textfont=dict(size=11, color=_INK),
+            customdata=d["days"],
+            hovertemplate="%{y}<br>%{x:.0%} of sim · %{customdata} day(s)<extra></extra>",
+        )
+    )
+    apply_theme(
+        fig,
+        height=max(HEIGHT_SM, 30 * len(d) + 110),
+        title="Realisation by day-type — fleet wholesale as a share of the sim",
+    )
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title_text="Fleet wholesale ÷ sim ceiling", tickformat=".0%")
+    fig.update_yaxes(categoryorder="array", categoryarray=order)
+    return fig
