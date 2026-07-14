@@ -37,11 +37,13 @@ from dashboard.charts import (  # noqa: E402
     chart_fleet_by_region,
     chart_fleet_daily,
     chart_fleet_leaderboard,
+    chart_generation_mix,
     chart_operation_explorer,
     chart_pnl_waterfall,
     chart_price_capture,
     chart_realized_shape,
     chart_shape_overlay,
+    chart_system_prices,
     chart_sim_vs_fleet_daily,
     chart_sim_vs_fleet_sites,
     chart_soc_tracker,
@@ -1084,6 +1086,92 @@ def _page_fleet():
     _render_fleet(fleet_df, _day_labels(date_isos), start, end, day_types)
 
 
+@st.cache_data(show_spinner=False)
+def _system_day(date_iso: str) -> pd.DataFrame:
+    """Whole-system half-hourly snapshot for one day (cached on the date)."""
+    return fetch_live.get_day_system(dt.date.fromisoformat(date_iso))
+
+
+def _page_system():
+    date_isos = _dates()
+    _page_header(
+        "System overview",
+        "The whole GB power system on one day — generation mix, demand and "
+        "wholesale prices, from the same free feeds the benchmark runs on.",
+    )
+    picked = st.selectbox(
+        "Day",
+        options=list(date_isos),
+        index=len(date_isos) - 1,
+        help="Any settled day in the covered window.",
+    )
+
+    system = _system_day(picked)
+    if system.empty:
+        st.warning("No system data could be fetched for this day — the Elexon or "
+                   "PV_Live feeds may be temporarily unavailable.")
+        return
+
+    groups = fetch_live.group_generation(system)
+    demand = system["demand_actual"] if "demand_actual" in system.columns else None
+
+    # Shares are over domestic generation, so interconnector imports (which meet
+    # demand but aren't GB generation) sit outside the denominator. Each group's
+    # daily energy is its MW summed over the half-hourly periods × 0.5 h → GWh.
+    gen_groups = [g for g in groups.columns if g != "Interconnectors"]
+    energy_gwh = groups.sum() * 0.5 / 1000.0
+    total_gen = float(energy_gwh[gen_groups].sum()) if gen_groups else 0.0
+    low_carbon = float(
+        energy_gwh[[g for g in gen_groups if g in fetch_live.LOW_CARBON_GROUPS]].sum()
+    )
+    gas = float(energy_gwh["Gas"]) if "Gas" in energy_gwh else 0.0
+    net_int = float(energy_gwh["Interconnectors"]) if "Interconnectors" in energy_gwh else 0.0
+
+    cols = st.columns(4)
+    cols[0].metric(
+        "Peak demand",
+        f"{demand.max() / 1000.0:.1f} GW" if demand is not None else "—",
+        help="Highest half-hourly transmission-metered demand (ITSDO) on the day.",
+    )
+    cols[1].metric(
+        "Low-carbon generation",
+        f"{low_carbon / total_gen:.0%}" if total_gen > 0 else "—",
+        help="Wind, solar, nuclear, hydro and biomass as a share of GB generation "
+        "(interconnector imports excluded from the denominator).",
+    )
+    cols[2].metric(
+        "Gas generation",
+        f"{gas / total_gen:.0%}" if total_gen > 0 else "—",
+        help="CCGT + OCGT as a share of GB generation.",
+    )
+    cols[3].metric(
+        "Net interconnectors",
+        f"{net_int:+,.0f} GWh",
+        help="Positive = net imports into GB over the day; negative = net exports.",
+    )
+
+    st.plotly_chart(chart_generation_mix(groups, demand), width="stretch")
+    st.plotly_chart(chart_system_prices(fetch_live.get_day_prices(dt.date.fromisoformat(picked))),
+                    width="stretch")
+
+    st.caption(
+        "Sources — generation mix: Elexon FUELHH (transmission-metered); solar: "
+        "Sheffield Solar PV_Live (embedded); demand: Elexon ITSDO; day-ahead: "
+        "Nord Pool N2EX; MID: Elexon. All free, all public."
+    )
+
+    with st.expander("Raw half-hourly data"):
+        raw = system.copy()
+        raw.index = raw.index.strftime("%Y-%m-%d %H:%M")
+        st.download_button(
+            "Download CSV",
+            system.to_csv().encode(),
+            file_name=f"system_{picked}.csv",
+            mime="text/csv",
+        )
+        st.dataframe(raw, width="stretch")
+
+
 def _page_methodology():
     _page_header("Methodology", "What these numbers are — and what they are not")
     left, right = st.columns(2, gap="large")
@@ -1225,6 +1313,14 @@ def main():
                 title="Sim vs fleet",
                 icon=":material/compare_arrows:",
                 url_path="sim-vs-fleet",
+            ),
+        ],
+        "GB power system": [
+            st.Page(
+                _page_system,
+                title="System overview",
+                icon=":material/electric_meter:",
+                url_path="system",
             ),
         ],
         "About": [

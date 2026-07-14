@@ -1521,3 +1521,94 @@ def chart_daytype_ratio(df: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(title_text="Fleet wholesale ÷ sim ceiling", tickformat=".0%")
     fig.update_yaxes(categoryorder="array", categoryarray=order)
     return fig
+
+
+# --------------------------------------------------------------------------- #
+# System overview
+# --------------------------------------------------------------------------- #
+# Each generation group keeps a fixed hue (colour follows the fuel, never its
+# rank in the stack). Seven CVD-validated categorical hues plus the overflow
+# grey for "Other"; order matches fetch_live.GENERATION_GROUP_ORDER.
+GENERATION_COLORS = {
+    "Wind": "#2a78d6",
+    "Solar": "#eda100",
+    "Nuclear": "#4a3aa7",
+    "Gas": "#e34948",
+    "Biomass": "#008300",
+    "Hydro & storage": "#1baf7a",
+    "Interconnectors": "#e87ba4",
+    "Other": _OVERFLOW,
+}
+
+
+def chart_generation_mix(groups: pd.DataFrame, demand: pd.Series | None = None) -> go.Figure:
+    """Stacked half-hourly generation mix (MW) with demand overlaid.
+
+    ``groups`` is the grouped frame from :func:`live.fetch_live.group_generation`
+    — one column per fuel group, already in stack order. Net interconnectors
+    can dip negative (GB exporting), which plotly stacks below the baseline.
+    ``demand`` (actual outturn, MW) is drawn as a dotted reference line so the
+    supply stack can be read against the load it served.
+    """
+    fig = go.Figure()
+    for name in groups.columns:
+        color = GENERATION_COLORS.get(name, _OVERFLOW)
+        fig.add_trace(
+            go.Scatter(
+                x=groups.index,
+                y=groups[name],
+                name=name,
+                mode="lines",
+                # A hairline in the surface colour gives the 2px gap between bands.
+                line=dict(width=1, color="rgba(255,255,255,0.85)"),
+                stackgroup="gen",
+                fillcolor=color,
+                hovertemplate=name + "<br>%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+            )
+        )
+    if demand is not None and not demand.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=demand.index,
+                y=demand.values,
+                name="Demand (outturn)",
+                mode="lines",
+                line=dict(color=COLORS["net"], width=2, dash="dot"),
+                hovertemplate="Demand<br>%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+            )
+        )
+    apply_theme(fig, height=HEIGHT_LG, title="Generation mix — half-hourly (MW)")
+    fig.update_layout(hovermode="x unified")
+    fig.update_yaxes(title_text="Power (MW)")
+    return fig
+
+
+def chart_system_prices(prices: pd.DataFrame) -> go.Figure:
+    """Day-ahead and MID prices through the day, one shared £/MWh axis.
+
+    ``prices`` is the frame from :func:`live.fetch_live.get_day_prices`
+    (columns ``day_ahead_price`` and ``mid_price``). Both are prices in the
+    same unit, so they share one axis — never a second scale.
+    """
+    fig = go.Figure()
+    for col, name, color in (
+        ("day_ahead_price", "Day-ahead (N2EX)", COLORS["da"]),
+        ("mid_price", "MID (intraday)", COLORS["mid"]),
+    ):
+        if col not in prices.columns:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=prices.index,
+                y=prices[col],
+                name=name,
+                mode="lines",
+                line=dict(color=color, width=2),
+                hovertemplate=name + "<br>%{x|%H:%M}<br>£%{y:,.1f}/MWh<extra></extra>",
+            )
+        )
+    fig.add_hline(y=0.0, line=dict(color=_AXIS, width=1))
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Wholesale prices — £/MWh")
+    fig.update_layout(hovermode="x unified")
+    fig.update_yaxes(title_text="Price (£/MWh)")
+    return fig

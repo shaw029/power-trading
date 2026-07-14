@@ -136,6 +136,66 @@ def test_generation_aggregates_raises_when_no_data_for_day():
             fetch_live._generation_aggregates(_DAY)
 
 
+def test_group_generation_collapses_and_conserves():
+    idx = pd.date_range("2024-01-01T00:00:00Z", periods=2, freq="30min")
+    system = pd.DataFrame(
+        {
+            "gen_WIND": [1000.0, 1100.0],
+            "gen_CCGT": [2000.0, 1900.0],
+            "gen_OCGT": [100.0, 120.0],
+            "gen_INTFR": [500.0, -300.0],  # export in the second period
+            "gen_INTNED": [200.0, 200.0],
+            "gen_COAL": [0.0, 10.0],  # unmapped → Other
+            "solar_mw": [0.0, 400.0],
+        },
+        index=idx,
+    )
+    grouped = fetch_live.group_generation(system)
+    # Fixed order, only groups with data.
+    assert list(grouped.columns) == [
+        "Wind", "Solar", "Gas", "Interconnectors", "Other"
+    ]
+    assert grouped["Gas"].tolist() == [2100.0, 2020.0]  # CCGT + OCGT
+    assert grouped["Interconnectors"].tolist() == [700.0, -100.0]  # net, signed
+    assert grouped["Other"].tolist() == [0.0, 10.0]  # coal folded in
+    # Total MW is conserved across the regrouping.
+    assert grouped.sum(axis=1).tolist() == system.sum(axis=1).tolist()
+
+
+def test_get_day_system_merges_sources_and_survives_partial():
+    with (
+        mock.patch.object(fetch_live, "fetch_generation_actual", return_value=_generation_raw()),
+        mock.patch.object(fetch_live, "fetch_solar_actual", return_value=_solar_raw()),
+        mock.patch.object(fetch_live, "fetch_demand_actual", return_value=_demand_raw()),
+    ):
+        system = fetch_live.get_day_system(_DAY)
+    assert "gen_WIND" in system.columns
+    assert "solar_mw" in system.columns
+    assert "demand_actual" in system.columns
+    assert len(system) == 48
+
+    # Solar feed down: the snapshot still returns, just without solar.
+    boom = mock.Mock(side_effect=RuntimeError("pvlive down"))
+    with (
+        mock.patch.object(fetch_live, "fetch_generation_actual", return_value=_generation_raw()),
+        mock.patch.object(fetch_live, "fetch_solar_actual", boom),
+        mock.patch.object(fetch_live, "fetch_demand_actual", return_value=_demand_raw()),
+    ):
+        partial = fetch_live.get_day_system(_DAY)
+    assert "solar_mw" not in partial.columns
+    assert "gen_WIND" in partial.columns
+
+
+def test_get_day_system_empty_when_all_sources_fail():
+    boom = mock.Mock(side_effect=RuntimeError("down"))
+    with (
+        mock.patch.object(fetch_live, "fetch_generation_actual", boom),
+        mock.patch.object(fetch_live, "fetch_solar_actual", boom),
+        mock.patch.object(fetch_live, "fetch_demand_actual", boom),
+    ):
+        assert fetch_live.get_day_system(_DAY).empty
+
+
 def test_get_day_context_returns_none_when_fetchers_raise():
     boom = mock.Mock(side_effect=RuntimeError("network down"))
     with (

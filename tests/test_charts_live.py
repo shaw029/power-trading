@@ -17,10 +17,12 @@ from dashboard.charts import (
     chart_daytype_ratio,
     chart_duration_comparison,
     chart_equity_curve,
+    chart_generation_mix,
     chart_price_capture,
     chart_shape_overlay,
     chart_sim_vs_fleet_daily,
     chart_sim_vs_fleet_sites,
+    chart_system_prices,
 )
 
 
@@ -153,6 +155,41 @@ def test_chart_cycles_vs_revenue_ghosts_excluded_sites():
     fig = chart_cycles_vs_revenue(df, sim_cycles=1.4, sim_gbp=120.0)
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 3  # sites, ghosts, sim star
+
+
+def test_chart_generation_mix_stacks_groups_and_demand():
+    idx = pd.date_range("2024-01-01T00:00:00Z", periods=4, freq="30min")
+    groups = pd.DataFrame(
+        {
+            "Wind": [1000.0, 1100.0, 1200.0, 1050.0],
+            "Gas": [2000.0, 1900.0, 1800.0, 1850.0],
+            "Interconnectors": [500.0, -200.0, 300.0, 400.0],
+        },
+        index=idx,
+    )
+    demand = pd.Series([3400.0, 2900.0, 3200.0, 3250.0], index=idx)
+    fig = chart_generation_mix(groups, demand)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 4  # three stacked groups + demand line
+    assert fig.data[-1].name == "Demand (outturn)"
+
+
+def test_chart_generation_mix_without_demand():
+    idx = pd.date_range("2024-01-01T00:00:00Z", periods=2, freq="30min")
+    groups = pd.DataFrame({"Wind": [1000.0, 1100.0]}, index=idx)
+    fig = chart_generation_mix(groups)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 1
+
+
+def test_chart_system_prices_returns_figure():
+    idx = pd.date_range("2024-01-01T00:00:00Z", periods=24, freq="60min")
+    prices = pd.DataFrame(
+        {"day_ahead_price": range(50, 74), "mid_price": range(48, 72)}, index=idx
+    )
+    fig = chart_system_prices(prices)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 2
 
 
 def test_chart_daytype_ratio_returns_figure():

@@ -192,3 +192,119 @@ def get_day_context(date: dt.date) -> dict[str, float | None]:
         logger.warning("Demand context unavailable for %s: %s", date, exc)
 
     return context
+
+
+# --------------------------------------------------------------------------- #
+# Whole-system snapshot (for the System overview page)
+# --------------------------------------------------------------------------- #
+# FUELHH fuels collapsed into presentation groups. Interconnectors are matched
+# by the ``gen_INT`` prefix (there are ~10 of them) and everything left over —
+# coal, oil, unclassified — folds into "Other", so no fuel is ever dropped.
+_NAMED_FUEL_GROUPS: dict[str, tuple[str, ...]] = {
+    "Wind": ("gen_WIND",),
+    "Nuclear": ("gen_NUCLEAR",),
+    "Gas": ("gen_CCGT", "gen_OCGT"),
+    "Biomass": ("gen_BIOMASS",),
+    "Hydro & storage": ("gen_NPSHYD", "gen_PS"),
+}
+# Fixed display/stack order; each group keeps its colour across the app.
+GENERATION_GROUP_ORDER: tuple[str, ...] = (
+    "Wind",
+    "Solar",
+    "Nuclear",
+    "Gas",
+    "Biomass",
+    "Hydro & storage",
+    "Interconnectors",
+    "Other",
+)
+# Groups counted as low-carbon for the System page headline share.
+LOW_CARBON_GROUPS: frozenset[str] = frozenset(
+    {"Wind", "Solar", "Nuclear", "Hydro & storage", "Biomass"}
+)
+
+
+def group_generation(system: pd.DataFrame) -> pd.DataFrame:
+    """Collapse raw fuel columns into presentation groups (MW).
+
+    Takes the wide frame from :func:`get_day_system` (``gen_*`` columns plus
+    ``solar_mw``) and returns one column per group in
+    :data:`GENERATION_GROUP_ORDER` that has data. Interconnectors are summed to
+    a single net band (negative when GB is exporting); every ``gen_*`` column
+    not otherwise mapped lands in "Other", so total generation is conserved.
+    """
+    assigned: set[str] = set()
+    groups: dict[str, pd.Series] = {}
+
+    if "solar_mw" in system.columns:
+        groups["Solar"] = system["solar_mw"]
+        assigned.add("solar_mw")
+
+    for name, cols in _NAMED_FUEL_GROUPS.items():
+        present = [c for c in cols if c in system.columns]
+        if present:
+            groups[name] = system[present].sum(axis=1)
+            assigned.update(present)
+
+    int_cols = [c for c in system.columns if c.startswith("gen_INT")]
+    if int_cols:
+        groups["Interconnectors"] = system[int_cols].sum(axis=1)
+        assigned.update(int_cols)
+
+    other_cols = [
+        c for c in system.columns if c.startswith("gen_") and c not in assigned
+    ]
+    if other_cols:
+        groups["Other"] = system[other_cols].sum(axis=1)
+
+    out = pd.DataFrame(groups, index=system.index)
+    ordered = [g for g in GENERATION_GROUP_ORDER if g in out.columns]
+    return out[ordered]
+
+
+def get_day_system(date: dt.date) -> pd.DataFrame:
+    """Half-hourly whole-system snapshot for one delivery day.
+
+    Merges every FUELHH fuel (``gen_*`` MW), embedded solar from PV_Live
+    (``solar_mw``) and actual demand (``demand_actual``) on the shared UTC
+    half-hourly grid, covering ``[date, date + 1 day)``. Each source is fetched
+    independently; one that fails or is empty simply contributes no columns
+    rather than raising, so a partial snapshot still renders.
+    """
+    start, end = _day_window(date)
+    date_str = date.isoformat()
+
+    def _windowed(frame: pd.DataFrame) -> pd.DataFrame:
+        return frame[(frame.index >= start) & (frame.index < end)]
+
+    frames: list[pd.DataFrame] = []
+    try:
+        gen = process_generation_mix(
+            fetch_generation_actual(start_date=date_str, end_date=date_str)
+        )
+        frames.append(_windowed(gen))
+    except Exception as exc:
+        logger.warning("System generation unavailable for %s: %s", date, exc)
+
+    try:
+        solar = process_solar_actual(
+            fetch_solar_actual(start_date=date_str, end_date=date_str)
+        )
+        frames.append(_windowed(solar))
+    except Exception as exc:
+        logger.warning("System solar unavailable for %s: %s", date, exc)
+
+    try:
+        demand = process_demand_actual(
+            fetch_demand_actual(start_date=date_str, end_date=date_str)
+        )
+        frames.append(_windowed(demand[["demand_actual"]]))
+    except Exception as exc:
+        logger.warning("System demand unavailable for %s: %s", date, exc)
+
+    frames = [f for f in frames if not f.empty]
+    if not frames:
+        return pd.DataFrame()
+    system = pd.concat(frames, axis=1).sort_index()
+    system.index.name = "time"
+    return system
