@@ -531,8 +531,22 @@ public Elexon per-unit data.
   values each unit's Physical Notification at the half-hourly MID price
   (actual traded prices are private). BM revenue is Elexon's indicative
   per-unit bid/offer cashflows (`EBOCF`), summed as published.
-- **Excluded** — ancillary services (Dynamic Containment etc.), capacity
-  market and private PPAs, so ancillary-heavy sites read low here.
+- **Excluded (by design)** — ancillary services (Dynamic Containment etc.),
+  capacity market and private PPAs. Per-unit revenue in those markets isn't in
+  Elexon's free feeds — ancillary contracts sit in NESO's EAC data, and traded
+  PPA prices are private — so this dashboard deliberately scopes to the two
+  streams it can estimate from one source.
+- **Ancillary-tilted sites can read *negative*, not just low** — energy bought
+  to hold state of charge for an ancillary contract is costed at MID here,
+  while the availability payment that motivated it is invisible. Sites cycling
+  below ~0.3 cycles/day are flagged ⚠ in the site table: their revenue likely
+  comes from markets this model cannot see, so don't read their £ figures as
+  trading performance.
+- **Site selection** — sites qualify by having their own registered BM Units
+  (the per-unit data only exists for those), being grid-scale (~35 MW+), and
+  being operational as of the July 2026 snapshot. The list is a curated
+  cross-section of optimisers and regions, not a census of GB batteries;
+  assets traded behind aggregator/VLP units can't be tracked at site level.
 - **Metadata** — optimiser, region and approximate MWh are a hand-curated
   snapshot and can go stale; cycle counts are indicative.
 """
@@ -705,13 +719,21 @@ def _render_fleet(
     st.plotly_chart(chart_fleet_daily(fleet_perf.fleet_daily(fleet_df)), width="stretch")
 
     st.markdown("#### Site detail")
-    table = site_df[
+    flagged = int(site_df["likely_ancillary"].sum())
+    if flagged:
+        st.caption(
+            f"⚠ {flagged} site(s) cycle below {fleet_perf.ANCILLARY_CYCLES_THRESHOLD} "
+            "cycles/day — they are likely earning in ancillary markets this model "
+            "cannot see, so their £ figures are unreliable and biased low."
+        )
+    table = site_df.assign(flag=site_df["likely_ancillary"].map({True: "⚠", False: ""}))[
         [
-            "site", "optimiser", "region", "power_mw", "capacity_mwh", "days",
+            "flag", "site", "optimiser", "region", "power_mw", "capacity_mwh", "days",
             "gbp_per_mw_day", "total_gbp", "wholesale_gbp", "bm_gbp", "cycles_per_day",
         ]
     ].rename(
         columns={
+            "flag": "Flag",
             "site": "Site",
             "optimiser": "Optimiser",
             "region": "Region",

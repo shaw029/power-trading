@@ -5,6 +5,23 @@ Mechanism, so it needs to know which BM Units belong to which site and who
 optimises them. Elexon's BMU reference data carries no battery fuel type and
 no optimiser/location fields, so that mapping is hand-curated here.
 
+Selection criteria — a site is included when all of these hold:
+
+1. **BM-registered with its own BM Units.** This is a hard data requirement,
+   not a preference: the free per-unit Elexon feeds the dashboard runs on
+   (Physical Notifications, ``EBOCF`` cashflows) only exist for registered
+   BM Units. Batteries traded behind an aggregator/VLP unit or a supplier
+   portfolio are invisible at site level and cannot be listed.
+2. **Grid-scale.** Roughly 35 MW nameplate and up (smallest included site is
+   Contego at 34 MW). Below that, per-site estimates get noisy and the long
+   tail of small sites adds little fleet MW.
+3. **Operational.** Actively submitting PNs / being dispatched as of the
+   July 2026 snapshot — not merely consented or under commissioning.
+4. **Coverage over completeness.** The list is a curated cross-section of
+   optimisers (Tesla, Zenobe, Habitat, EDF, Octopus, …) and regions
+   (Scotland to the South East), *not* a census of GB BESS. When adding
+   sites, prefer ones that broaden optimiser/region coverage.
+
 Provenance and staleness:
 
 * ``bmu_ids`` were verified against the live Elexon BMU reference list

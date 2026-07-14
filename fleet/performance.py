@@ -10,9 +10,12 @@ The revenue model is a transparent free-data estimate, not audited settlement:
   as published (offers are usually paid to the unit, bids usually paid back),
   so no BM settlement arithmetic is re-derived here.
 
-Ancillary-service revenue (Dynamic Containment etc.) is out of scope, so
-sites earning mostly ancillary income will read low against Modo-style
-benchmarks.
+Ancillary-service revenue (Dynamic Containment etc.) is out of scope. Worse
+than merely reading low: energy bought to hold state of charge for an
+ancillary contract is costed at MID here while the availability payment that
+motivated it is invisible, so ancillary-tilted sites can read negative.
+:func:`summarise_by_site` flags the likely cases instead of pretending the
+estimate is comparable.
 """
 
 import pandas as pd
@@ -21,6 +24,11 @@ from fleet.registry import FLEET, bmu_to_site
 
 # MID is published on a half-hourly grid; PN spans are floored onto it.
 _MID_FREQ = "30min"
+
+# Merchant GB batteries cycle roughly 0.8–1.5×/day; sites parked on an
+# ancillary contract mostly hold SOC and cycle far less. Below this many
+# cycles/day the wholesale+BM estimate is treated as unrepresentative.
+ANCILLARY_CYCLES_THRESHOLD = 0.3
 
 
 def _pn_frame(pn_records: list[dict]) -> pd.DataFrame:
@@ -161,7 +169,10 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
     """Per-site averages over the window, sorted by £/MW/day descending.
 
     ``cycles_per_day`` divides discharge throughput by the (approximate)
-    nameplate energy, so treat it as indicative.
+    nameplate energy, so treat it as indicative. ``likely_ancillary`` marks
+    sites cycling below :data:`ANCILLARY_CYCLES_THRESHOLD` — their revenue
+    probably comes from markets this model cannot see, so the estimate is
+    unreliable (and biased low) for them.
     """
     grouped = daily.groupby(["site", "optimiser", "region"], as_index=False).agg(
         power_mw=("power_mw", "first"),
@@ -176,6 +187,7 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
     grouped["cycles_per_day"] = grouped["discharge_mwh"] / (
         grouped["capacity_mwh"] * grouped["days"]
     )
+    grouped["likely_ancillary"] = grouped["cycles_per_day"] < ANCILLARY_CYCLES_THRESHOLD
     return grouped.sort_values("gbp_per_mw_day", ascending=False).reset_index(drop=True)
 
 

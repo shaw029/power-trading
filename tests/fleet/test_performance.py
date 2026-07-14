@@ -149,6 +149,15 @@ def test_summarise_by_site_averages_and_ranks():
     assert a["cycles_per_day"] == pytest.approx(400.0 / (200.0 * 2))
 
 
+def test_summarise_by_site_flags_low_cycling_as_likely_ancillary():
+    daily = _daily_fixture()
+    # Site B barely discharges: 10 MWh/day against 100 MWh nameplate = 0.1 cycles.
+    daily.loc[daily["site"] == "B", "discharge_mwh"] = 10.0
+    site_df = performance.summarise_by_site(daily).set_index("site")
+    assert not site_df.loc["A", "likely_ancillary"]  # 1.0 cycles/day
+    assert site_df.loc["B", "likely_ancillary"]
+
+
 def test_summarise_by_optimiser_is_mw_weighted():
     opt_df = performance.summarise_by_optimiser(_daily_fixture())
     x = opt_df[opt_df["optimiser"] == "OptX"].iloc[0]
