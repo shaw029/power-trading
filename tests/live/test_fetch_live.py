@@ -35,12 +35,19 @@ def _mid_raw() -> pd.DataFrame:
 
 
 def _generation_raw() -> pd.DataFrame:
-    """Half-hourly generation mix for WIND, SOLAR and GAS (long format)."""
+    """Half-hourly transmission generation mix (long format) — no solar,
+    exactly like the real FUELHH feed."""
     times = pd.date_range("2024-01-01T00:00:00Z", periods=48, freq="30min")
     frames = []
-    for fuel, mw in (("WIND", 1000.0), ("SOLAR", 500.0), ("CCGT", 2000.0)):
+    for fuel, mw in (("WIND", 1000.0), ("CCGT", 2500.0)):
         frames.append(pd.DataFrame({"startTime": times, "fuelType": fuel, "generation": mw}))
     return pd.concat(frames, ignore_index=True)
+
+
+def _solar_raw() -> pd.DataFrame:
+    """Half-hourly PV_Live national solar outturn (time, solar_mw)."""
+    times = pd.date_range("2024-01-01T00:00:00Z", periods=48, freq="30min")
+    return pd.DataFrame({"time": times, "solar_mw": 500.0})
 
 
 def _demand_raw() -> pd.DataFrame:
@@ -88,6 +95,7 @@ def test_get_day_prices_falls_back_missing_mid_to_day_ahead():
 def test_get_day_context_returns_four_aggregate_fields():
     with (
         mock.patch.object(fetch_live, "fetch_generation_actual", return_value=_generation_raw()),
+        mock.patch.object(fetch_live, "fetch_solar_actual", return_value=_solar_raw()),
         mock.patch.object(fetch_live, "fetch_demand_actual", return_value=_demand_raw()),
     ):
         context = fetch_live.get_day_context(_DAY)
@@ -95,10 +103,25 @@ def test_get_day_context_returns_four_aggregate_fields():
     assert set(context) == {"wind_gwh", "solar_gwh", "demand_gwh", "wind_share"}
     # 1000 MW across 48 half-hours = 1000 * 0.5 * 48 MWh = 24 GWh.
     assert context["wind_gwh"] == pytest.approx(24.0)
+    # Solar comes from PV_Live, not the transmission mix: 500 MW → 12 GWh.
     assert context["solar_gwh"] == pytest.approx(12.0)
     assert context["demand_gwh"] == pytest.approx(720.0)
-    # wind / (wind + solar + ccgt) = 1000 / 3500.
+    # wind / (wind + ccgt), transmission-metered only — solar is not in the mix.
     assert context["wind_share"] == pytest.approx(1000.0 / 3500.0)
+
+
+def test_solar_failure_leaves_other_context_fields_intact():
+    boom = mock.Mock(side_effect=RuntimeError("pvlive down"))
+    with (
+        mock.patch.object(fetch_live, "fetch_generation_actual", return_value=_generation_raw()),
+        mock.patch.object(fetch_live, "fetch_solar_actual", boom),
+        mock.patch.object(fetch_live, "fetch_demand_actual", return_value=_demand_raw()),
+    ):
+        context = fetch_live.get_day_context(_DAY)
+
+    assert context["solar_gwh"] is None  # honest None, never a silent 0.0
+    assert context["wind_gwh"] == pytest.approx(24.0)
+    assert context["demand_gwh"] == pytest.approx(720.0)
 
 
 def test_generation_aggregates_raises_when_no_data_for_day():
@@ -117,6 +140,7 @@ def test_get_day_context_returns_none_when_fetchers_raise():
     boom = mock.Mock(side_effect=RuntimeError("network down"))
     with (
         mock.patch.object(fetch_live, "fetch_generation_actual", boom),
+        mock.patch.object(fetch_live, "fetch_solar_actual", boom),
         mock.patch.object(fetch_live, "fetch_demand_actual", boom),
     ):
         context = fetch_live.get_day_context(_DAY)

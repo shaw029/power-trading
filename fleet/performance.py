@@ -31,6 +31,15 @@ _MID_FREQ = "30min"
 ANCILLARY_CYCLES_THRESHOLD = 0.3
 
 
+def duration_label(power_mw: float, capacity_mwh: float) -> str:
+    """Battery hours bucket, e.g. ``"2h"``.
+
+    Rounded to the nearest whole hour because ``capacity_mwh`` is approximate
+    nameplate (Capenhurst's 107 MWh / 100 MW is a 1h battery, not a 1.07h one).
+    """
+    return f"{max(1, round(capacity_mwh / power_mw))}h"
+
+
 def _pn_frame(pn_records: list[dict]) -> pd.DataFrame:
     """PN records → one row per (bmu, period) with signed energy in MWh."""
     df = pd.DataFrame(pn_records)
@@ -109,6 +118,7 @@ def day_site_metrics(
                 "site": site.site,
                 "optimiser": site.optimiser,
                 "region": site.region,
+                "duration": duration_label(site.power_mw, site.capacity_mwh),
                 "power_mw": site.power_mw,
                 "capacity_mwh": site.capacity_mwh,
                 "discharge_mwh": discharge,
@@ -129,6 +139,7 @@ def filter_daily(
     sites: list[str] | None = None,
     optimisers: list[str] | None = None,
     regions: list[str] | None = None,
+    durations: list[str] | None = None,
     day_types: list[str] | None = None,
     day_labels: dict[str, list[str]] | None = None,
 ) -> pd.DataFrame:
@@ -151,6 +162,8 @@ def filter_daily(
         df = df[df["optimiser"].isin(optimisers)]
     if regions:
         df = df[df["region"].isin(regions)]
+    if durations:
+        df = df[df["duration"].isin(durations)]
     if day_types:
         labels = day_labels or {}
         wanted = set(day_types)
@@ -174,7 +187,7 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
     probably comes from markets this model cannot see, so the estimate is
     unreliable (and biased low) for them.
     """
-    grouped = daily.groupby(["site", "optimiser", "region"], as_index=False).agg(
+    grouped = daily.groupby(["site", "optimiser", "region", "duration"], as_index=False).agg(
         power_mw=("power_mw", "first"),
         capacity_mwh=("capacity_mwh", "first"),
         days=("date", "nunique"),
@@ -182,6 +195,7 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
         wholesale_gbp=("wholesale_gbp", "sum"),
         bm_gbp=("bm_gbp", "sum"),
         discharge_mwh=("discharge_mwh", "sum"),
+        charge_mwh=("charge_mwh", "sum"),
     )
     grouped["gbp_per_mw_day"] = grouped["total_gbp"] / (grouped["power_mw"] * grouped["days"])
     grouped["cycles_per_day"] = grouped["discharge_mwh"] / (
@@ -192,15 +206,27 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
 
 
 def _summarise_by(daily: pd.DataFrame, key: str) -> pd.DataFrame:
-    """MW-weighted £/MW/day per ``key`` (each site-day weighted by its MW)."""
+    """MW-weighted £/MW/day per ``key`` (each site-day weighted by its MW).
+
+    Also carries the group's volume story: average MWh discharged/charged per
+    day and cycles/day (throughput over nameplate MWh-days), so the dashboard
+    can re-plot the same grouping by any metric.
+    """
     grouped = daily.groupby(key, as_index=False).agg(
         sites=("site", "nunique"),
+        days=("date", "nunique"),
         total_gbp=("total_gbp", "sum"),
         mw_days=("power_mw", "sum"),
+        mwh_days=("capacity_mwh", "sum"),
+        discharge_mwh=("discharge_mwh", "sum"),
+        charge_mwh=("charge_mwh", "sum"),
     )
     site_mw = daily.drop_duplicates("site").groupby(key)["power_mw"].sum()
     grouped["power_mw"] = grouped[key].map(site_mw)
     grouped["gbp_per_mw_day"] = grouped["total_gbp"] / grouped["mw_days"]
+    grouped["discharge_mwh_day"] = grouped["discharge_mwh"] / grouped["days"]
+    grouped["charge_mwh_day"] = grouped["charge_mwh"] / grouped["days"]
+    grouped["cycles_per_day"] = grouped["discharge_mwh"] / grouped["mwh_days"]
     return grouped.sort_values("gbp_per_mw_day", ascending=False).reset_index(drop=True)
 
 
@@ -213,12 +239,21 @@ def summarise_by_region(daily: pd.DataFrame) -> pd.DataFrame:
 
 
 def fleet_daily(daily: pd.DataFrame) -> pd.DataFrame:
-    """Whole-fleet revenue per day, split wholesale vs BM, plus £/MW/day."""
+    """Whole-fleet totals per day: revenue split, volumes and £/MW.
+
+    ``mw``/``mwh`` are the nameplate totals of the sites *reporting* that day,
+    so ``cycles`` (fleet discharge over fleet nameplate) stays honest when a
+    site's data is missing.
+    """
     grouped = daily.groupby("date", as_index=False).agg(
         wholesale_gbp=("wholesale_gbp", "sum"),
         bm_gbp=("bm_gbp", "sum"),
         total_gbp=("total_gbp", "sum"),
+        discharge_mwh=("discharge_mwh", "sum"),
+        charge_mwh=("charge_mwh", "sum"),
         mw=("power_mw", "sum"),
+        mwh=("capacity_mwh", "sum"),
     )
     grouped["gbp_per_mw"] = grouped["total_gbp"] / grouped["mw"]
+    grouped["cycles"] = grouped["discharge_mwh"] / grouped["mwh"]
     return grouped

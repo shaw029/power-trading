@@ -76,6 +76,17 @@ def process_generation_mix(df: pd.DataFrame) -> pd.DataFrame:
     return pivoted
 
 
+def process_solar_actual(df: pd.DataFrame) -> pd.DataFrame:
+    """PV_Live records → UTC-indexed ``solar_mw`` (30-min native)."""
+    df = df.copy()
+    df.index = _utc_index(df["time"])
+    df["solar_mw"] = pd.to_numeric(df["solar_mw"], errors="coerce")
+    df = df[["solar_mw"]].sort_index()
+    df = df[~df.index.duplicated(keep="first")]
+    logger.info("Solar actual (PV_Live) processed. Shape: %s", df.shape)
+    return df
+
+
 def process_market_index_price(df: pd.DataFrame) -> pd.DataFrame:
     """MID → mid_price, APXMIDP provider only (30-min native)."""
     df = df.copy()

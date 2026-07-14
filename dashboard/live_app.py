@@ -27,8 +27,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dashboard.charts import (  # noqa: E402
     chart_daily_attribution,
+    chart_daytype_capture,
+    chart_daytype_frequency,
+    chart_daytype_matrix,
     chart_daytype_profiles,
-    chart_daytype_scatter,
     chart_fleet_by_optimiser,
     chart_fleet_by_region,
     chart_fleet_daily,
@@ -60,7 +62,8 @@ the settlement engine run over published market data.
 - **Asset** — one 50 MW battery; the parameter panel picks its duration
   (1h / 2h / 4h).
 - **Data (live, free)** — Nord Pool N2EX day-ahead price; Elexon MID price plus
-  generation and demand for day-type context.
+  generation and demand for day-type context; Sheffield Solar PV_Live for GB
+  embedded solar (Elexon's transmission-metered mix carries no solar at all).
 - **Trading** — the day-ahead schedule optimises against the actual cleared DA
   price (published the day before, so legitimate information). The intraday
   layer then re-optimises against the realised MID curve with **perfect
@@ -282,10 +285,6 @@ def _pnl_row(date_iso, dur_result) -> dict:
     }
 
 
-def _day_type(labels) -> str:
-    return labels[0] if labels else "untagged"
-
-
 # --------------------------------------------------------------------------- #
 # Page chrome & shared benchmark view
 # --------------------------------------------------------------------------- #
@@ -498,29 +497,80 @@ def _page_day_types():
 
     _page_header("Day types", caption)
     st.caption(
-        "Each settled day is tagged by its market character (windy, tight, "
-        "volatile…). This page shows how the benchmark's earnings and behaviour "
-        "differ across those regimes."
+        "Each settled day is tagged on two independent axes: what **drove** it "
+        "(wind, sun, demand, weekend) and how **prices behaved** (volatility, "
+        "negative hours, peak shape). A day can hold several tags and counts "
+        "under each — so read these as regime views, not disjoint buckets."
     )
-    scatter_rows, profile_rows = [], []
+
+    membership_rows, matrix_counts, profile_rows, table_rows = [], {}, [], []
     for record in shown:
         dur_result = record["result"].durations[duration]
-        da = [e["da_price_actual"] for e in dur_result.dispatch_log]
-        day_type = _day_type(record["labels"])
-        if da:
-            scatter_rows.append(
+        labels = record["labels"]
+        drivers = [t for t in labels if t in classify_mod.DRIVER_TAGS]
+        price_tags = [t for t in labels if t in classify_mod.PRICE_TAGS]
+
+        for tag in labels:
+            membership_rows.append(
                 {
-                    "da_spread": max(da) - min(da),
-                    "net_pnl": dur_result.net_pnl,
-                    "day_type": day_type,
+                    "date": record["date"],
+                    "tag": tag,
+                    "family": "driver" if tag in classify_mod.DRIVER_TAGS else "price",
+                    "capture": dur_result.capture,
                 }
             )
-        for i, entry in enumerate(dur_result.dispatch_log):
-            profile_rows.append({"hour": i % 24, "soc": entry["soc_after"], "day_type": day_type})
+        for d in drivers or ["(none)"]:
+            for p in price_tags or ["(none)"]:
+                matrix_counts[(d, p)] = matrix_counts.get((d, p), 0) + 1
+        # SOC shape is grouped by price character only — that's what dispatch
+        # actually responds to; a windy-tag average would blur distinct shapes.
+        for tag in price_tags or ["untagged"]:
+            for i, entry in enumerate(dur_result.dispatch_log):
+                profile_rows.append({"hour": i % 24, "soc": entry["soc_after"], "day_type": tag})
+        table_rows.append(
+            {
+                "date": record["date"],
+                "tags": ", ".join(labels) or "untagged",
+                "gbp_per_mw": dur_result.net_pnl / REFERENCE_POWER_MW,
+                "capture": dur_result.capture,
+                "cycles": dur_result.cycles,
+            }
+        )
 
+    if not membership_rows:
+        st.info("No tagged days in the current window — widen the period filter.")
+        return
+
+    st.plotly_chart(chart_daytype_capture(pd.DataFrame(membership_rows)), width="stretch")
+
+    drivers_idx = sorted({d for d, _ in matrix_counts}) if matrix_counts else []
+    price_cols = sorted({p for _, p in matrix_counts}) if matrix_counts else []
+    matrix = pd.DataFrame(
+        [[matrix_counts.get((d, p), 0) for p in price_cols] for d in drivers_idx],
+        index=drivers_idx,
+        columns=price_cols,
+    )
     left, right = st.columns(2)
-    left.plotly_chart(chart_daytype_scatter(pd.DataFrame(scatter_rows)), width="stretch")
-    right.plotly_chart(chart_daytype_profiles(pd.DataFrame(profile_rows)), width="stretch")
+    left.plotly_chart(chart_daytype_matrix(matrix), width="stretch")
+    right.plotly_chart(chart_daytype_frequency(pd.DataFrame(membership_rows)), width="stretch")
+
+    st.plotly_chart(chart_daytype_profiles(pd.DataFrame(profile_rows)), width="stretch")
+
+    st.markdown("#### Days behind the tags")
+    table = pd.DataFrame(table_rows).sort_values("date", ascending=False).rename(
+        columns={
+            "date": "Date",
+            "tags": "Tags",
+            "gbp_per_mw": "£/MW",
+            "capture": "Capture",
+            "cycles": "Cycles",
+        }
+    )
+    st.dataframe(
+        table.style.format({"£/MW": "£{:,.0f}", "Capture": "{:.0%}", "Cycles": "{:.2f}"}),
+        width="stretch",
+        hide_index=True,
+    )
 
 
 FLEET_METHODOLOGY = """
@@ -636,9 +686,11 @@ def _filter_days(days: list, start: str, end: str, day_types: list[str]) -> list
     ]
 
 
-def _fleet_filters(fleet_df: pd.DataFrame) -> tuple[list[str], list[str], list[str]]:
+def _fleet_filters(
+    fleet_df: pd.DataFrame,
+) -> tuple[list[str], list[str], list[str], list[str]]:
     """The fleet's own filter row: which assets, not which days."""
-    cols = st.columns(3)
+    cols = st.columns(4)
     sites = cols[0].multiselect(
         "Sites", sorted(fleet_df["site"].unique()), placeholder="All sites"
     )
@@ -648,7 +700,14 @@ def _fleet_filters(fleet_df: pd.DataFrame) -> tuple[list[str], list[str], list[s
     regions = cols[2].multiselect(
         "Regions", sorted(fleet_df["region"].unique()), placeholder="All regions"
     )
-    return sites, optimisers, regions
+    durations = cols[3].multiselect(
+        "Battery hours",
+        sorted(fleet_df["duration"].unique()),
+        placeholder="All durations",
+        help="Nameplate MWh over MW, rounded — e.g. 2h means the battery stores "
+        "two hours of full-power output.",
+    )
+    return sites, optimisers, regions, durations
 
 
 def _render_fleet(
@@ -658,8 +717,17 @@ def _render_fleet(
     end: str,
     day_types: list[str],
 ):
+    # Cached day frames can predate the duration column; derive it on the fly
+    # so a running server survives the upgrade without a cache clear.
+    if "duration" not in fleet_df.columns:
+        fleet_df = fleet_df.assign(
+            duration=[
+                fleet_perf.duration_label(mw, mwh)
+                for mw, mwh in zip(fleet_df["power_mw"], fleet_df["capacity_mwh"])
+            ]
+        )
     with st.container(border=True):
-        sites, optimisers, regions = _fleet_filters(fleet_df)
+        sites, optimisers, regions, durations = _fleet_filters(fleet_df)
     fleet_df = fleet_perf.filter_daily(
         fleet_df,
         start=start,
@@ -667,6 +735,7 @@ def _render_fleet(
         sites=sites,
         optimisers=optimisers,
         regions=regions,
+        durations=durations,
         day_types=day_types,
         day_labels=day_labels,
     )
@@ -693,10 +762,14 @@ def _render_fleet(
         f"{tracked_mw:,.0f} MW",
         help="Total nameplate power of the sites currently shown.",
     )
+    median_gbp = float(site_df["gbp_per_mw_day"].median())
     cols[1].metric(
-        "Est. fleet revenue",
-        f"£{fleet_gbp:,.0f}",
-        help="Wholesale proxy plus Balancing Mechanism cashflows over the shown window.",
+        "Top vs median spread",
+        f"£{site_df['gbp_per_mw_day'].iloc[0] - median_gbp:,.0f}/MW/day",
+        f"median £{median_gbp:,.0f}",
+        delta_color="off",
+        help="Gap between the best site and the median site — how much optimiser "
+        "skill and location were worth in this window.",
     )
     cols[2].metric(
         "Fleet avg",
@@ -712,11 +785,28 @@ def _render_fleet(
         help="Best estimated £/MW/day in the shown window.",
     )
 
-    st.plotly_chart(chart_fleet_leaderboard(site_df), width="stretch")
+    picked = st.segmented_control(
+        "Metric",
+        ["Revenue", "Volume", "Cycles", "Capacity"],
+        default="Revenue",
+        key="fleet_metric",
+        help="Re-plots every chart below: estimated £/MW/day, charged/discharged "
+        "energy, cycles per day, or nameplate MW (the daily view doubles as "
+        "data coverage).",
+    )
+    metric = (picked or "Revenue").lower()
+
+    st.plotly_chart(chart_fleet_leaderboard(site_df, metric), width="stretch")
     left, right = st.columns(2)
-    left.plotly_chart(chart_fleet_by_optimiser(fleet_perf.summarise_by_optimiser(fleet_df)), width="stretch")
-    right.plotly_chart(chart_fleet_by_region(fleet_perf.summarise_by_region(fleet_df)), width="stretch")
-    st.plotly_chart(chart_fleet_daily(fleet_perf.fleet_daily(fleet_df)), width="stretch")
+    left.plotly_chart(
+        chart_fleet_by_optimiser(fleet_perf.summarise_by_optimiser(fleet_df), metric),
+        width="stretch",
+    )
+    right.plotly_chart(
+        chart_fleet_by_region(fleet_perf.summarise_by_region(fleet_df), metric),
+        width="stretch",
+    )
+    st.plotly_chart(chart_fleet_daily(fleet_perf.fleet_daily(fleet_df), metric), width="stretch")
 
     st.markdown("#### Site detail")
     flagged = int(site_df["likely_ancillary"].sum())
@@ -728,8 +818,9 @@ def _render_fleet(
         )
     table = site_df.assign(flag=site_df["likely_ancillary"].map({True: "⚠", False: ""}))[
         [
-            "flag", "site", "optimiser", "region", "power_mw", "capacity_mwh", "days",
+            "site", "optimiser", "region", "power_mw", "duration", "days",
             "gbp_per_mw_day", "total_gbp", "wholesale_gbp", "bm_gbp", "cycles_per_day",
+            "flag",
         ]
     ].rename(
         columns={
@@ -738,7 +829,7 @@ def _render_fleet(
             "optimiser": "Optimiser",
             "region": "Region",
             "power_mw": "MW",
-            "capacity_mwh": "MWh (approx)",
+            "duration": "Duration",
             "days": "Days",
             "gbp_per_mw_day": "£/MW/day",
             "total_gbp": "Total £",
@@ -751,7 +842,6 @@ def _render_fleet(
         table.style.format(
             {
                 "MW": "{:,.0f}",
-                "MWh (approx)": "{:,.0f}",
                 "£/MW/day": "£{:,.0f}",
                 "Total £": "£{:,.0f}",
                 "Wholesale £": "£{:,.0f}",

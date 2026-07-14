@@ -22,12 +22,14 @@ from src.data.download import (
     fetch_demand_actual,
     fetch_generation_actual,
     fetch_market_index_price,
+    fetch_solar_actual,
 )
 from src.data.preprocess import (
     process_day_ahead_price,
     process_demand_actual,
     process_generation_mix,
     process_market_index_price,
+    process_solar_actual,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,8 +100,15 @@ def get_day_prices(date: dt.date, da_source: str = _DA_SOURCE) -> pd.DataFrame:
     return prices
 
 
-def _generation_aggregates(date: dt.date) -> tuple[float, float, float]:
-    """Wind GWh, solar GWh and wind share for the day from the generation mix."""
+def _generation_aggregates(date: dt.date) -> tuple[float, float]:
+    """Wind GWh and wind share of transmission-metered generation (FUELHH).
+
+    FUELHH carries no solar (solar is distribution-connected and invisible to
+    transmission metering) — solar comes from :func:`_solar_aggregate` instead.
+    A missing wind column raises rather than reporting a silent 0.0, so the
+    caller degrades the field to ``None`` and the windy tag is suppressed, not
+    faked.
+    """
     start, end = _day_window(date)
     date_str = date.isoformat()
 
@@ -111,19 +120,27 @@ def _generation_aggregates(date: dt.date) -> tuple[float, float, float]:
         raise ValueError("no generation data for the requested day")
 
     gen_cols = [c for c in gen.columns if c.startswith("gen_")]
-    if not gen_cols:
-        raise ValueError("no gen_ columns in generation mix")
+    if "gen_WIND" not in gen_cols:
+        raise ValueError("no wind column in generation mix")
 
-    def _gwh(column: str) -> float:
-        if column not in gen.columns:
-            return 0.0
-        return float(gen[column].sum() * _PERIOD_HOURS * _MWH_TO_GWH)
-
-    wind_gwh = _gwh("gen_WIND")
-    solar_gwh = _gwh("gen_SOLAR")
+    wind_gwh = float(gen["gen_WIND"].sum() * _PERIOD_HOURS * _MWH_TO_GWH)
     total_gwh = float(gen[gen_cols].sum().sum() * _PERIOD_HOURS * _MWH_TO_GWH)
     wind_share = wind_gwh / total_gwh if total_gwh > 0 else 0.0
-    return wind_gwh, solar_gwh, wind_share
+    return wind_gwh, wind_share
+
+
+def _solar_aggregate(date: dt.date) -> float:
+    """Total GB embedded solar GWh for the day, from Sheffield Solar PV_Live."""
+    start, end = _day_window(date)
+    date_str = date.isoformat()
+
+    solar = process_solar_actual(
+        fetch_solar_actual(start_date=date_str, end_date=date_str)
+    )
+    solar = solar[(solar.index >= start) & (solar.index < end)]
+    if solar.empty:
+        raise ValueError("no PV_Live solar data for the requested day")
+    return float(solar["solar_mw"].sum() * _PERIOD_HOURS * _MWH_TO_GWH)
 
 
 def _demand_aggregate(date: dt.date) -> float:
@@ -144,9 +161,11 @@ def get_day_context(date: dt.date) -> dict[str, float | None]:
     """Return tier-2 generation/demand context aggregates for the day.
 
     Keys: ``wind_gwh``, ``solar_gwh``, ``demand_gwh`` and ``wind_share`` (wind
-    divided by total generation). This never raises: if an underlying fetch
-    fails or yields nothing usable, the affected field(s) are ``None`` and the
-    failure is logged.
+    divided by total transmission-metered generation). Wind and demand come
+    from Elexon (FUELHH / ITSDO); solar comes from Sheffield Solar's PV_Live,
+    because embedded solar is invisible to Elexon. This never raises: if an
+    underlying fetch fails or yields nothing usable, the affected field(s) are
+    ``None`` and the failure is logged.
     """
     context: dict[str, float | None] = {
         "wind_gwh": None,
@@ -156,12 +175,16 @@ def get_day_context(date: dt.date) -> dict[str, float | None]:
     }
 
     try:
-        wind_gwh, solar_gwh, wind_share = _generation_aggregates(date)
+        wind_gwh, wind_share = _generation_aggregates(date)
         context["wind_gwh"] = wind_gwh
-        context["solar_gwh"] = solar_gwh
         context["wind_share"] = wind_share
     except Exception as exc:
         logger.warning("Generation context unavailable for %s: %s", date, exc)
+
+    try:
+        context["solar_gwh"] = _solar_aggregate(date)
+    except Exception as exc:
+        logger.warning("Solar context unavailable for %s: %s", date, exc)
 
     try:
         context["demand_gwh"] = _demand_aggregate(date)

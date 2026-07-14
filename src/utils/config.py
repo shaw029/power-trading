@@ -39,6 +39,11 @@ NESO_BASE_URL = "https://api.neso.energy/api/3/action/datastore_search_sql"
 # Nord Pool data portal — live GB (N2EX) day-ahead prices. ENTSO-E stopped
 # publishing GB day-ahead prices, so this is the live source for the DA price.
 NORDPOOL_DA_BASE_URL = "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices"
+# Sheffield Solar PV_Live — GB national embedded solar outturn (gsp/0 = whole
+# of GB). Elexon's FUELHH has no solar at all (solar is distribution-connected
+# and invisible to transmission metering), so this is the only free source of
+# actual GB solar generation. Free, no API key.
+PVLIVE_BASE_URL = "https://api.pvlive.uk/pvlive/api/v4/gsp/0"
 
 # NESO CKAN Resource IDs
 NESO_NDFD_RESOURCE_ID = "9847e7bb-986e-49be-8138-717b25933fbb"

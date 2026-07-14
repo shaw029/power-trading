@@ -86,12 +86,13 @@ def test_day_site_metrics_missing_mid_price_falls_back_to_day_mean():
 
 
 def _daily_fixture() -> pd.DataFrame:
-    """Two sites, two days; site A: 100 MW, site B: 50 MW."""
+    """Two sites, two days; site A: 100 MW 2h, site B: 50 MW 1h."""
     rows = []
     for date, a_gbp, b_gbp in ((_DATE, 10_000.0, 2_000.0), ("2024-01-02", 6_000.0, 4_000.0)):
         rows.append(
             {
                 "date": date, "site": "A", "optimiser": "OptX", "region": "North",
+                "duration": "2h",
                 "power_mw": 100.0, "capacity_mwh": 200.0, "discharge_mwh": 200.0,
                 "charge_mwh": 220.0, "wholesale_gbp": a_gbp, "bm_gbp": 0.0,
                 "total_gbp": a_gbp, "gbp_per_mw": a_gbp / 100.0,
@@ -100,7 +101,8 @@ def _daily_fixture() -> pd.DataFrame:
         rows.append(
             {
                 "date": date, "site": "B", "optimiser": "OptY", "region": "South",
-                "power_mw": 50.0, "capacity_mwh": 100.0, "discharge_mwh": 50.0,
+                "duration": "1h",
+                "power_mw": 50.0, "capacity_mwh": 50.0, "discharge_mwh": 50.0,
                 "charge_mwh": 55.0, "wholesale_gbp": b_gbp / 2, "bm_gbp": b_gbp / 2,
                 "total_gbp": b_gbp, "gbp_per_mw": b_gbp / 50.0,
             }
@@ -124,6 +126,19 @@ def test_filter_daily_by_period_site_optimiser_region():
     assert set(performance.filter_daily(daily, sites=["B"])["site"]) == {"B"}
     assert set(performance.filter_daily(daily, optimisers=["OptX"])["site"]) == {"A"}
     assert set(performance.filter_daily(daily, regions=["South"])["site"]) == {"B"}
+    assert set(performance.filter_daily(daily, durations=["1h"])["site"]) == {"B"}
+
+
+def test_duration_label_rounds_to_whole_hours():
+    assert performance.duration_label(100.0, 107.0) == "1h"  # Capenhurst-style
+    assert performance.duration_label(98.0, 196.0) == "2h"
+    assert performance.duration_label(50.0, 50.0) == "1h"
+
+
+def test_day_site_metrics_carries_duration():
+    pn = [_pn_record("E_PILLB-1", 18, 0, 50.0)]
+    df = performance.day_site_metrics(_DATE, pn, {"bid": [], "offer": []}, _mid(100.0))
+    assert df.iloc[0]["duration"] == "2h"  # Pillswood: 196 MWh / 98 MW
 
 
 def test_filter_daily_by_day_type_and_untagged():
@@ -164,6 +179,10 @@ def test_summarise_by_optimiser_is_mw_weighted():
     assert x["gbp_per_mw_day"] == pytest.approx(16_000.0 / 200.0)  # 2 days × 100 MW
     assert x["sites"] == 1
     assert x["power_mw"] == pytest.approx(100.0)
+    # Volume story: 200 MWh/day discharged over a 200 MWh nameplate = 1 cycle.
+    assert x["discharge_mwh_day"] == pytest.approx(200.0)
+    assert x["charge_mwh_day"] == pytest.approx(220.0)
+    assert x["cycles_per_day"] == pytest.approx(1.0)
 
 
 def test_fleet_daily_splits_components():
@@ -173,3 +192,6 @@ def test_fleet_daily_splits_components():
     assert day1["total_gbp"] == pytest.approx(12_000.0)
     assert day1["bm_gbp"] == pytest.approx(1_000.0)
     assert day1["gbp_per_mw"] == pytest.approx(12_000.0 / 150.0)
+    assert day1["discharge_mwh"] == pytest.approx(250.0)
+    assert day1["charge_mwh"] == pytest.approx(275.0)
+    assert day1["cycles"] == pytest.approx(250.0 / 250.0)

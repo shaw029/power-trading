@@ -15,6 +15,7 @@ from src.utils.config import (
     ENTSOE_BASE_URL,
     ENTSOE_API_KEY,
     NORDPOOL_DA_BASE_URL,
+    PVLIVE_BASE_URL,
     NESO_BASE_URL,
     NESO_NDFD_RESOURCE_ID,
     DEFAULT_DEMAND_FORECAST_SOURCE,
@@ -540,6 +541,78 @@ def fetch_generation_actual(
         logger.info(f"Generation mix: {len(df)} records")
         return df
     raise ValueError(f"Unknown source '{source}'. Must be 'ELEXON' or 'CSV'")
+
+
+def _fetch_pvlive_day(market_day: pd.Timestamp) -> list[dict]:
+    """Fetch one day of GB national embedded solar outturn from PV_Live.
+
+    Sheffield Solar's PV_Live estimates whole-of-GB PV generation (gsp/0) on a
+    half-hourly grid — the only free source of GB solar actuals, since solar is
+    distribution-connected and absent from Elexon's transmission-metered FUELHH.
+    Returns raw ``{"time", "solar_mw"}`` records; empty on any error.
+    """
+    date_str = market_day.strftime("%Y%m%d")
+    cache_dir = os.path.join(RAW_DATA_DIR, "PVLIVE_SOLAR")
+    daily_file = os.path.join(cache_dir, f"PVLIVE_SOLAR_{date_str}.json")
+
+    if os.path.exists(daily_file):
+        with open(daily_file, encoding="utf-8") as fp:
+            cached: list[dict] = json.load(fp).get("data", [])
+        return cached
+
+    params = {
+        "start": market_day.strftime("%Y-%m-%dT00:00:00Z"),
+        "end": (market_day + pd.Timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z"),
+        "data_format": "json",
+    }
+    resp = requests.get(PVLIVE_BASE_URL, params=params, timeout=60)
+    if resp.status_code != 200 or not resp.content:
+        logger.warning("PV_Live %s: HTTP %s (no data)", market_day.date(), resp.status_code)
+        return []
+    payload = resp.json()
+    meta = payload.get("meta", [])
+    try:
+        time_idx = meta.index("datetime_gmt")
+        mw_idx = meta.index("generation_mw")
+    except ValueError:
+        logger.warning("PV_Live %s: unexpected meta %s", market_day.date(), meta)
+        return []
+    records = [
+        {"time": row[time_idx], "solar_mw": row[mw_idx]}
+        for row in payload.get("data", [])
+        if row[mw_idx] is not None
+    ]
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(daily_file, "w", encoding="utf-8") as fp:
+        json.dump({"data": records}, fp)
+    logger.info("Downloaded PV_Live solar %s: %d records", market_day.date(), len(records))
+    return records
+
+
+def fetch_solar_actual(start_date: str = START_DATE, end_date: str = END_DATE) -> pd.DataFrame:
+    """Fetch GB national embedded solar outturn (PV_Live) over a date range.
+
+    Returns a DataFrame with columns ``time`` (UTC) and ``solar_mw``,
+    half-hourly, inclusive of both dates; empty (with those columns) if
+    nothing could be fetched.
+    """
+    logger.info("Fetching solar outturn from Sheffield Solar PV_Live")
+    current = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
+    all_records: list[dict] = []
+    while current <= end:
+        all_records.extend(_fetch_pvlive_day(current))
+        current += pd.Timedelta(days=1)
+
+    if not all_records:
+        logger.error("No PV_Live solar data fetched")
+        return pd.DataFrame(columns=["time", "solar_mw"])
+    df = pd.DataFrame(all_records)
+    df["time"] = pd.to_datetime(df["time"], utc=True)
+    df["solar_mw"] = pd.to_numeric(df["solar_mw"], errors="coerce")
+    df = df.sort_values("time").drop_duplicates(subset=["time"])
+    logger.info("PV_Live solar processed. Shape: %s", df.shape)
+    return df[["time", "solar_mw"]]
 
 
 def _save_entsoe_daily(df: pd.DataFrame, dataset_name: str, date_str: str) -> None:

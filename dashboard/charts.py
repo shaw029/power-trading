@@ -778,41 +778,131 @@ def chart_duration_comparison(
     return fig
 
 
-def chart_daytype_scatter(
-    df: pd.DataFrame,
-    spread_col: str = "da_spread",
-    pnl_col: str = "net_pnl",
-    daytype_col: str = "day_type",
-) -> go.Figure:
-    """Scatter of day-ahead price spread (x) vs net PnL (y), by day-type.
+# The two day-type families share one colour each across every day-type chart:
+# what caused the day (driver) vs how prices behaved (price character).
+FAMILY_COLORS = {"driver": COLORS["da"], "price": COLORS["mid"]}
+FAMILY_NAMES = {"driver": "Driver (weather / demand)", "price": "Price character"}
 
-    Each day-type label (e.g. windy / sunny / calm) gets its own colour and
-    legend entry, so the relationship between the day-ahead spread the battery
-    had to work with and the PnL it earned is visible per regime.
+
+def _daytype_order(df: pd.DataFrame, value_col: str) -> list[str]:
+    """Tags ordered drivers-then-price, each family by descending median value,
+    so the capture and frequency charts line up row for row."""
+    order: list[str] = []
+    for family in ("driver", "price"):
+        sub = df[df["family"] == family]
+        medians = sub.groupby("tag")[value_col].median().sort_values()
+        order.extend(medians.index.tolist())
+    return order
+
+
+def chart_daytype_capture(df: pd.DataFrame) -> go.Figure:
+    """Capture-rate distribution per day-type tag — the skill view.
+
+    ``df`` has one row per (day, tag) membership with columns ``tag``,
+    ``family`` (``driver``/``price``) and ``capture`` (realised net PnL over
+    the perfect-foresight DA ceiling). Because capture normalises away how big
+    the opportunity was, differences between tags read as strategy fit, not as
+    'volatile days pay more'.
     """
-    d = df.copy()
-    labels = [str(v) for v in d[daytype_col].unique()]
-    palette = _palette_for(labels)
-
+    order = _daytype_order(df, "capture")
     fig = go.Figure()
-    for label in labels:
-        sub = d[d[daytype_col].astype(str) == label]
+    seen: set[str] = set()
+    for tag in order:
+        sub = df[df["tag"] == tag]
+        family = str(sub["family"].iloc[0])
         fig.add_trace(
-            go.Scatter(
-                x=sub[spread_col].values,
-                y=sub[pnl_col].values,
-                mode="markers",
-                name=label,
-                marker=dict(color=palette[label], size=9, line=dict(width=1, color="white")),
-                hovertemplate=(
-                    label + "<br>Spread £%{x:,.1f}<br>Net PnL £%{y:,.0f}<extra></extra>"
-                ),
+            go.Box(
+                x=sub["capture"].values,
+                y=[tag] * len(sub),
+                orientation="h",
+                name=FAMILY_NAMES[family],
+                legendgroup=family,
+                showlegend=family not in seen,
+                marker=dict(color=FAMILY_COLORS[family], size=6),
+                line=dict(color=FAMILY_COLORS[family], width=2),
+                boxpoints="all",
+                jitter=0.4,
+                pointpos=0,
+                hovertemplate=tag + "<br>Capture %{x:.0%}<extra></extra>",
             )
         )
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Day-ahead spread vs net PnL by day-type")
-    fig.update_layout(hovermode="closest")
-    fig.update_xaxes(title_text="DA price spread (£/MWh)")
-    fig.update_yaxes(title_text="Net PnL (£)")
+        seen.add(family)
+    apply_theme(
+        fig,
+        height=max(DEFAULT_CHART_HEIGHT, 34 * len(order) + 120),
+        title="Capture rate by day-type — share of the perfect-foresight ceiling",
+    )
+    fig.update_xaxes(title_text="Capture rate", tickformat=".0%")
+    fig.update_yaxes(categoryorder="array", categoryarray=order)
+    return fig
+
+
+def chart_daytype_frequency(df: pd.DataFrame) -> go.Figure:
+    """How many days carried each tag in the window, drivers vs price tags.
+
+    Same row order as :func:`chart_daytype_capture` so the two read together —
+    a tag with a striking capture number but two days of support shouldn't be
+    over-read.
+    """
+    counts = (
+        df.groupby(["tag", "family"], as_index=False)
+        .agg(days=("date", "nunique"))
+    )
+    order = [t for t in _daytype_order(df, "capture") if t in set(counts["tag"])]
+    counts = counts.set_index("tag").loc[order].reset_index()
+    fig = go.Figure(
+        go.Bar(
+            x=counts["days"],
+            y=counts["tag"],
+            orientation="h",
+            marker_color=[FAMILY_COLORS[f] for f in counts["family"]],
+            text=counts["days"],
+            textposition="outside",
+            textfont=dict(size=11, color=_INK),
+            hovertemplate="%{y}<br>%{x} day(s)<extra></extra>",
+        )
+    )
+    apply_theme(
+        fig,
+        height=max(HEIGHT_SM, 30 * len(counts) + 110),
+        title="Days per type in the window",
+    )
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title_text="Days tagged")
+    fig.update_yaxes(categoryorder="array", categoryarray=order)
+    return fig
+
+
+def chart_daytype_matrix(matrix: pd.DataFrame) -> go.Figure:
+    """Driver × price-character day counts — do windy days turn volatile?
+
+    ``matrix`` is a frame indexed by driver tag with price-character tags as
+    columns and day counts as values (a day holding several tags counts in
+    every combination it belongs to). Counts are annotated on the cells, so
+    the sequential ramp only has to carry magnitude, not exact values.
+    """
+    fig = go.Figure(
+        go.Heatmap(
+            z=matrix.values,
+            x=list(matrix.columns),
+            y=list(matrix.index),
+            colorscale=[[0.0, "#fcfcfb"], [1.0, COLORS["da"]]],
+            zmin=0,
+            texttemplate="%{z}",
+            textfont=dict(size=12, color=_INK),
+            xgap=2,
+            ygap=2,
+            showscale=False,
+            hovertemplate="%{y} × %{x}<br>%{z} day(s)<extra></extra>",
+        )
+    )
+    apply_theme(
+        fig,
+        height=max(HEIGHT_SM, 34 * len(matrix.index) + 140),
+        title="Drivers × price character — day counts",
+    )
+    fig.update_xaxes(title_text="Price character", side="bottom")
+    fig.update_yaxes(title_text="Driver")
     return fig
 
 
@@ -999,99 +1089,186 @@ def chart_price_capture(
 # --------------------------------------------------------------------------- #
 # Live GB fleet tab (real batteries, per-BMU Elexon data)
 # --------------------------------------------------------------------------- #
-def chart_fleet_leaderboard(site_df: pd.DataFrame):
-    """Ranked horizontal leaderboard of real GB battery sites by est. £/MW/day.
+# One spec per single-magnitude fleet metric: value column, text format,
+# axis title, chart-title fragment. "volume" is special-cased everywhere
+# because it plots two signed series (discharge up, charge down).
+_FLEET_METRIC_SPECS = {
+    "revenue": ("gbp_per_mw_day", "£{:,.0f}", "Estimated revenue (£/MW/day)", "estimated £/MW/day"),
+    "cycles": ("cycles_per_day", "{:.2f}", "Cycles per day", "cycles/day"),
+    "capacity": ("power_mw", "{:,.0f}", "Nameplate power (MW)", "nameplate MW"),
+}
+
+
+def _volume_pair(fig: go.Figure, keys, discharge, charge, horizontal: bool = False):
+    """Add the signed discharge/charge bar pair shared by the volume views."""
+    for name, values, color in (
+        ("Discharged", discharge, COLORS["discharge"]),
+        ("Charged", [-v for v in charge], COLORS["charge"]),
+    ):
+        axes = dict(x=values, y=keys, orientation="h") if horizontal else dict(x=keys, y=values)
+        key_ref, val_ref = ("%{y}", "%{x:,.0f}") if horizontal else ("%{x}", "%{y:,.0f}")
+        fig.add_trace(
+            go.Bar(
+                name=name,
+                marker_color=color,
+                hovertemplate=f"{key_ref}<br>{name} {val_ref} MWh<extra></extra>",
+                **axes,
+            )
+        )
+    fig.update_layout(barmode="relative")
+
+
+def chart_fleet_leaderboard(site_df: pd.DataFrame, metric: str = "revenue"):
+    """Ranked horizontal leaderboard of real GB battery sites.
 
     ``site_df`` is the per-site summary frame from
-    :func:`fleet.performance.summarise_by_site`. Bars encode one magnitude, so
-    they share a single hue and flip to the cost red only when a site's window
-    average is negative; the optimiser is carried in the y-label, not a hue.
+    :func:`fleet.performance.summarise_by_site`. ``metric`` selects what the
+    bars encode: est. £/MW/day (default), avg charge/discharge volume,
+    cycles/day or nameplate MW. Single-magnitude bars share one hue and flip
+    to the cost red only when negative; the optimiser is carried in the
+    y-label, not a hue.
     """
-    df = site_df.sort_values("gbp_per_mw_day")
-    labels = [f"{s}  ·  {o}" for s, o in zip(df["site"], df["optimiser"])]
-    colors = [COLORS["cost"] if v < 0 else COLORS["da"] for v in df["gbp_per_mw_day"]]
+    height = max(DEFAULT_CHART_HEIGHT, 26 * len(site_df) + 120)
 
+    if metric == "volume":
+        df = site_df.assign(vol=site_df["discharge_mwh"] / site_df["days"]).sort_values("vol")
+        labels = [f"{s}  ·  {o}" for s, o in zip(df["site"], df["optimiser"])]
+        fig = go.Figure()
+        _volume_pair(fig, labels, df["vol"], df["charge_mwh"] / df["days"], horizontal=True)
+        apply_theme(fig, height=height, title="Site leaderboard — avg MWh per day")
+        fig.update_xaxes(title_text="Energy (MWh/day; charge shown negative)")
+        return fig
+
+    col, fmt, axis, fragment = _FLEET_METRIC_SPECS[metric]
+    df = site_df.sort_values(col)
+    labels = [f"{s}  ·  {o}" for s, o in zip(df["site"], df["optimiser"])]
+    negative_flips = metric == "revenue"
+    colors = [
+        COLORS["cost"] if (negative_flips and v < 0) else COLORS["da"] for v in df[col]
+    ]
     fig = go.Figure(
         go.Bar(
-            x=df["gbp_per_mw_day"],
+            x=df[col],
             y=labels,
             orientation="h",
             marker_color=colors,
-            text=[f"£{v:,.0f}" for v in df["gbp_per_mw_day"]],
+            text=[fmt.format(v) for v in df[col]],
             textposition="outside",
             textfont=dict(size=11, color=_INK),
             customdata=df[["power_mw", "days", "total_gbp"]].values,
             hovertemplate=(
-                "%{y}<br>£%{x:,.0f}/MW/day"
+                "%{y}<br>" + axis + ": %{x:,.2f}"
                 "<br>%{customdata[0]:,.0f} MW · %{customdata[1]:.0f} days"
                 "<br>Total £%{customdata[2]:,.0f}<extra></extra>"
             ),
         )
     )
-    apply_theme(
-        fig,
-        height=max(DEFAULT_CHART_HEIGHT, 26 * len(df) + 120),
-        title="Site leaderboard — estimated £/MW/day",
-    )
+    apply_theme(fig, height=height, title=f"Site leaderboard — {fragment}")
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title_text="Estimated revenue (£/MW/day)")
+    fig.update_xaxes(title_text=axis)
     return fig
 
 
-def _chart_fleet_grouped(df: pd.DataFrame, key: str, title: str):
-    """Shared magnitude bar for the optimiser/region groupings."""
-    df = df.sort_values("gbp_per_mw_day", ascending=False)
-    colors = [COLORS["cost"] if v < 0 else COLORS["da"] for v in df["gbp_per_mw_day"]]
+def _chart_fleet_grouped(df: pd.DataFrame, key: str, label: str, metric: str):
+    """Shared metric bar for the optimiser/region groupings."""
+    if metric == "volume":
+        df = df.sort_values("discharge_mwh_day", ascending=False)
+        fig = go.Figure()
+        _volume_pair(fig, df[key], df["discharge_mwh_day"], df["charge_mwh_day"])
+        apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=f"{label} — avg MWh per day")
+        fig.update_yaxes(title_text="Energy (MWh/day; charge shown negative)")
+        return fig
+
+    col, fmt, axis, fragment = _FLEET_METRIC_SPECS[metric]
+    df = df.sort_values(col, ascending=False)
+    negative_flips = metric == "revenue"
+    colors = [
+        COLORS["cost"] if (negative_flips and v < 0) else COLORS["da"] for v in df[col]
+    ]
     fig = go.Figure(
         go.Bar(
             x=df[key],
-            y=df["gbp_per_mw_day"],
+            y=df[col],
             marker_color=colors,
-            text=[f"£{v:,.0f}" for v in df["gbp_per_mw_day"]],
+            text=[fmt.format(v) for v in df[col]],
             textposition="outside",
             textfont=dict(size=11, color=_INK),
             customdata=df[["sites", "power_mw", "total_gbp"]].values,
             hovertemplate=(
-                "%{x}<br>£%{y:,.0f}/MW/day"
+                "%{x}<br>" + axis + ": %{y:,.2f}"
                 "<br>%{customdata[0]:.0f} site(s) · %{customdata[1]:,.0f} MW"
                 "<br>Total £%{customdata[2]:,.0f}<extra></extra>"
             ),
         )
     )
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
+    # Revenue is the only MW-weighted average; the others are plain totals/rates.
+    weighted = " — MW-weighted" if metric == "revenue" else " —"
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=f"{label}{weighted} {fragment}")
     fig.update_layout(showlegend=False)
-    fig.update_yaxes(title_text="Estimated revenue (£/MW/day)")
+    fig.update_yaxes(title_text=axis)
     return fig
 
 
-def chart_fleet_by_optimiser(opt_df: pd.DataFrame):
-    """MW-weighted est. £/MW/day by optimiser (route-to-market party).
+def chart_fleet_by_optimiser(opt_df: pd.DataFrame, metric: str = "revenue"):
+    """Fleet metric by optimiser (route-to-market party).
 
     ``opt_df`` comes from :func:`fleet.performance.summarise_by_optimiser`;
-    every site-day is weighted by its MW, so a 500 MW site moves its
-    optimiser's average more than a 50 MW one.
+    for the revenue metric every site-day is weighted by its MW, so a 500 MW
+    site moves its optimiser's average more than a 50 MW one.
     """
-    return _chart_fleet_grouped(
-        opt_df, "optimiser", "By optimiser — MW-weighted estimated £/MW/day"
-    )
+    return _chart_fleet_grouped(opt_df, "optimiser", "By optimiser", metric)
 
 
-def chart_fleet_by_region(region_df: pd.DataFrame):
-    """MW-weighted est. £/MW/day by region — the locational split."""
-    return _chart_fleet_grouped(
-        region_df, "region", "By region — MW-weighted estimated £/MW/day"
-    )
+def chart_fleet_by_region(region_df: pd.DataFrame, metric: str = "revenue"):
+    """Fleet metric by region — the locational split."""
+    return _chart_fleet_grouped(region_df, "region", "By region", metric)
 
 
-def chart_fleet_daily(daily_df: pd.DataFrame):
-    """Whole-fleet estimated revenue per day, stacked wholesale proxy vs BM.
+def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
+    """Whole-fleet daily view of the selected metric.
 
-    ``daily_df`` is :func:`fleet.performance.fleet_daily`. The two components
-    can take opposite signs (e.g. paying to charge in the BM while long in the
-    wholesale proxy), so bars use plotly's signed stacking (``barmode
-    "relative"``) with a net-total line over the top.
+    ``daily_df`` is :func:`fleet.performance.fleet_daily`. Revenue stacks the
+    wholesale proxy vs BM — the two can take opposite signs (e.g. paying to
+    charge in the BM while long in the wholesale proxy), so bars use plotly's
+    signed stacking (``barmode "relative"``) with a net-total line over the
+    top. Volume shows discharge up / charge down; cycles and capacity are a
+    single daily series (capacity doubles as a data-coverage view — it dips
+    when a site's data is missing).
     """
     dates = pd.to_datetime(daily_df["date"])
+
+    if metric == "volume":
+        fig = go.Figure()
+        _volume_pair(fig, dates, daily_df["discharge_mwh"], daily_df["charge_mwh"])
+        apply_theme(
+            fig, height=DEFAULT_CHART_HEIGHT, title="Fleet energy by day — discharge vs charge"
+        )
+        fig.update_layout(hovermode="x unified")
+        fig.update_yaxes(title_text="Energy (MWh; charge shown negative)")
+        return fig
+
+    if metric in ("cycles", "capacity"):
+        col, title, axis = {
+            "cycles": ("cycles", "Fleet cycles per day", "Cycles per day"),
+            "capacity": (
+                "mw",
+                "Fleet nameplate reporting by day — coverage",
+                "Nameplate power reporting (MW)",
+            ),
+        }[metric]
+        fig = go.Figure(
+            go.Bar(
+                x=dates,
+                y=daily_df[col],
+                marker_color=COLORS["da"],
+                hovertemplate="%{x|%Y-%m-%d}<br>%{y:,.2f}<extra></extra>",
+            )
+        )
+        apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
+        fig.update_layout(showlegend=False)
+        fig.update_yaxes(title_text=axis)
+        return fig
+
     fig = go.Figure()
     fig.add_trace(
         go.Bar(
