@@ -1583,12 +1583,18 @@ def chart_generation_mix(groups: pd.DataFrame, demand: pd.Series | None = None) 
     return fig
 
 
-def chart_system_prices(prices: pd.DataFrame) -> go.Figure:
-    """Day-ahead and MID prices through the day, one shared £/MWh axis.
+def chart_system_prices(
+    prices: pd.DataFrame,
+    title: str = "Wholesale prices — £/MWh",
+    hover_fmt: str = "%H:%M",
+) -> go.Figure:
+    """Day-ahead and MID prices on one shared £/MWh axis.
 
-    ``prices`` is the frame from :func:`live.fetch_live.get_day_prices`
-    (columns ``day_ahead_price`` and ``mid_price``). Both are prices in the
-    same unit, so they share one axis — never a second scale.
+    ``prices`` has columns ``day_ahead_price`` and ``mid_price`` on a datetime
+    index — half-hourly for one day (:func:`live.fetch_live.get_day_prices`) or
+    one point per day for a window average. Both are prices in the same unit,
+    so they share one axis — never a second scale. ``hover_fmt`` switches the
+    hover label between an intraday clock and a calendar date.
     """
     fig = go.Figure()
     for col, name, color in (
@@ -1604,11 +1610,38 @@ def chart_system_prices(prices: pd.DataFrame) -> go.Figure:
                 name=name,
                 mode="lines",
                 line=dict(color=color, width=2),
-                hovertemplate=name + "<br>%{x|%H:%M}<br>£%{y:,.1f}/MWh<extra></extra>",
+                hovertemplate=name + "<br>%{x|" + hover_fmt + "}<br>£%{y:,.1f}/MWh<extra></extra>",
             )
         )
     fig.add_hline(y=0.0, line=dict(color=_AXIS, width=1))
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Wholesale prices — £/MWh")
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
     fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text="Price (£/MWh)")
+    return fig
+
+
+def chart_generation_daily(daily: pd.DataFrame, group_cols: list[str]) -> go.Figure:
+    """Daily generation energy by source (GWh), stacked one bar per day.
+
+    The range analogue of :func:`chart_generation_mix`: ``daily`` has a
+    ``date`` column and one column per generation group (daily energy in GWh),
+    with groups in stack order. Net interconnectors can be negative (export
+    days), which relative stacking places below the baseline.
+    """
+    dates = pd.to_datetime(daily["date"])
+    fig = go.Figure()
+    for name in group_cols:
+        fig.add_trace(
+            go.Bar(
+                x=dates,
+                y=daily[name],
+                name=name,
+                marker_color=GENERATION_COLORS.get(name, _OVERFLOW),
+                marker_line=dict(width=0),
+                hovertemplate=name + "<br>%{x|%Y-%m-%d}<br>%{y:,.0f} GWh<extra></extra>",
+            )
+        )
+    apply_theme(fig, height=HEIGHT_LG, title="Daily generation by source (GWh)")
+    fig.update_layout(barmode="relative", hovermode="x unified")
+    fig.update_yaxes(title_text="Energy (GWh/day)")
     return fig

@@ -37,6 +37,7 @@ from dashboard.charts import (  # noqa: E402
     chart_fleet_by_region,
     chart_fleet_daily,
     chart_fleet_leaderboard,
+    chart_generation_daily,
     chart_generation_mix,
     chart_operation_explorer,
     chart_pnl_waterfall,
@@ -1092,74 +1093,118 @@ def _system_day(date_iso: str) -> pd.DataFrame:
     return fetch_live.get_day_system(dt.date.fromisoformat(date_iso))
 
 
+@st.cache_data(show_spinner=False)
+def _system_summary_day(date_iso: str) -> dict | None:
+    """One compact daily row for the window views: energy (GWh) per generation
+    group, peak demand and mean prices. ``None`` if the day has no data, so the
+    range self-trims. Small and cached, so building a 60-day window is cheap."""
+    system = _system_day(date_iso)
+    if system.empty:
+        return None
+    groups = fetch_live.group_generation(system)
+    energy = groups.sum() * 0.5 / 1000.0  # GWh over the day per group
+    row: dict = {"date": date_iso}
+    for group in groups.columns:
+        row[group] = float(energy[group])
+    demand = system["demand_actual"] if "demand_actual" in system.columns else None
+    row["peak_demand_gw"] = float(demand.max()) / 1000.0 if demand is not None else None
+    try:
+        prices, _ = _fetch_day(date_iso)
+        row["avg_da"] = float(prices["day_ahead_price"].mean())
+        row["avg_mid"] = float(prices["mid_price"].mean())
+    except Exception:
+        row["avg_da"] = row["avg_mid"] = None
+    return row
+
+
 def _page_system():
     date_isos = _dates()
+    start, end, day_types = _global_filters(date_isos)
+    labels = _day_labels(date_isos)
+    days = [
+        d
+        for d in date_isos
+        if start <= d <= end and _matches_day_types(labels.get(d), day_types)
+    ]
+    tags = ", ".join(day_types) if day_types else "all day types"
     _page_header(
         "System overview",
-        "The whole GB power system on one day — generation mix, demand and "
-        "wholesale prices, from the same free feeds the benchmark runs on.",
+        f"{start} → {end} · {tags} · GB generation mix, demand and prices from "
+        "the same free feeds the benchmark runs on.",
     )
-    picked = st.selectbox(
-        "Day",
-        options=list(date_isos),
-        index=len(date_isos) - 1,
-        help="Any settled day in the covered window.",
-    )
-
-    system = _system_day(picked)
-    if system.empty:
-        st.warning("No system data could be fetched for this day — the Elexon or "
-                   "PV_Live feeds may be temporarily unavailable.")
+    if not days:
+        st.info("No days match the current filters — widen the period or clear a day type.")
         return
 
-    groups = fetch_live.group_generation(system)
-    demand = system["demand_actual"] if "demand_actual" in system.columns else None
+    summaries = [s for s in (_system_summary_day(d) for d in days) if s is not None]
+    if not summaries:
+        st.warning("No system data could be fetched for the window — the Elexon or "
+                   "PV_Live feeds may be temporarily unavailable.")
+        return
+    sdf = pd.DataFrame(summaries)
+    group_cols = [g for g in fetch_live.GENERATION_GROUP_ORDER if g in sdf.columns]
+    gen_cols = [g for g in group_cols if g != "Interconnectors"]
 
-    # Shares are over domestic generation, so interconnector imports (which meet
-    # demand but aren't GB generation) sit outside the denominator. Each group's
-    # daily energy is its MW summed over the half-hourly periods × 0.5 h → GWh.
-    gen_groups = [g for g in groups.columns if g != "Interconnectors"]
-    energy_gwh = groups.sum() * 0.5 / 1000.0
-    total_gen = float(energy_gwh[gen_groups].sum()) if gen_groups else 0.0
+    # Window KPIs are summed over the actual days shown, so the day-type filter
+    # flows straight through (e.g. "low-carbon share on sunny days").
+    total_gen = float(sdf[gen_cols].to_numpy().sum())
     low_carbon = float(
-        energy_gwh[[g for g in gen_groups if g in fetch_live.LOW_CARBON_GROUPS]].sum()
+        sdf[[g for g in gen_cols if g in fetch_live.LOW_CARBON_GROUPS]].to_numpy().sum()
     )
-    gas = float(energy_gwh["Gas"]) if "Gas" in energy_gwh else 0.0
-    net_int = float(energy_gwh["Interconnectors"]) if "Interconnectors" in energy_gwh else 0.0
-
+    net_int = float(sdf["Interconnectors"].sum()) if "Interconnectors" in sdf else 0.0
     cols = st.columns(4)
-    cols[0].metric(
-        "Peak demand",
-        f"{demand.max() / 1000.0:.1f} GW" if demand is not None else "—",
-        help="Highest half-hourly transmission-metered demand (ITSDO) on the day.",
-    )
+    cols[0].metric("Days shown", f"{len(sdf)}")
     cols[1].metric(
+        "Avg peak demand",
+        f"{sdf['peak_demand_gw'].mean():.1f} GW" if sdf["peak_demand_gw"].notna().any() else "—",
+        help="Mean of each day's highest half-hourly demand (ITSDO).",
+    )
+    cols[2].metric(
         "Low-carbon generation",
         f"{low_carbon / total_gen:.0%}" if total_gen > 0 else "—",
         help="Wind, solar, nuclear, hydro and biomass as a share of GB generation "
-        "(interconnector imports excluded from the denominator).",
-    )
-    cols[2].metric(
-        "Gas generation",
-        f"{gas / total_gen:.0%}" if total_gen > 0 else "—",
-        help="CCGT + OCGT as a share of GB generation.",
+        "over the window (interconnector imports excluded).",
     )
     cols[3].metric(
         "Net interconnectors",
         f"{net_int:+,.0f} GWh",
-        help="Positive = net imports into GB over the day; negative = net exports.",
+        help="Total over the window. Positive = net imports into GB; negative = exports.",
     )
 
-    st.plotly_chart(chart_generation_mix(groups, demand), width="stretch")
-    st.plotly_chart(chart_system_prices(fetch_live.get_day_prices(dt.date.fromisoformat(picked))),
-                    width="stretch")
-
+    st.plotly_chart(chart_generation_daily(sdf, group_cols), width="stretch")
+    price_daily = pd.DataFrame(
+        {"day_ahead_price": sdf["avg_da"], "mid_price": sdf["avg_mid"]},
+        index=pd.to_datetime(sdf["date"]),
+    )
+    st.plotly_chart(
+        chart_system_prices(
+            price_daily, title="Daily average wholesale price — £/MWh", hover_fmt="%Y-%m-%d"
+        ),
+        width="stretch",
+    )
     st.caption(
         "Sources — generation mix: Elexon FUELHH (transmission-metered); solar: "
         "Sheffield Solar PV_Live (embedded); demand: Elexon ITSDO; day-ahead: "
         "Nord Pool N2EX; MID: Elexon. All free, all public."
     )
 
+    # --- Single-day drill-down: the intraday detail, within the filtered set. --- #
+    st.markdown("#### Day detail")
+    shown_days = list(sdf["date"])
+    picked = st.selectbox(
+        "Day",
+        options=shown_days,
+        index=len(shown_days) - 1,
+        help="Inspect one day's half-hourly shape. Defaults to the latest in the window.",
+    )
+    system = _system_day(picked)
+    groups = fetch_live.group_generation(system)
+    demand = system["demand_actual"] if "demand_actual" in system.columns else None
+    st.plotly_chart(chart_generation_mix(groups, demand), width="stretch")
+    st.plotly_chart(
+        chart_system_prices(fetch_live.get_day_prices(dt.date.fromisoformat(picked))),
+        width="stretch",
+    )
     with st.expander("Raw half-hourly data"):
         raw = system.copy()
         raw.index = raw.index.strftime("%Y-%m-%d %H:%M")

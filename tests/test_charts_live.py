@@ -17,6 +17,7 @@ from dashboard.charts import (
     chart_daytype_ratio,
     chart_duration_comparison,
     chart_equity_curve,
+    chart_generation_daily,
     chart_generation_mix,
     chart_price_capture,
     chart_shape_overlay,
@@ -180,6 +181,21 @@ def test_chart_generation_mix_without_demand():
     fig = chart_generation_mix(groups)
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 1
+
+
+def test_chart_generation_daily_stacks_one_bar_per_day():
+    daily = pd.DataFrame(
+        {
+            "date": ["2024-01-01", "2024-01-02", "2024-01-03"],
+            "Wind": [200.0, 240.0, 180.0],
+            "Gas": [120.0, 100.0, 150.0],
+            "Interconnectors": [40.0, -20.0, 30.0],
+        }
+    )
+    fig = chart_generation_daily(daily, ["Wind", "Gas", "Interconnectors"])
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 3  # one stacked bar series per group
+    assert fig.layout.barmode == "relative"
 
 
 def test_chart_system_prices_returns_figure():
