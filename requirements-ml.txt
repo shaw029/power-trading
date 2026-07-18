@@ -1,0 +1,13 @@
+# Full stack for training, backtesting and the research pipeline (pipeline.py,
+# src/models, notebooks). Superset of the dashboard runtime. Install with:
+#   pip install -r requirements-ml.txt
+# NOT used by the Streamlit Cloud deploy (that reads requirements.txt), because
+# shap -> numba -> llvmlite fails to build on the Cloud's Python 3.12.
+-r requirements.txt
+scikit-learn
+joblib
+xgboost
+seaborn
+shap
+debugpy
+pytest

@@ -1,17 +1,15 @@
+# Runtime dependencies for the live Streamlit dashboard (dashboard/live_app.py).
+# This is the file Streamlit Cloud installs, so it is kept to exactly what the
+# app imports — the training/ML stack (xgboost, shap, …) lives in
+# requirements-ml.txt. Adding shap here drags in llvmlite, which fails to build
+# on the Cloud's Python 3.12 and blocks every deploy.
 pandas
-requests
 numpy
-scikit-learn
-joblib
-xgboost
-pyarrow
-PyYAML
+requests
 python-dateutil
-debugpy
-pytest
+PyYAML
+pyarrow
 streamlit
 plotly
 pulp
 highspy
-seaborn
-shap
