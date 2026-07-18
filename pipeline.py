@@ -288,9 +288,15 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
 
     bess_cfg = config["bess"]
     total_degradation = float(results_df["degradation_cost"].sum())
-    deg_cost = bess_cfg["degradation_cost_per_mwh"]
-    throughput = total_degradation / deg_cost if deg_cost > 0 else 0.0
-    total_cycles = throughput / (2 * bess_cfg["capacity_mwh"])
+    # A cycle is one full discharge equivalent (discharged energy / nameplate),
+    # matching the target_daily_cycles cap and the fleet estimates. Older runs
+    # without the discharge column fall back to a throughput-derived estimate.
+    if "discharge_mwh" in results_df.columns:
+        total_cycles = float(results_df["discharge_mwh"].sum()) / bess_cfg["capacity_mwh"]
+    else:
+        deg_cost = bess_cfg["degradation_cost_per_mwh"]
+        throughput = total_degradation / deg_cost if deg_cost > 0 else 0.0
+        total_cycles = throughput / (2 * bess_cfg["capacity_mwh"])
 
     metrics = {
         "total_da_revenue": float(results_df["da_revenue"].sum()),
@@ -488,6 +494,11 @@ def _run_bess_pipeline(config: dict) -> dict:
                 "execution_costs_paid": result["execution_costs_paid"],
                 "degradation_cost": result["total_degradation_cost"],
                 "intraday_throughput_mwh": result["accumulated_intraday_throughput_mwh"],
+                "discharge_mwh": sum(
+                    e["final_mw"] * duration_h
+                    for e in result["dispatch_log"]
+                    if e["final_mw"] > 0
+                ),
                 "net_pnl": result["net_pnl"],
             }
         )

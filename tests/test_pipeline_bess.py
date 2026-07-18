@@ -183,6 +183,7 @@ class TestBESSPipelineIntegration:
             "execution_costs_paid",
             "degradation_cost",
             "intraday_throughput_mwh",
+            "discharge_mwh",
             "net_pnl",
         ]
         assert len(pnl) == 3

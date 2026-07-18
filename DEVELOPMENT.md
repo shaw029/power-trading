@@ -167,7 +167,7 @@ bess:
   max_soc_pct: 0.90                # upper SOC operating bound (never charge above)
   resolution_h: 1.0                # dispatch interval in hours (1 = hourly)
   soc_drift_tolerance: 0.05        # legacy; retained in defaults but unused by the rolling-horizon engine
-  target_daily_cycles: 1.5         # cycle cap: max intraday throughput as a multiple of capacity; null disables
+  target_daily_cycles: 1.5         # cycle cap: max daily discharged energy as a multiple of capacity; null disables
   margin_buy: 0.0                  # basis (£/MWh) added to the DA proxy buy price for future periods
   margin_sell: 0.0                 # basis (£/MWh) subtracted from the DA proxy sell price for future periods
 ```
@@ -183,7 +183,7 @@ bess:
 | `min_soc_pct` | Lower SOC operating bound as a fraction of capacity. The LP and intraday engine will not discharge below this level |
 | `max_soc_pct` | Upper SOC operating bound as a fraction of capacity. The LP and intraday engine will not charge above this level |
 | `soc_drift_tolerance` | **Legacy.** A leftover from the earlier drift-rebalancing engine; still present in the config defaults but **not read** by the current rolling-horizon intraday engine |
-| `target_daily_cycles` | Cap on throughput as a multiple of capacity. Bounds the LP (`Σ discharge × duration ≤ target_daily_cycles × capacity_mwh`) and arms the intraday **cycle cap**, which freezes the physical envelope once accumulated intraday throughput reaches the budget. Set to `null` to disable |
+| `target_daily_cycles` | Cap on discharged energy as a multiple of capacity (one cycle = one full discharge equivalent). Bounds the LP (`Σ discharge × duration ≤ target_daily_cycles × capacity_mwh`) and arms the intraday **cycle cap**, which freezes the physical envelope once accumulated intraday throughput reaches the budget. Set to `null` to disable |
 | `margin_buy` / `margin_sell` | Basis (£/MWh, default 0) defining the **DA proxy** the rolling LP prices the still-unseen *future* periods at: extra charge clears at `da + margin_buy`, extra discharge at `da − margin_sell`. The hurdle is conservatism on the guessed future only — the visible current period trades at its observed MID with no margin |
 
 ## Project Structure

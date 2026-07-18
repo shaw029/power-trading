@@ -136,10 +136,14 @@ def _settle_duration(
     end_soc = asset.soc_pct
     net_pnl = result["net_pnl"]
 
-    # Energy throughput (gross charge + discharge) over the day; one full cycle
-    # equals 2 × capacity of throughput.
-    throughput_mwh = sum(abs(entry["final_mw"]) for entry in result["dispatch_log"]) * duration_h
-    cycles = throughput_mwh / (2.0 * asset.capacity_mwh) if asset.capacity_mwh > 0 else 0.0
+    # A cycle is one full discharge equivalent: discharged energy over nameplate
+    # capacity. Same convention as the target_daily_cycles cap and the fleet
+    # estimates, so reported cycles never exceed the cap and are directly
+    # comparable across the sim and the real fleet.
+    discharge_mwh = sum(
+        entry["final_mw"] for entry in result["dispatch_log"] if entry["final_mw"] > 0
+    ) * duration_h
+    cycles = discharge_mwh / asset.capacity_mwh if asset.capacity_mwh > 0 else 0.0
 
     # Capture vs the perfect-foresight DA arbitrage ceiling (recomputed from the
     # day's starting SOC).

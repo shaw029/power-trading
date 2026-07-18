@@ -162,3 +162,21 @@ def test_da_commit_fraction_caps_locked_schedule():
             - dur.degradation_cost
         )
         assert reconstructed == pytest.approx(dur.net_pnl, abs=1e-6)
+
+
+def test_cycles_use_discharge_convention_and_respect_the_cap():
+    # Big-spread day at the default 1.5 cycle target: reported cycles must
+    # (a) never exceed the cap — the cap constrains discharged energy and the
+    # metric uses the same convention — and (b) equal discharged energy over
+    # nameplate exactly.
+    cfg = bess_config()
+    assets = build_assets()
+    result = settle.settle_day(_DAY, _prices(24, low=5.0, high=150.0), cfg, assets, _start_soc())
+
+    assert result is not None
+    target = cfg["target_daily_cycles"]
+    for duration, dur in result.durations.items():
+        discharge = sum(e["final_mw"] for e in dur.dispatch_log if e["final_mw"] > 0)
+        capacity = assets[duration].capacity_mwh
+        assert dur.cycles == pytest.approx(discharge / capacity)
+        assert dur.cycles <= target + 1e-6

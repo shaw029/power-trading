@@ -8,10 +8,10 @@ methodology. Because the engine re-runs on each parameter change, the
 dashboard is interactive rather than precomputed; it is meant to run on
 Streamlit Cloud.
 
-Global filters (period + day types) and the benchmark's four levers — duration,
-cycle target, degradation cost and the SOC band — live in the sidebar; every
-other modelling choice (MID basis, slippage, efficiency, power rating) is a
-fixed, stated assumption.
+Global filters (period + day types) and the benchmark's five levers — duration,
+cycle target, degradation cost, the SOC band and the DA commitment — live in
+the sidebar; every other modelling choice (MID basis, slippage, efficiency,
+power rating) is a fixed, stated assumption.
 
 Run with ``streamlit run dashboard/live_app.py``.
 """
@@ -1280,8 +1280,9 @@ def _benchmark_parameters() -> tuple:
                 saved["cycles"],
                 0.5,
                 help=(
-                    "Cap on average daily throughput. More cycles chase more "
-                    "spread but wear the battery harder."
+                    "Cap on daily discharged energy; one cycle is one full "
+                    "discharge equivalent (discharged MWh ÷ nameplate MWh). "
+                    "More cycles chase more spread but wear the battery harder."
                 ),
             )
             degradation = st.slider(
