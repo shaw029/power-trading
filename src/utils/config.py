@@ -127,6 +127,9 @@ _BESS_DEFAULTS = {
     "target_daily_cycles": None,
     "margin_buy": 0.0,
     "margin_sell": 0.0,
+    # Market allocation: share of power_mw the day-ahead auction may commit
+    # (1.0 = greedy all-in bid); the remainder is held back for intraday.
+    "da_commit_fraction": 1.0,
 }
 
 _SIGNAL_DEFAULTS = {

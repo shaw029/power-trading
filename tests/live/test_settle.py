@@ -139,3 +139,26 @@ def test_flat_prices_give_near_zero_pnl():
     for dur in result.durations.values():
         assert dur.net_pnl == pytest.approx(0.0, abs=1.0)
         assert dur.capture == 0.0
+
+
+def test_da_commit_fraction_caps_locked_schedule():
+    # A 40% allocation must cap every period of the locked DA schedule at 40%
+    # of the reference power, while the intraday session keeps the full asset.
+    cfg = dict(bess_config())
+    cfg["da_commit_fraction"] = 0.4
+    assets = build_assets()
+    result = settle.settle_day(_DAY, _prices(24), cfg, assets, _start_soc())
+
+    assert result is not None
+    for dur in result.durations.values():
+        power = max(abs(mw) for mw in dur.da_schedule)
+        assert any(abs(mw) > 1e-6 for mw in dur.da_schedule)  # still bids
+        assert power <= 0.4 * 50.0 + 1e-6
+        # The ledger invariant holds under a partial allocation too.
+        reconstructed = (
+            dur.benchmark_da_revenue
+            + dur.intraday_da_improvement
+            - dur.execution_costs_paid
+            - dur.degradation_cost
+        )
+        assert reconstructed == pytest.approx(dur.net_pnl, abs=1e-6)

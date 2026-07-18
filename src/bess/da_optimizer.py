@@ -39,15 +39,28 @@ def optimize_da_schedule(
     asset: BESSAsset,
     duration_h: float = 1.0,
     target_daily_cycles: float | None = None,
+    commit_fraction: float = 1.0,
 ) -> list[float]:
+    """Solve the locked day-ahead schedule for one delivery day.
+
+    ``commit_fraction`` is the market-allocation lever: the share of the
+    battery's power the day-ahead auction is allowed to commit (1.0 = the
+    all-in greedy bid). Committing less holds capacity back for the intraday
+    stage — the intraday engine always sees the full ``power_mw``, so whatever
+    the auction doesn't take remains tradable there without first unwinding a
+    DA position (and paying slippage on the unwind).
+    """
+    if not 0.0 <= commit_fraction <= 1.0:
+        raise ValueError(f"commit_fraction must be within [0, 1], got {commit_fraction}")
     n_periods = len(da_price_forecast)
     periods = range(n_periods)
 
     prob = pulp.LpProblem("DA_BESS_Schedule", pulp.LpMaximize)
 
-    charge = [pulp.LpVariable(f"charge_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
+    da_power = asset.power_mw * commit_fraction
+    charge = [pulp.LpVariable(f"charge_{h}", lowBound=0, upBound=da_power) for h in periods]
     discharge = [
-        pulp.LpVariable(f"discharge_{h}", lowBound=0, upBound=asset.power_mw) for h in periods
+        pulp.LpVariable(f"discharge_{h}", lowBound=0, upBound=da_power) for h in periods
     ]
     min_soc_mwh = asset.min_soc_pct * asset.capacity_mwh
     max_soc_mwh = asset.max_soc_pct * asset.capacity_mwh

@@ -76,8 +76,10 @@ the settlement engine run over published market data.
   price (published the day before, so legitimate information). The intraday
   layer then re-optimises against the realised MID curve with **perfect
   foresight** — an idealised best case, not a live-replicable strategy.
-- **Levers** — duration, cycle target, degradation cost, SOC band (the panel
-  at the top of the tab). Fixed: slippage, round-trip efficiency, 50 MW power.
+- **Levers** — duration, cycle target, degradation cost, SOC band, and the
+  **DA commitment** (the market-allocation lever: how much of the battery the
+  day-ahead auction may commit; the rest is held back for intraday). Fixed:
+  slippage, round-trip efficiency, 50 MW power.
 - **Out of scope** — real execution, imbalance settlement, and any fees beyond
   the slippage and degradation modelled. Illustrative, not a guarantee of
   replicable returns.
@@ -116,7 +118,7 @@ def _fetch_day(date_iso: str):
     return prices, context
 
 
-def _make_cfg(cycle_target, degradation, soc_min, soc_max) -> dict:
+def _make_cfg(cycle_target, degradation, soc_min, soc_max, commit) -> dict:
     cfg = dict(bess_config())
     cfg.update(
         target_daily_cycles=cycle_target,
@@ -124,6 +126,7 @@ def _make_cfg(cycle_target, degradation, soc_min, soc_max) -> dict:
         min_soc_pct=soc_min,
         max_soc_pct=soc_max,
         resolution_h=RESOLUTION_H,
+        da_commit_fraction=commit,
     )
     return cfg
 
@@ -165,15 +168,15 @@ def _warm_fetch(date_isos: tuple) -> None:
 
 
 @st.cache_data(show_spinner="Settling the benchmark battery…")
-def _settle_range(date_isos: tuple, duration, cycle_target, degradation, soc_min, soc_max):
+def _settle_range(date_isos: tuple, duration, cycle_target, degradation, soc_min, soc_max, commit):
     """Settle every day in ``date_isos`` (oldest first) carrying SOC forward, for
     the single selected ``duration``.
 
-    Cached on the dates, the duration and the four parameter levers, so the engine
+    Cached on the dates, the duration and the five parameter levers, so the engine
     only re-runs when one of those actually changes. Returns one record per
     settled day with its result, context and labels.
     """
-    cfg = _make_cfg(cycle_target, degradation, soc_min, soc_max)
+    cfg = _make_cfg(cycle_target, degradation, soc_min, soc_max, commit)
     assets = _build_asset(cfg, duration, degradation, soc_min, soc_max)
     prev = {duration: min(max(DEFAULT_START_SOC, soc_min), soc_max)}
 
@@ -311,10 +314,10 @@ def _benchmark_view():
     """
     date_isos = _dates()
     start, end, day_types = _global_filters(date_isos)
-    duration, cycle_target, degradation, soc_min, soc_max = _benchmark_parameters()
+    duration, cycle_target, degradation, soc_min, soc_max, commit = _benchmark_parameters()
 
     _warm_fetch(date_isos)
-    days = _settle_range(date_isos, duration, cycle_target, degradation, soc_min, soc_max)
+    days = _settle_range(date_isos, duration, cycle_target, degradation, soc_min, soc_max, commit)
     shown = _filter_days(days, start, end, day_types)
 
     if not days:
@@ -329,12 +332,15 @@ def _benchmark_view():
         f"{shown[0]['date']} → {shown[-1]['date']} · {len(shown)} day(s) · {tags} · "
         f"{duration} × {REFERENCE_POWER_MW:.0f} MW simulated battery"
     )
+    if commit < 1.0:
+        caption += f" · {commit:.0%} committed day-ahead"
     params = {
         "duration": duration,
         "cycle_target": cycle_target,
         "degradation": degradation,
         "soc_min": soc_min,
         "soc_max": soc_max,
+        "commit": commit,
     }
     return params, shown, caption
 
@@ -1232,7 +1238,7 @@ def _page_methodology():
 # Sidebar parameter panel & main
 # --------------------------------------------------------------------------- #
 def _benchmark_parameters() -> tuple:
-    """The benchmark's four levers, as a sidebar form.
+    """The benchmark's five levers, as a sidebar form.
 
     A form means dragging a slider costs nothing until **Apply** — the 60-day
     re-settle only runs on an explicit submit. The chosen values are kept in
@@ -1248,8 +1254,11 @@ def _benchmark_parameters() -> tuple:
             "cycles": float(cfg.get("target_daily_cycles") or 1.5),
             "degradation": float(cfg["degradation_cost_per_mwh"]),
             "soc": (int(cfg["min_soc_pct"] * 100), int(cfg["max_soc_pct"] * 100)),
+            "commit": 100,
         },
     )
+    # Sessions saved before the allocation lever existed lack the key.
+    saved.setdefault("commit", 100)
 
     with st.sidebar:
         st.markdown("**Benchmark battery**")
@@ -1297,12 +1306,26 @@ def _benchmark_parameters() -> tuple:
                     "cells but shrinks the tradable energy."
                 ),
             )
+            commit = st.slider(
+                "DA commitment (%)",
+                0,
+                100,
+                saved["commit"],
+                5,
+                help=(
+                    "Market allocation: how much of the battery's power the "
+                    "day-ahead auction may commit. The rest is held back for "
+                    "the intraday stage — free to chase MID without first "
+                    "unwinding a DA position (and paying slippage on it)."
+                ),
+            )
             if st.form_submit_button("Apply", type="primary", width="stretch"):
                 st.session_state["bench_params"] = {
                     "duration": duration,
                     "cycles": cycles,
                     "degradation": degradation,
                     "soc": soc,
+                    "commit": commit,
                 }
         with st.expander("Fixed assumptions"):
             st.caption(
@@ -1314,7 +1337,14 @@ def _benchmark_parameters() -> tuple:
             )
 
     p = st.session_state["bench_params"]
-    return p["duration"], p["cycles"], p["degradation"], p["soc"][0] / 100.0, p["soc"][1] / 100.0
+    return (
+        p["duration"],
+        p["cycles"],
+        p["degradation"],
+        p["soc"][0] / 100.0,
+        p["soc"][1] / 100.0,
+        p.get("commit", 100) / 100.0,
+    )
 
 
 def main():

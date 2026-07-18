@@ -470,6 +470,7 @@ def _run_bess_pipeline(config: dict) -> dict:
             asset=asset,
             duration_h=duration_h,
             target_daily_cycles=bess_cfg.get("target_daily_cycles"),
+            commit_fraction=bess_cfg.get("da_commit_fraction", 1.0),
         )
         result = run_intraday_session(
             da_schedule=schedule,

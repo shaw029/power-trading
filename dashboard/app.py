@@ -139,6 +139,7 @@ def run_bess_simulation(
     slippage: float = 0.50,
     margin_buy: float = 0.0,
     margin_sell: float = 0.0,
+    commit_fraction: float = 1.0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Replay the BESS strategy exactly as pipeline._run_bess_pipeline does.
 
@@ -226,6 +227,7 @@ def run_bess_simulation(
             asset,
             duration_h=resolution_h,
             target_daily_cycles=target_daily_cycles,
+            commit_fraction=commit_fraction,
         )
         if len(schedule) != len(forecast):
             raise ValueError(
@@ -328,6 +330,19 @@ def render_bess(prices: pd.DataFrame):
             step=0.5,
         )
 
+    st.sidebar.markdown("### Market Allocation")
+    commit_pct = st.sidebar.slider(
+        "DA Commitment (%)",
+        0,
+        100,
+        int(round(bess_cfg.get("da_commit_fraction", 1.0) * 100)),
+        step=5,
+        help="Share of the battery's power the day-ahead auction may commit "
+        "(100% = greedy all-in bid). Held-back capacity stays free for the "
+        "intraday stage — it can chase MID without first unwinding a DA "
+        "position and paying slippage on the unwind.",
+    )
+
     st.sidebar.markdown("### Intraday Re-optimisation Levers")
     basis_margin = st.sidebar.slider(
         "MID-Proxy Basis (£/MWh)",
@@ -369,6 +384,7 @@ def render_bess(prices: pd.DataFrame):
         slippage=slippage,
         margin_buy=basis_margin,
         margin_sell=basis_margin,
+        commit_fraction=commit_pct / 100.0,
     )
 
     soc_bounds = {

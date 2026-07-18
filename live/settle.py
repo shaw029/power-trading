@@ -106,13 +106,18 @@ def _settle_duration(
     target_daily_cycles = bess_cfg.get("target_daily_cycles")
 
     # Day-ahead: schedule against the actual cleared DA prices from the day's
-    # starting SOC, then reset and settle that locked schedule intraday.
+    # starting SOC, then reset and settle that locked schedule intraday. The
+    # allocation lever caps how much power the auction may commit; the intraday
+    # session always sees the full asset. Capture stays measured against the
+    # full-power arbitrage ceiling, so a partial allocation reads as lower
+    # capture unless intraday earns the difference back.
     asset.reset(start_soc_pct)
     schedule = optimize_da_schedule(
         da_price_forecast=day_ahead_prices,
         asset=asset,
         duration_h=duration_h,
         target_daily_cycles=target_daily_cycles,
+        commit_fraction=bess_cfg.get("da_commit_fraction", 1.0),
     )
 
     asset.reset(start_soc_pct)

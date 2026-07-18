@@ -42,6 +42,32 @@ class TestDAOptimizer:
         for mw in schedule:
             assert abs(mw) <= battery.power_mw + 1e-6
 
+    def test_commit_fraction_caps_da_power(self, battery: BESSAsset) -> None:
+        # With a big spread the greedy bid saturates the power limit; a 40%
+        # allocation must cap every period at 40% of it instead.
+        prices = [0.0] * 12 + [100.0] * 12
+        schedule = optimize_da_schedule(prices, battery, commit_fraction=0.4)
+        assert any(abs(mw) > 1e-6 for mw in schedule)  # still trades
+        for mw in schedule:
+            assert abs(mw) <= 0.4 * battery.power_mw + 1e-6
+
+    def test_commit_fraction_one_matches_greedy(self, battery: BESSAsset) -> None:
+        prices = [20.0] * 6 + [90.0] * 6 + [15.0] * 6 + [85.0] * 6
+        greedy = optimize_da_schedule(prices, battery)
+        explicit = optimize_da_schedule(prices, battery, commit_fraction=1.0)
+        assert greedy == pytest.approx(explicit)
+
+    def test_commit_fraction_zero_bids_nothing(self, battery: BESSAsset) -> None:
+        prices = [0.0] * 12 + [100.0] * 12
+        schedule = optimize_da_schedule(prices, battery, commit_fraction=0.0)
+        assert schedule == pytest.approx([0.0] * 24)
+
+    def test_commit_fraction_out_of_range_raises(self, battery: BESSAsset) -> None:
+        with pytest.raises(ValueError):
+            optimize_da_schedule([40.0] * 24, battery, commit_fraction=1.2)
+        with pytest.raises(ValueError):
+            optimize_da_schedule([40.0] * 24, battery, commit_fraction=-0.1)
+
     def test_respects_soc_bounds(self, battery: BESSAsset) -> None:
         prices = [0.0] * 12 + [100.0] * 12
         schedule = optimize_da_schedule(prices, battery)
