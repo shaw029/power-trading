@@ -96,7 +96,7 @@ net_pnl = benchmark_da_revenue + intraday_da_improvement − execution_costs_pai
 
 - **`benchmark_da_revenue`** — the planned LP schedule settled at the *actual* cleared DA prices, frozen up front before any intraday action is taken. This is the benchmark.
 - **`intraday_da_improvement`** — the cash the rolling re-optimisation adds on top of the benchmark: for each period, the value of its executed physical deviation `dev_h = P_h − da_schedule_h` **settled at that period's observed MID**, summed over the day and reported **gross** of execution friction.
-- **`execution_costs_paid`** — slippage (`execution.slippage`, default 0.5 £/MWh) paid on every traded (deviated) MWh, isolated into its own bucket rather than netted into the improvement.
+- **`execution_costs_paid`** — slippage (`execution.slippage`, default 2.0 £/MWh — a realistic spread-to-MID for GB continuous half-hourly products) paid on every traded (deviated) MWh, isolated into its own bucket rather than netted into the improvement.
 - **`imbalance_pnl`** — retained at ≈ 0. Each executed period is clamped to what the battery can physically deliver and any gap to the DA commitment is flattened at MID, so no volume spills to SSP/SBP in this phase; the bucket stays for continuity and the Phase-4 case where a forecast can leave a position unflattened at gate closure.
 - **`degradation_cost`** — throughput wear on the physically cycled volume `Σ |P_h|`.
 

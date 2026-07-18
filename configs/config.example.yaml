@@ -40,10 +40,16 @@ signal:
   transaction_cost: 1.0  # cost applied per trade (£/MWh of position)
 
 execution:
-  baseline_hedge_ratio: 0.50
+  # Passive-at-MID share of each position (rest runs the active TP/SL gate).
+  # Notebook 02's sweep is flat across 0.00-0.15 at the modelled friction;
+  # production takes the most-hedged point of the flat region (tail insurance).
+  baseline_hedge_ratio: 0.15
   take_profit_pct: 0.90
   stop_loss_price_delta: 5.00
-  slippage: 0.50
+  # Bid-ask crossing cost around MID (£/MWh) charged on every intraday-traded
+  # MWh in ALL phases (virtual exits and BESS deviations): a conservative
+  # spread-to-MID for GB continuous half-hourly products.
+  slippage: 2.00
 
 bess:
   capacity_mwh: 100.0

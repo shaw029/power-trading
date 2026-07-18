@@ -17,10 +17,10 @@ def run_backtest(
     max_drawdown_pct: float = 0.20,
     mid_prices: np.ndarray | None = None,
     predicted_spreads: np.ndarray | None = None,
-    baseline_hedge_ratio: float = 0.50,
+    baseline_hedge_ratio: float = 0.15,
     take_profit_pct: float = 0.90,
     stop_loss_price_delta: float = 5.00,
-    slippage: float = 0.50,
+    slippage: float = 2.00,
 ) -> tuple:
     """Run backtest for a Day-Ahead Auction vs Imbalance settlement strategy.
 
@@ -328,10 +328,10 @@ def run_backtest_from_dataframe(
     starting_capital: float = 50_000.0,
     risk_pct: float = 0.02,
     max_drawdown_pct: float = 0.20,
-    baseline_hedge_ratio: float = 0.50,
+    baseline_hedge_ratio: float = 0.15,
     take_profit_pct: float = 0.90,
     stop_loss_price_delta: float = 5.00,
-    slippage: float = 0.50,
+    slippage: float = 2.00,
 ) -> tuple:
     """Convenience wrapper: run backtest from a DataFrame and attach per-period PnL."""
     df = df.copy().sort_values(time_col).reset_index(drop=True)

@@ -185,13 +185,15 @@ class TestHurdlesBlockMarginalTrades:
         assert result["intraday_da_improvement"] == pytest.approx(0.0, abs=1e-6)
 
     def test_thin_spread_trades_when_wear_low(self):
-        # Round-trip wear 1+1=2 < spread 5 → the LP takes the arb.
+        # Round-trip wear 1+1=2 plus explicit slippage 0.5+0.5=1 < spread 5 →
+        # the LP takes the arb. Slippage pinned so the hurdle arithmetic
+        # never silently tracks the config default.
         result = run_intraday_session(
             da_schedule=[0.0, 0.0],
             da_price_actual=[40.0, 45.0],
             mid_prices=[40.0, 45.0],
             asset=_unit_asset(soc=0.0, deg=1.0),
-            config={"degradation_cost_per_mwh": 1.0},
+            config={"degradation_cost_per_mwh": 1.0, "execution": {"slippage": 0.5}},
         )
         assert result["dispatch_log"][1]["final_mw"] > 0
         assert result["intraday_da_improvement"] > 0

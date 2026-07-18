@@ -136,7 +136,7 @@ def run_bess_simulation(
     target_daily_cycles: float | None,
     resolution_h: float,
     soc_drift_tolerance: float,
-    slippage: float = 0.50,
+    slippage: float = 2.00,
     margin_buy: float = 0.0,
     margin_sell: float = 0.0,
     commit_fraction: float = 1.0,
@@ -359,7 +359,7 @@ def render_bess(prices: pd.DataFrame):
         "Execution Buffer / Slippage (£/MWh)",
         0.0,
         10.0,
-        float(cfg.get("execution", {}).get("slippage", 0.50)),
+        float(cfg.get("execution", {}).get("slippage", 2.00)),
         step=0.50,
         help="Per-MWh execution cost charged on every deviated MWh, and an extra "
         "hurdle in the re-optimisation objective, so a higher buffer makes the "

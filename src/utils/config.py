@@ -153,10 +153,18 @@ _VALIDATION_DEFAULTS = {
 }
 
 _EXECUTION_DEFAULTS = {
-    "baseline_hedge_ratio": 0.50,
+    # Share of each position exited passively at MID; the rest runs the
+    # active TP/SL gate with imbalance as terminal fallback. The hedge-ratio
+    # sweep (notebook 02) is flat across 0.00-0.15 at the modelled friction;
+    # production takes the most-hedged point of that flat region as tail
+    # insurance rather than the corner.
+    "baseline_hedge_ratio": 0.15,
     "take_profit_pct": 0.90,
     "stop_loss_price_delta": 5.00,
-    "slippage": 0.50,
+    # Bid-ask crossing cost around MID (£/MWh): the spread paid on every
+    # MWh traded in the continuous intraday market, in every strategy.
+    # £2 is a conservative spread-to-MID for GB half-hourly products.
+    "slippage": 2.00,
 }
 
 _FIXED_SOURCE_KEYS = (
@@ -208,7 +216,7 @@ def validate_config(config: dict) -> dict:
         # its default) inside the bess config; without this the engine always
         # fell back to its hard-coded 0.50 default regardless of the YAML.
         bess.setdefault("execution", {})
-        bess["execution"].setdefault("slippage", config.get("execution", {}).get("slippage", 0.50))
+        bess["execution"].setdefault("slippage", config.get("execution", {}).get("slippage", 2.00))
         config["bess"] = bess
 
     if config["strategy_type"] == "virtual":

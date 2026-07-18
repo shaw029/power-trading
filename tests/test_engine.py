@@ -359,6 +359,11 @@ class TestHybridExecution:
     # position = 50_000 * 0.02 / 50 = 20 MWh; at default hedge_ratio=0.50 → passive=active=10 MWh
 
     def _run(self, signal, mid, pred_spread, ssp=70.0, sbp=40.0, **kw):
+        # These tests verify the exit-branch arithmetic; the expected values
+        # below are computed at £0.50 slippage and a 50/50 hedge split, pinned
+        # explicitly so they never silently track the config defaults.
+        kw.setdefault("slippage", 0.50)
+        kw.setdefault("baseline_hedge_ratio", 0.50)
         return run_backtest(
             np.array([signal]),
             np.array([self._DA]),

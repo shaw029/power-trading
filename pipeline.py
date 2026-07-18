@@ -512,13 +512,13 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
     vol_window = config["signal"].get("vol_window", 336) if config else 336
     transaction_cost = config["signal"].get("transaction_cost", 0.0) if config else 0.0
     baseline_hedge_ratio = (
-        config.get("execution", {}).get("baseline_hedge_ratio", 0.50) if config else 0.50
+        config.get("execution", {}).get("baseline_hedge_ratio", 0.15) if config else 0.15
     )
     take_profit_pct = config.get("execution", {}).get("take_profit_pct", 0.90) if config else 0.90
     stop_loss_price_delta = (
         config.get("execution", {}).get("stop_loss_price_delta", 5.00) if config else 5.00
     )
-    slippage = config.get("execution", {}).get("slippage", 0.50) if config else 0.50
+    slippage = config.get("execution", {}).get("slippage", 2.00) if config else 2.00
     model_type = config["model"]["type"] if config else "xgboost"
     model_params = config["model"]["hyperparameters"] if config else None
     val_type = config["validation"]["type"] if config else "walk_forward"

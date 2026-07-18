@@ -159,7 +159,7 @@ def run_intraday_session(
     degradation_cost = config["degradation_cost_per_mwh"]
     margin_buy = config.get("margin_buy", 0.0)
     margin_sell = config.get("margin_sell", 0.0)
-    exec_cost = config.get("execution", {}).get("slippage", 0.5)
+    exec_cost = config.get("execution", {}).get("slippage", 2.0)
 
     target_daily_cycles = config.get("target_daily_cycles")
     cycle_cap_mwh = (
