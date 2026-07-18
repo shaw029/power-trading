@@ -6,7 +6,7 @@ End-to-end quantitative research framework for virtual and physical trading in t
 
 **BESS Strategy** — Battery Energy Storage System dispatch optimisation via LP-based Day-Ahead scheduling and a rolling-horizon intraday re-optimisation that walks the day period by period, trading each settlement period at its observed MID and pricing the still-unseen future from a hurdled DA proxy.
 
-**2018 validated backtest (Virtual):**
+**2018 out-of-sample backtest (Virtual):** — results are upper-bound estimates on a single 2018 window; see notebook 01 §3 (hyperparameter stability), §5 (drawdown context) and §6 (naive-baseline decomposition) for the supporting analysis.
 
 ![Virtual Strategy Showcase](notebooks/assets/equity_curve.png)
 
@@ -86,7 +86,7 @@ python main.py --config configs/config.yaml --mode all
 | Assumption | Detail | Notebook |
 |---|---|---|
 | **DA pricing** | Day-Ahead positions are priced at the cleared DA auction price. The model takes directional exposure only when ML-predicted mispricing exceeds a volatility-adjusted threshold, and exposure is capped at the top-N highest-conviction periods per direction per day (`signal.top_n`, default 5). | `01_da_positioning_backtest.ipynb` |
-| **Intraday exit (hybrid)** | Each position is split into two slices. The passive slice (`baseline_hedge_ratio`, default 50%) always exits at MID. The active slice targets MID via a TP/SL engine; if neither trigger fires within the delivery window, it settles at the imbalance price (SSP for longs, SBP for shorts). Imbalance is the deliberate terminal fallback for the active slice, not an unavoidable residual. | `02_hybrid_execution_analysis.ipynb` |
+| **Intraday exit (hybrid)** | Each position is split into two slices. The passive slice (`baseline_hedge_ratio`, default 15% — selected in notebook 02) exits at MID, paying the £2/MWh spread-to-MID friction. The active slice targets MID via a TP/SL engine; if neither trigger fires within the delivery window, it settles at the imbalance price (SSP for longs, SBP for shorts). Imbalance is the deliberate terminal fallback for the active slice, not an unavoidable residual. | `02_hybrid_execution_analysis.ipynb` |
 | **BESS dispatch** | The Day-Ahead schedule is solved via LP optimisation (PuLP/HiGHS) against an ML price forecast, maximising charge/discharge revenue subject to SOC window (`min_soc_pct`–`max_soc_pct`, default 10–90%), power, efficiency, and an optional `target_daily_cycles` cap. End-of-day SOC is unconstrained and carried forward as the next day's starting SOC — days are not treated independently. Revenue settles against the actual cleared DA price. During the intraday window a rolling-horizon LP walks the day period by period: each quarter's MID is observed shortly before its delivery, so the current period is priced at the **observed MID** and the unseen future at a **DA proxy** (cleared DA price ± a configurable `margin_sell`/`margin_buy` basis — the hurdle is conservatism on the guessed future only). Only the visible period is executed and locked before rolling forward, clamped to feasibility and settled at its observed MID. That settled deviation value is the Intraday DA Improvement; imbalance is ≈ 0 by construction. | `03_bess_dispatch_analysis.ipynb` |
 
 All notebooks live in `notebooks/`.
@@ -97,8 +97,8 @@ All notebooks live in `notebooks/`.
 
 | Notebook | Contents |
 |---|---|
-| `01_da_positioning_backtest.ipynb` | Full tournament sweep: model shootout, hyperparameter calibration under walk-forward discipline, execution stress-testing with transaction costs, and a production tear sheet |
-| `02_hybrid_execution_analysis.ipynb` | Hedge ratio optimisation sweep: equity curves and performance tear sheet for four archetype fixed points, risk–reward efficient frontier, full `baseline_hedge_ratio` sweep (0.0–1.0) identifying the Sharpe-optimal ratio, worst drawdown analysis under full imbalance exposure, and a decision framework connecting the sweep to production config |
+| `01_da_positioning_backtest.ipynb` | Full tournament sweep: model shootout, hyperparameter calibration under walk-forward discipline (selection on MAE with an explicit stability check), execution stress-testing with transaction costs, a production tear sheet with drawdown reported against running equity, and a naive-baseline decomposition separating model skill from imbalance-carry |
+| `02_hybrid_execution_analysis.ipynb` | Hedge ratio optimisation sweep: equity curves and performance tear sheet for four archetype fixed points, risk–reward efficient frontier, full `baseline_hedge_ratio` sweep (0.0–1.0), worst drawdown analysis under full imbalance exposure, and the production decision (0.15, the upper edge of the flat risk-adjusted band) |
 | `03_bess_dispatch_analysis.ipynb` | BESS dispatch deep-dive: trader's-alpha PnL waterfall (DA benchmark → intraday DA improvement → execution friction → imbalance → degradation); degradation cost vs. gross revenue timeline; time-of-day SOC heatmap; DA schedule vs. final dispatch rebalancing impact; dispatch efficiency scatter; and the **market-allocation frontier** — a `da_commit_fraction` sweep tracing net PnL against the DA/intraday capacity split, with the ledger decomposition at each point |
 
 ---

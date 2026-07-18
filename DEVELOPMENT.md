@@ -137,13 +137,13 @@ The `execution` block controls how DA positions are managed during the intraday 
 
 ```yaml
 execution:
-  baseline_hedge_ratio: 0.5   # fraction of position hedged passively at MID (0.0–1.0)
+  baseline_hedge_ratio: 0.15  # fraction of position hedged passively at MID (0.0–1.0)
   take_profit_pct: 0.90        # take-profit trigger as fraction of predicted spread
   stop_loss_price_delta: 5.00  # per-period stop-loss cap in £/MWh
   slippage: 2.00               # execution slippage / spread-to-MID cost in £/MWh
 ```
 
-Execution archetype is controlled numerically by `baseline_hedge_ratio`: set `1.0` for a full passive hedge (all volume exits at MID), or `0.0` for imbalance-only settlement (Phase 1 behaviour). The default `0.5` runs the hybrid two-slice engine.
+Execution archetype is controlled numerically by `baseline_hedge_ratio`: set `1.0` for a full passive hedge (all volume exits at MID), or `0.0` for imbalance-only settlement (Phase 1 behaviour). The default `0.15` runs the hybrid two-slice engine at the production ratio selected in notebook 02 (the risk-adjusted criterion is flat over 0.00–0.15; production takes the upper edge of the band).
 
 | Key | Description |
 |---|---|

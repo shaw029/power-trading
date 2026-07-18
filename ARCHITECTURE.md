@@ -5,7 +5,7 @@ This system models the behavior of a **Non-Physical Participant (Virtual Trader)
 
 **The Objective:** The strategy takes directional exposure in the **EPEX SPOT Day-Ahead (DA) auction** based on expected system imbalance, then manages exit through a two-slice hybrid engine:
 
-1. **Passive slice** (`baseline_hedge_ratio`, default 50%) — always unwound at the Market Index Price (MID), the continuous intraday mid-market. This is the primary exit path and the one the whitepaper refers to as "intraday."
+1. **Passive slice** (`baseline_hedge_ratio`, default 15%) — always unwound at the Market Index Price (MID), the continuous intraday mid-market, paying the modelled spread-to-MID execution cost.
 2. **Active slice** (`1 − baseline_hedge_ratio`) — exits at MID if a Take-Profit or Stop-Loss level is reached; if neither trigger fires, it settles at the system imbalance price (SSP for longs, SBP for shorts). Imbalance is the terminal fallback for this slice, not an accident of undeliverable volume.
 
 *Crucial Market Distinction:* The strategy does *not* treat the Imbalance mechanism (SSP/SBP) as a primary liquidity venue for arbitrage. Instead, it uses machine learning to proxy expected system imbalance via forecast-driven residual load. **Mispricing is explicitly defined as the deviation between the model-implied fair value (derived from residual load and forecast dynamics) and the observed Day-Ahead auction price.** A DA position is taken when this mispricing is detected; the passive slice always exits at MID, and the active slice targets MID via TP/SL — with imbalance as its deliberate terminal settlement when the price target is not reached within the delivery window.
