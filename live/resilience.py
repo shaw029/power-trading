@@ -45,13 +45,17 @@ def residual_load(system: pd.DataFrame) -> pd.Series:
 
     ``system`` is the half-hourly frame from
     :func:`live.fetch_live.get_day_system` (or several concatenated days).
-    Missing columns contribute zero rather than failing, so a day without a
-    solar print still classifies — the caller sees the coverage it has.
+    Missing data propagates as NaN rather than being zero-filled: a period
+    without a wind or solar print would otherwise read as demand-minus-nothing
+    — an inflated residual that can raise false stress flags downstream.
+    Periods (or whole days) with any component missing therefore come back as
+    NaN and are excluded from classification, never fabricated.
     """
-    demand = system.get("demand_actual", pd.Series(0.0, index=system.index))
-    wind = system.get("gen_WIND", pd.Series(0.0, index=system.index))
-    solar = system.get("solar_mw", pd.Series(0.0, index=system.index))
-    return (demand.fillna(0.0) - wind.fillna(0.0) - solar.fillna(0.0)).rename("residual_mw")
+    nan = pd.Series(float("nan"), index=system.index)
+    demand = system.get("demand_actual", nan)
+    wind = system.get("gen_WIND", nan)
+    solar = system.get("solar_mw", nan)
+    return (demand - wind - solar).rename("residual_mw")
 
 
 def classify_periods(
@@ -67,7 +71,13 @@ def classify_periods(
     analysis period. ``prices`` (aligned, any frequency reindexed by the
     caller) adds negative-price periods to the surplus set — being paid to
     consume is surplus by definition regardless of residual level.
+
+    Periods whose residual is NaN (missing demand, wind or solar data) are
+    dropped from the output entirely: they are *unclassifiable*, which is
+    different from being not-stressed, and must not enter the quantiles or
+    the flags.
     """
+    residual = residual.dropna()
     stress_level = residual.quantile(stress_q)
     surplus_level = residual.quantile(surplus_q)
     flags = pd.DataFrame(index=residual.index)

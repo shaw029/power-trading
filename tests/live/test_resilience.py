@@ -42,10 +42,28 @@ def test_residual_load_subtracts_wind_and_solar():
     assert res.tolist() == [20000.0, 20000.0, 20000.0, 20000.0]
 
 
-def test_residual_load_missing_columns_contribute_zero():
+def test_residual_load_missing_component_propagates_nan():
+    # A day without a solar feed must not classify as demand-minus-wind only —
+    # the whole day's residual comes back NaN and is excluded downstream.
     idx = _idx(2)
-    system = pd.DataFrame({"demand_actual": [25000.0, 26000.0]}, index=idx)
-    assert resilience.residual_load(system).tolist() == [25000.0, 26000.0]
+    system = pd.DataFrame(
+        {"demand_actual": [25000.0, 26000.0], "gen_WIND": [8000.0, 8000.0]},
+        index=idx,
+    )
+    assert resilience.residual_load(system).isna().all()
+
+
+def test_classify_periods_excludes_unclassifiable_periods():
+    # One period missing wind: it must vanish from the flags frame rather
+    # than default to not-stressed, and must not distort the quantiles.
+    idx = _idx(10)
+    residual = pd.Series(
+        [10, 20, 30, 40, float("nan"), 60, 70, 80, 90, 100], index=idx, dtype=float
+    )
+    flags = resilience.classify_periods(residual)
+    assert len(flags) == 9
+    assert idx[4] not in flags.index
+    assert flags.loc[idx[9], "stress"]
 
 
 def test_classify_periods_quantiles_and_negative_prices():
