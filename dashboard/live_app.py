@@ -2,8 +2,10 @@
 
 Fetches recent GB market data live (Nord Pool N2EX day-ahead prices + Elexon
 MID / generation / demand — both public, no API key), settles the reference
-battery with user-chosen parameters, and renders a sidebar-navigated app:
-benchmark pages (Latest day / History / Day types), a real-fleet page and the
+battery with user-chosen parameters, and renders a sidebar-navigated app
+grouped by epistemic status: the Benchmark (Day briefing / History), the
+observed GB power system (System overview / Fleet performance), the Research
+analyses (Day types / Benchmark vs fleet / Alignment gap) and the
 methodology. Because the engine re-runs on each parameter change, the
 dashboard is interactive rather than precomputed; it is meant to run on
 Streamlit Cloud.
@@ -359,23 +361,30 @@ def _range_dispatch(days, duration) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # Benchmark pages
 # --------------------------------------------------------------------------- #
-def _page_latest():
+def _page_day():
+    """The daily briefing: one day, holistically — market context, dispatch,
+    earnings and system alignment. The page owns the app's only day picker;
+    sidebar filters define the window it picks from."""
     view = _benchmark_view()
     if view is None:
         return
     params, shown, caption = view
     duration = params["duration"]
 
-    _page_header("Latest settled day", caption)
+    _page_header("Day", caption)
 
-    # Defaults to the most recent settled day, but any day in the filtered
-    # window can be inspected without leaving the page.
     dates = [d["date"] for d in shown]
+    # The picker persists across pages/filters; a filter change that strands
+    # the chosen day snaps back to the latest day in the window.
+    if st.session_state.get("briefing_day") not in dates:
+        st.session_state.pop("briefing_day", None)
     picked = st.selectbox(
         "Day",
         options=dates,
         index=len(dates) - 1,
-        help="Defaults to the latest settled day — pick any other day to inspect it.",
+        key="briefing_day",
+        help="Defaults to the latest settled day — pick any other day for its "
+        "full briefing.",
     )
     record = next(d for d in shown if d["date"] == picked)
     dur_result = record["result"].durations[duration]
@@ -419,9 +428,29 @@ def _page_latest():
     prices_hourly = _prices_hourly(dispatch)
     da_sched = _da_sched_frame(dispatch)
 
-    # A single settled day is already zoomed in, so no scrollable explorer here —
-    # just the by-hour dispatch shape, the SOC path and the PnL bridge.
-    st.plotly_chart(chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch")
+    # Centerpiece: the day's dispatch against system state. Falls back to the
+    # realised dispatch shape when system data is unavailable.
+    flags = _window_flags(tuple(dates))
+    day_date = dt.date.fromisoformat(picked)
+    day_flags = flags[flags.index.date == day_date] if not flags.empty else flags
+    log = dur_result.dispatch_log
+    day_dispatch = pd.Series(
+        [e["final_mw"] for e in log],
+        index=pd.date_range(picked, periods=len(log), freq="1h", tz="UTC"),
+    )
+    if not day_flags.empty:
+        st.plotly_chart(chart_alignment_day(day_flags, day_dispatch), width="stretch")
+    else:
+        st.plotly_chart(
+            chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch"
+        )
+
+    try:
+        day_prices, _ = _fetch_day(picked)
+        st.plotly_chart(chart_system_prices(day_prices), width="stretch")
+    except Exception:
+        pass
+
     left, right = st.columns(2)
     left.plotly_chart(
         chart_soc_tracker(
@@ -436,6 +465,50 @@ def _page_latest():
         chart_pnl_waterfall(pd.DataFrame([_pnl_row(record["date"], dur_result)])),
         width="stretch",
     )
+
+    with st.expander("Battery detail"):
+        st.plotly_chart(
+            chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch"
+        )
+
+    with st.expander("System detail"):
+        system = _system_day(picked)
+        if system.empty:
+            st.info("No system data available for this day.")
+        else:
+            groups = fetch_live.group_generation(system)
+            demand = (
+                system["demand_actual"] if "demand_actual" in system.columns else None
+            )
+            st.plotly_chart(chart_generation_mix(groups, demand), width="stretch")
+            raw = system.copy()
+            raw.index = raw.index.strftime("%Y-%m-%d %H:%M")
+            st.download_button(
+                "Download CSV",
+                system.to_csv().encode(),
+                file_name=f"system_{picked}.csv",
+                mime="text/csv",
+            )
+            st.dataframe(raw, width="stretch")
+
+    with st.expander("Fleet this day"):
+        fleet_day = _fleet_day(picked)
+        if fleet_day.empty:
+            st.info("No fleet data available for this day.")
+        else:
+            top = fleet_day.nlargest(5, "gbp_per_mw")[
+                ["site", "optimiser", "gbp_per_mw"]
+            ].rename(
+                columns={"site": "Site", "optimiser": "Optimiser",
+                         "gbp_per_mw": "£/MW"}
+            )
+            st.caption("Top real sites by estimated £/MW on this day "
+                       "(wholesale + BM; see Fleet performance for scope).")
+            st.dataframe(
+                top.style.format({"£/MW": "£{:,.0f}"}),
+                width="stretch",
+                hide_index=True,
+            )
 
 
 def _page_history():
@@ -654,12 +727,12 @@ def _global_filters(date_isos: tuple) -> tuple[str, str, list[str]]:
         preset = st.segmented_control(
             "Period",
             list(_PERIOD_PRESETS) + ["Custom"],
-            default="60D",
+            default="30D",
             key="flt_period",
             help="Quick windows count back from the most recent settled day.",
         )
         # A segmented control can be deselected entirely; treat that as "all".
-        preset = preset or "60D"
+        preset = preset or "30D"
 
         if preset == "Custom":
             picked = st.date_input(
@@ -681,16 +754,23 @@ def _global_filters(date_isos: tuple) -> tuple[str, str, list[str]]:
             n = _PERIOD_PRESETS[preset]
             start, end = date_isos[max(0, len(date_isos) - n)], date_isos[-1]
 
-        day_types = st.pills(
+        # One compact control for all twelve tags, ordered drivers → price
+        # character → untagged so the taxonomy reads top to bottom.
+        tag_options = (
+            sorted(classify_mod.DRIVER_TAGS)
+            + sorted(classify_mod.PRICE_TAGS)
+            + ["untagged"]
+        )
+        day_types = st.multiselect(
             "Day types",
-            sorted(classify_mod.TAGS) + ["untagged"],
-            selection_mode="multi",
+            tag_options,
             key="flt_day_types",
             format_func=lambda tag: tag.replace("_", " "),
+            placeholder="All day types",
             help=(
-                "Day character from the classifier — none selected means all "
-                "days. 'untagged' covers days with no clear character or no "
-                "classification data."
+                "Day character from the classifier (drivers first, then price "
+                "character) — none selected means all days. 'untagged' covers "
+                "days with no clear character or no classification data."
             ),
         )
 
@@ -1093,6 +1173,7 @@ def _day_labels(date_isos: tuple) -> dict:
 def _page_fleet():
     date_isos = _dates()
     start, end, day_types = _global_filters(date_isos)
+    st.sidebar.caption("The benchmark levers do not affect this page.")
     tags = ", ".join(day_types) if day_types else "all day types"
     _page_header(
         "Real GB fleet",
@@ -1142,6 +1223,7 @@ def _system_summary_day(date_iso: str) -> dict | None:
 def _page_system():
     date_isos = _dates()
     start, end, day_types = _global_filters(date_isos)
+    st.sidebar.caption("The benchmark levers do not affect this page.")
     labels = _day_labels(date_isos)
     days = [
         d
@@ -1212,33 +1294,10 @@ def _page_system():
         "Nord Pool N2EX; MID: Elexon. All free, all public."
     )
 
-    # --- Single-day drill-down: the intraday detail, within the filtered set. --- #
-    st.markdown("#### Day detail")
-    shown_days = list(sdf["date"])
-    picked = st.selectbox(
-        "Day",
-        options=shown_days,
-        index=len(shown_days) - 1,
-        help="Inspect one day's half-hourly shape. Defaults to the latest in the window.",
+    st.caption(
+        "Single-day detail — generation stack, prices and the raw table — "
+        "lives on the Day briefing page."
     )
-    system = _system_day(picked)
-    groups = fetch_live.group_generation(system)
-    demand = system["demand_actual"] if "demand_actual" in system.columns else None
-    st.plotly_chart(chart_generation_mix(groups, demand), width="stretch")
-    st.plotly_chart(
-        chart_system_prices(fetch_live.get_day_prices(dt.date.fromisoformat(picked))),
-        width="stretch",
-    )
-    with st.expander("Raw half-hourly data"):
-        raw = system.copy()
-        raw.index = raw.index.strftime("%Y-%m-%d %H:%M")
-        st.download_button(
-            "Download CSV",
-            system.to_csv().encode(),
-            file_name=f"system_{picked}.csv",
-            mime="text/csv",
-        )
-        st.dataframe(raw, width="stretch")
 
 
 @st.cache_data(show_spinner="Classifying system stress…")
@@ -1379,13 +1438,17 @@ def _page_alignment():
         "delta line is the stress-hour energy arbitrage left undelivered.",
     )
 
-    # --- Day drill-down: dispatch against system state -----------------------
+    # --- Exemplar day: dispatch against system state --------------------------
+    # Auto-selects the window's highest-stress day (the day that tests the
+    # thesis hardest); the picker allows overriding.
+    _exemplar = str(flags["residual_mw"].idxmax().date())
+    _default_i = dates_shown.index(_exemplar) if _exemplar in dates_shown else len(dates_shown) - 1
     picked = st.selectbox(
-        "Day",
+        "Exemplar day",
         options=dates_shown,
-        index=len(dates_shown) - 1,
-        help="Inspect one day's dispatch against residual load, with stress and "
-        "surplus periods shaded.",
+        index=_default_i,
+        help="Auto-selected as the highest residual-load day in the window — "
+        "the day that tests the thesis hardest. Override to inspect any other.",
     )
     day_date = dt.date.fromisoformat(picked)
     day_flags = flags[flags.index.date == day_date]
@@ -1546,6 +1609,18 @@ def _page_methodology():
         st.markdown(FLEET_METHODOLOGY)
     st.subheader("Alignment")
     st.markdown(ALIGNMENT_METHODOLOGY)
+    st.subheader("Design principles")
+    st.markdown(
+        """
+- **Grouping is by epistemic status** — *Benchmark* is simulated, *GB power
+  system* is observed public data, *Research* is analysis using both.
+- **Sidebar filters define the window** (period, day types); the **Day
+  briefing's picker chooses one day within it** and is the app's only day
+  selector. Research pages auto-select their exemplar days and say so.
+- **Benchmark levers appear only on pages they affect**; observed pages carry
+  a note instead.
+"""
+    )
     st.subheader("Definitions")
     st.markdown(GLOSSARY)
 
@@ -1672,11 +1747,14 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded",
     )
+    # Grouped by epistemic status: the model, the observed world, and the
+    # analysis that uses both. The Day briefing is the deliberate cross-cutting
+    # lens and the landing page.
     pages = {
-        "Benchmark battery": [
+        "Benchmark": [
             st.Page(
-                _page_latest,
-                title="Latest day",
+                _page_day,
+                title="Day",
                 icon=":material/bolt:",
                 url_path="latest",
                 default=True,
@@ -1687,26 +1765,6 @@ def main():
                 icon=":material/monitoring:",
                 url_path="history",
             ),
-            st.Page(
-                _page_day_types,
-                title="Day types",
-                icon=":material/partly_cloudy_day:",
-                url_path="day-types",
-            ),
-        ],
-        "Real GB fleet": [
-            st.Page(
-                _page_fleet,
-                title="Fleet performance",
-                icon=":material/battery_charging_full:",
-                url_path="fleet",
-            ),
-            st.Page(
-                _page_sim_vs_fleet,
-                title="Benchmark vs fleet",
-                icon=":material/compare_arrows:",
-                url_path="sim-vs-fleet",
-            ),
         ],
         "GB power system": [
             st.Page(
@@ -1714,6 +1772,26 @@ def main():
                 title="System overview",
                 icon=":material/electric_meter:",
                 url_path="system",
+            ),
+            st.Page(
+                _page_fleet,
+                title="Fleet performance",
+                icon=":material/battery_charging_full:",
+                url_path="fleet",
+            ),
+        ],
+        "Research": [
+            st.Page(
+                _page_day_types,
+                title="Day types",
+                icon=":material/partly_cloudy_day:",
+                url_path="day-types",
+            ),
+            st.Page(
+                _page_sim_vs_fleet,
+                title="Benchmark vs fleet",
+                icon=":material/compare_arrows:",
+                url_path="sim-vs-fleet",
             ),
             st.Page(
                 _page_alignment,
