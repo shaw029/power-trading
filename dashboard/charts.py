@@ -1645,3 +1645,168 @@ def chart_generation_daily(daily: pd.DataFrame, group_cols: list[str]) -> go.Fig
     fig.update_layout(barmode="relative", hovermode="x unified")
     fig.update_yaxes(title_text="Energy (GWh/day)")
     return fig
+
+
+# --------------------------------------------------------------------------- #
+# Alignment (dispatch vs system state)
+# --------------------------------------------------------------------------- #
+# Shading for classified periods: stress leans on the cost red, surplus on the
+# discharge teal, both at low alpha so the data marks stay dominant.
+_STRESS_FILL = "rgba(227, 73, 72, 0.14)"
+_SURPLUS_FILL = "rgba(27, 175, 122, 0.12)"
+
+
+def _flag_spans(flags: pd.Series) -> list[tuple]:
+    """Contiguous True spans of a boolean series → [(start, end), …]."""
+    spans = []
+    start = None
+    for ts, val in flags.items():
+        if val and start is None:
+            start = ts
+        elif not val and start is not None:
+            spans.append((start, ts))
+            start = None
+    if start is not None:
+        spans.append((start, flags.index[-1]))
+    return spans
+
+
+def chart_alignment_day(day_flags: pd.DataFrame, dispatch_mw: pd.Series) -> go.Figure:
+    """One day: residual load with stress/surplus shading over battery dispatch.
+
+    ``day_flags`` is the half-hourly classification frame (``residual_mw``,
+    ``stress``, ``surplus``) for a single day; ``dispatch_mw`` the benchmark's
+    hourly net dispatch (positive = discharge). Two stacked panels share the
+    time axis — residual load is a system quantity in GW, dispatch a battery
+    quantity in MW, so they never share a y-axis.
+    """
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.06,
+        row_heights=[0.55, 0.45],
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=day_flags.index,
+            y=day_flags["residual_mw"] / 1000.0,
+            name="Residual load",
+            mode="lines",
+            line=dict(color=COLORS["net"], width=2),
+            hovertemplate="%{x|%H:%M}<br>Residual %{y:,.1f} GW<extra></extra>",
+        ),
+        row=1, col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=dispatch_mw.index,
+            y=dispatch_mw.values,
+            name="Benchmark dispatch",
+            marker_color=_dispatch_bar_colors(dispatch_mw.values),
+            hovertemplate="%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+        ),
+        row=2, col=1,
+    )
+    # ISO strings keep the shapes serialisable for every renderer (kaleido's
+    # JSON encoder rejects raw Timestamps).
+    for start, end in _flag_spans(day_flags["stress"]):
+        fig.add_vrect(x0=str(start), x1=str(end), fillcolor=_STRESS_FILL, line_width=0)
+    for start, end in _flag_spans(day_flags["surplus"]):
+        fig.add_vrect(x0=str(start), x1=str(end), fillcolor=_SURPLUS_FILL, line_width=0)
+
+    apply_theme(
+        fig,
+        height=HEIGHT_LG,
+        title="Dispatch against system state — stress (red) and surplus (green) shaded",
+    )
+    fig.update_layout(hovermode="x unified", showlegend=True)
+    fig.update_yaxes(title_text="Residual load (GW)", row=1, col=1)
+    fig.update_yaxes(title_text="Dispatch (MW)", row=2, col=1)
+    return fig
+
+
+def chart_alignment_scatter(df: pd.DataFrame, sim_coverage: float | None,
+                            sim_gbp: float) -> go.Figure:
+    """Profit vs alignment: each fleet site by stress coverage and £/MW/day.
+
+    The poster-level view: where do real GB batteries sit on the
+    profit/resilience plane, and where does the profit-optimal benchmark sit?
+    ``df`` columns: ``site``, ``optimiser``, ``stress_coverage`` (0–1),
+    ``gbp_per_mw_day``, ``excluded`` (⚠ ancillary-tilted, ghosted).
+    """
+    fig = go.Figure()
+    for excluded, name, color in (
+        (False, "Fleet sites", COLORS["da"]),
+        (True, "⚠ ancillary-tilted (excluded)", COLORS["ghost"]),
+    ):
+        sub = df[df["excluded"] == excluded]
+        if sub.empty:
+            continue
+        hover = [f"{s} · {o}" for s, o in zip(sub["site"], sub["optimiser"])]
+        fig.add_trace(
+            go.Scatter(
+                x=sub["stress_coverage"],
+                y=sub["gbp_per_mw_day"],
+                mode="markers",
+                name=name,
+                marker=dict(color=color, size=10, line=dict(width=1, color="white")),
+                customdata=hover,
+                hovertemplate=(
+                    "%{customdata}<br>Stress coverage %{x:.0%} · "
+                    "£%{y:,.0f}/MW/day<extra></extra>"
+                ),
+            )
+        )
+    if sim_coverage is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=[sim_coverage],
+                y=[sim_gbp],
+                mode="markers",
+                name="Benchmark (profit-optimal)",
+                marker=dict(color=COLORS["net"], size=14, symbol="star"),
+                hovertemplate=(
+                    "Benchmark<br>Stress coverage %{x:.0%} · "
+                    "£%{y:,.0f}/MW/day<extra></extra>"
+                ),
+            )
+        )
+    apply_theme(
+        fig, height=DEFAULT_CHART_HEIGHT,
+        title="Profit vs alignment — revenue against stress coverage",
+    )
+    fig.update_layout(hovermode="closest")
+    fig.update_xaxes(title_text="Stress coverage (share of discharge in stress hours)",
+                     tickformat=".0%")
+    fig.update_yaxes(title_text="Estimated revenue (£/MW/day)")
+    return fig
+
+
+def chart_gap_by_daytype(df: pd.DataFrame) -> go.Figure:
+    """Profit cost of full alignment per day-type tag (£/MW/day).
+
+    ``df`` columns: ``tag``, ``family``, ``gap`` (£/MW/day), ``days``. Same
+    family colours and ordering conventions as the Day types page.
+    """
+    order = _daytype_order(df.rename(columns={"gap": "capture"}), "capture")
+    d = df.set_index("tag").loc[order].reset_index()
+    fig = go.Figure(
+        go.Bar(
+            x=d["gap"],
+            y=d["tag"],
+            orientation="h",
+            marker_color=[FAMILY_COLORS[f] for f in d["family"]],
+            text=[f"£{v:,.0f}" for v in d["gap"]],
+            textposition="outside",
+            textfont=dict(size=11, color=_INK),
+            customdata=d["days"],
+            hovertemplate="%{y}<br>£%{x:,.0f}/MW/day · %{customdata} day(s)<extra></extra>",
+        )
+    )
+    apply_theme(
+        fig,
+        height=max(HEIGHT_SM, 30 * len(d) + 110),
+        title="Profit cost of full alignment by day-type",
+    )
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title_text="Forgone DA value (£/MW/day)")
+    fig.update_yaxes(categoryorder="array", categoryarray=order)
+    return fig

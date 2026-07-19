@@ -43,6 +43,9 @@ from dashboard.charts import (  # noqa: E402
     chart_pnl_waterfall,
     chart_price_capture,
     chart_realized_shape,
+    chart_alignment_day,
+    chart_alignment_scatter,
+    chart_gap_by_daytype,
     chart_shape_overlay,
     chart_system_prices,
     chart_sim_vs_fleet_daily,
@@ -53,6 +56,7 @@ from fleet import fetch_fleet  # noqa: E402
 from fleet import performance as fleet_perf  # noqa: E402
 from live import classify as classify_mod  # noqa: E402
 from live import fetch_live  # noqa: E402
+from live import resilience  # noqa: E402
 from live.assets import (  # noqa: E402
     DEFAULT_START_SOC,
     REFERENCE_DURATION,
@@ -383,14 +387,17 @@ def _page_latest():
     cols = st.columns(4)
     cols[0].metric(
         "Net PnL",
-        f"£{dur_result.net_pnl:,.0f}",
-        delta=f"{dur_result.net_pnl - window_mean:+,.0f} vs window avg",
-        help="Day-ahead revenue + intraday improvement − execution and degradation costs.",
+        f"£{dur_result.net_pnl / REFERENCE_POWER_MW:,.0f}/MW",
+        delta=f"{(dur_result.net_pnl - window_mean) / REFERENCE_POWER_MW:+,.0f} vs window avg",
+        help="Day-ahead revenue + intraday improvement − execution and degradation "
+        f"costs, per MW of the {REFERENCE_POWER_MW:.0f} MW asset "
+        f"(£{dur_result.net_pnl:,.0f} absolute).",
     )
     cols[1].metric(
         "DA benchmark",
-        f"£{dur_result.benchmark_da_revenue:,.0f}",
-        help="What the frozen day-ahead schedule alone would have earned, before any intraday re-optimisation.",
+        f"£{dur_result.benchmark_da_revenue / REFERENCE_POWER_MW:,.0f}/MW",
+        help="What the frozen day-ahead schedule alone would have earned, before "
+        f"any intraday re-optimisation (£{dur_result.benchmark_da_revenue:,.0f} absolute).",
     )
     cols[2].metric(
         "Cycles",
@@ -445,14 +452,16 @@ def _page_history():
     best_i = int(net.idxmax())
     cols = st.columns(4)
     cols[0].metric(
-        "Total net PnL",
-        f"£{net.sum():,.0f}",
-        help="Sum of daily net PnL over the shown window.",
+        "Avg net PnL",
+        f"£{net.mean() / REFERENCE_POWER_MW:,.0f}/MW/day",
+        help="Average daily net PnL per MW over the shown window — the unit every "
+        "page (and the fleet estimates) reports revenue in.",
     )
     cols[1].metric(
-        "Mean / day",
-        f"£{net.mean():,.0f}",
-        help="Average daily net PnL over the shown window.",
+        "Total net PnL",
+        f"£{net.sum():,.0f}",
+        help=f"Sum of daily net PnL for the {REFERENCE_POWER_MW:.0f} MW asset "
+        "over the shown window.",
     )
     cols[2].metric(
         "Positive days",
@@ -461,10 +470,11 @@ def _page_history():
     )
     cols[3].metric(
         "Best day",
-        f"£{net.max():,.0f}",
+        f"£{net.max() / REFERENCE_POWER_MW:,.0f}/MW",
         delta=results_df.loc[best_i, "date"],
         delta_color="off",
-        help="Highest single-day net PnL in the shown window.",
+        help=f"Highest single-day net PnL in the shown window "
+        f"(£{net.max():,.0f} absolute).",
     )
 
     st.plotly_chart(chart_daily_attribution(results_df), width="stretch")
@@ -528,23 +538,27 @@ def _page_day_types():
             membership_rows.append(
                 {
                     "date": record["date"],
-                    "tag": tag,
+                    "tag": tag.replace("_", " "),
                     "family": "driver" if tag in classify_mod.DRIVER_TAGS else "price",
                     "capture": dur_result.capture,
                 }
             )
         for d in drivers or ["(none)"]:
             for p in price_tags or ["(none)"]:
-                matrix_counts[(d, p)] = matrix_counts.get((d, p), 0) + 1
+                key = (d.replace("_", " "), p.replace("_", " "))
+                matrix_counts[key] = matrix_counts.get(key, 0) + 1
         # SOC shape is grouped by price character only — that's what dispatch
         # actually responds to; a windy-tag average would blur distinct shapes.
         for tag in price_tags or ["untagged"]:
             for i, entry in enumerate(dur_result.dispatch_log):
-                profile_rows.append({"hour": i % 24, "soc": entry["soc_after"], "day_type": tag})
+                profile_rows.append(
+                    {"hour": i % 24, "soc": entry["soc_after"],
+                     "day_type": tag.replace("_", " ")}
+                )
         table_rows.append(
             {
                 "date": record["date"],
-                "tags": ", ".join(labels) or "untagged",
+                "tags": ", ".join(tag.replace("_", " ") for tag in labels) or "untagged",
                 "gbp_per_mw": dur_result.net_pnl / REFERENCE_POWER_MW,
                 "capture": dur_result.capture,
                 "cycles": dur_result.cycles,
@@ -575,13 +589,13 @@ def _page_day_types():
         columns={
             "date": "Date",
             "tags": "Tags",
-            "gbp_per_mw": "£/MW",
+            "gbp_per_mw": "£/MW/day",
             "capture": "Capture",
             "cycles": "Cycles",
         }
     )
     st.dataframe(
-        table.style.format({"£/MW": "£{:,.0f}", "Capture": "{:.0%}", "Cycles": "{:.2f}"}),
+        table.style.format({"£/MW/day": "£{:,.0f}", "Capture": "{:.0%}", "Cycles": "{:.2f}"}),
         width="stretch",
         hide_index=True,
     )
@@ -671,6 +685,7 @@ def _global_filters(date_isos: tuple) -> tuple[str, str, list[str]]:
             sorted(classify_mod.TAGS) + ["untagged"],
             selection_mode="multi",
             key="flt_day_types",
+            format_func=lambda tag: tag.replace("_", " "),
             help=(
                 "Day character from the classifier — none selected means all "
                 "days. 'untagged' covers days with no clear character or no "
@@ -915,7 +930,7 @@ def _page_sim_vs_fleet():
     params, shown, caption = view
     duration = params["duration"]
 
-    _page_header("Sim vs fleet", caption)
+    _page_header("Benchmark vs fleet", caption)
     st.caption(
         "The simulation is a **perfect-foresight DA+MID ceiling** for one idealised "
         "battery; fleet numbers are free-data estimates spanning several markets. "
@@ -1223,15 +1238,313 @@ def _page_system():
         st.dataframe(raw, width="stretch")
 
 
+@st.cache_data(show_spinner="Classifying system stress…")
+def _window_flags(date_isos: tuple) -> pd.DataFrame:
+    """Half-hourly residual load + stress/surplus flags over the shown window.
+
+    Thresholds are quantiles over this window, so the classification is
+    relative to the period on screen. Days whose system data is unavailable
+    contribute nothing; negative-price periods (hourly DA, forward-filled to
+    the half-hourly grid) join the surplus set.
+    """
+    residual_parts, price_parts = [], []
+    for iso in date_isos:
+        system = _system_day(iso)
+        if system.empty:
+            continue
+        residual_parts.append(resilience.residual_load(system))
+        try:
+            prices, _ = _fetch_day(iso)
+            price_parts.append(prices["day_ahead_price"])
+        except Exception:
+            pass
+    if not residual_parts:
+        return pd.DataFrame()
+    residual = pd.concat(residual_parts).sort_index()
+    prices = pd.concat(price_parts).sort_index() if price_parts else None
+    return resilience.classify_periods(residual, prices)
+
+
+def _sim_series(shown: list, duration: str) -> tuple[pd.Series, pd.Series]:
+    """Hourly benchmark dispatch (MW, +discharge) and SOC-before series."""
+    dispatch, soc = {}, {}
+    for record in shown:
+        log = record["result"].durations[duration].dispatch_log
+        idx = pd.date_range(record["date"], periods=len(log), freq="1h", tz="UTC")
+        for ts, entry in zip(idx, log):
+            dispatch[ts] = entry["final_mw"]
+            soc[ts] = entry["soc_before"]
+    return pd.Series(dispatch).sort_index(), pd.Series(soc).sort_index()
+
+
+def _page_alignment():
+    view = _benchmark_view()
+    if view is None:
+        return
+    params, shown, caption = view
+    duration = params["duration"]
+
+    _page_header("Alignment gap", caption)
+    st.caption(
+        "Does profit-optimal dispatch serve the system? Stress = top-decile "
+        "residual load (demand − wind − solar) in the shown window; surplus = "
+        "bottom decile or negative prices. The gap compares this dispatch with a "
+        "resilience-optimal counterfactual under identical physics. Definitions "
+        "on the Methodology page."
+    )
+
+    dates_shown = [d["date"] for d in shown]
+    flags = _window_flags(tuple(dates_shown))
+    if flags.empty:
+        st.warning("No system data available for the shown window — the Elexon or "
+                   "PV_Live feeds may be temporarily unavailable.")
+        return
+
+    hourly_flags = pd.DataFrame(
+        {
+            "residual_mw": flags["residual_mw"].resample("1h").mean(),
+            "stress": flags["stress"].resample("1h").max().astype(bool),
+            "surplus": flags["surplus"].resample("1h").max().astype(bool),
+        }
+    ).dropna(subset=["residual_mw"])
+
+    sim_dispatch, sim_soc = _sim_series(shown, duration)
+    scores = resilience.alignment_scores(sim_dispatch, hourly_flags)
+    readiness = resilience.readiness_at_stress(sim_soc, hourly_flags["stress"])
+
+    # Per-day gap vs the resilience-optimal counterfactual (same asset, same
+    # levers, same day-start SOC).
+    gap_days = []
+    for record in shown:
+        dur_result = record["result"].durations[duration]
+        log = dur_result.dispatch_log
+        idx = pd.date_range(record["date"], periods=len(log), freq="1h", tz="UTC")
+        stress = hourly_flags["stress"].reindex(idx).fillna(False).tolist()
+        surplus = hourly_flags["surplus"].reindex(idx).fillna(False).tolist()
+        asset = BESSAsset(
+            capacity_mwh=REFERENCE_POWER_MW * _duration_hours(duration),
+            power_mw=REFERENCE_POWER_MW,
+            charge_efficiency=bess_config()["charge_efficiency"],
+            discharge_efficiency=bess_config()["discharge_efficiency"],
+            degradation_cost_per_mwh=params["degradation"],
+            initial_soc_pct=log[0]["soc_before"] if log else 0.5,
+            min_soc_pct=params["soc_min"],
+            max_soc_pct=params["soc_max"],
+        )
+        gap = resilience.alignment_gap(
+            arb_dispatch_mw=[e["final_mw"] for e in log],
+            day_ahead_prices=[e["da_price_actual"] for e in log],
+            stress=stress,
+            surplus=surplus,
+            asset=asset,
+            target_daily_cycles=params["cycle_target"],
+        )
+        gap["date"] = record["date"]
+        gap["labels"] = record["labels"]
+        gap_days.append(gap)
+    gap_df = pd.DataFrame(gap_days)
+    mean_gap_mw_day = float(gap_df["profit_cost_of_alignment"].mean()) / REFERENCE_POWER_MW
+    stress_forgone = float(gap_df["stress_mwh_forgone"].sum())
+
+    cols = st.columns(4)
+    cols[0].metric(
+        "Stress coverage",
+        f"{scores['stress_coverage']:.0%}" if scores["stress_coverage"] is not None else "—",
+        help="Share of the benchmark's discharged energy delivered during "
+        "stress periods (top-decile residual load).",
+    )
+    cols[1].metric(
+        "Surplus absorption",
+        f"{scores['surplus_absorption']:.0%}"
+        if scores["surplus_absorption"] is not None else "—",
+        help="Share of the benchmark's charged energy drawn during surplus "
+        "periods (bottom-decile residual load or negative prices).",
+    )
+    cols[2].metric(
+        "Readiness at stress",
+        f"{readiness:.0%}" if readiness is not None else "—",
+        help="Mean state of charge held when a stress block begins — the energy "
+        "actually available when the system tightens.",
+    )
+    cols[3].metric(
+        "Cost of full alignment",
+        f"£{mean_gap_mw_day:,.0f}/MW/day",
+        f"{stress_forgone:,.0f} MWh stress delivery forgone",
+        delta_color="off",
+        help="DA energy value the profit-optimal dispatch would give up by "
+        "switching to the resilience-optimal schedule (same physics); the "
+        "delta line is the stress-hour energy arbitrage left undelivered.",
+    )
+
+    # --- Day drill-down: dispatch against system state -----------------------
+    picked = st.selectbox(
+        "Day",
+        options=dates_shown,
+        index=len(dates_shown) - 1,
+        help="Inspect one day's dispatch against residual load, with stress and "
+        "surplus periods shaded.",
+    )
+    day_date = dt.date.fromisoformat(picked)
+    day_flags = flags[flags.index.date == day_date]
+    day_dispatch = sim_dispatch[sim_dispatch.index.date == day_date]
+    if not day_flags.empty and not day_dispatch.empty:
+        st.plotly_chart(chart_alignment_day(day_flags, day_dispatch), width="stretch")
+    else:
+        st.info("No overlapping system data for this day.")
+
+    # --- Fleet: profit vs alignment ------------------------------------------
+    fleet_df = _with_duration(_fleet_range(_dates()))
+    scatter_df = pd.DataFrame()
+    profiles = pd.DataFrame()
+    if not fleet_df.empty:
+        fleet_df = fleet_df[fleet_df["date"].isin(dates_shown)]
+    if not fleet_df.empty:
+        site_df = fleet_perf.summarise_by_site(fleet_df)
+        profiles = pd.concat(
+            [_fleet_profile_day(iso) for iso in dates_shown], ignore_index=True
+        )
+        rows = []
+        for _, site in site_df.iterrows():
+            mine = profiles[profiles["site"] == site["site"]]
+            if mine.empty:
+                continue
+            series = mine.set_index("time")["mw"].sort_index()
+            s = resilience.alignment_scores(series, flags)
+            if s["stress_coverage"] is None:
+                continue
+            rows.append(
+                {
+                    "site": site["site"],
+                    "optimiser": site["optimiser"],
+                    "stress_coverage": s["stress_coverage"],
+                    "gbp_per_mw_day": site["gbp_per_mw_day"],
+                    "excluded": bool(site["likely_ancillary"]),
+                }
+            )
+        scatter_df = pd.DataFrame(rows)
+    if not scatter_df.empty:
+        sim_gbp = float(
+            pd.Series(
+                [d["result"].durations[duration].net_pnl for d in shown]
+            ).mean()
+        ) / REFERENCE_POWER_MW
+        st.plotly_chart(
+            chart_alignment_scatter(scatter_df, scores["stress_coverage"], sim_gbp),
+            width="stretch",
+        )
+        st.caption(
+            "Fleet revenue is the wholesale+BM estimate (£/MW/day); fleet stress "
+            "coverage is computed from each site's Physical Notifications with "
+            "the same classifier as the benchmark. ⚠ sites are ancillary-tilted; "
+            "their revenue is understated."
+        )
+
+    # --- Gap by day type + stress events --------------------------------------
+    tag_rows: dict[str, dict] = {}
+    for _, row in gap_df.iterrows():
+        for tag in row["labels"] or []:
+            slot = tag_rows.setdefault(
+                tag,
+                {
+                    "tag": tag.replace("_", " "),
+                    "family": "driver" if tag in classify_mod.DRIVER_TAGS else "price",
+                    "gap_sum": 0.0,
+                    "days": 0,
+                },
+            )
+            slot["gap_sum"] += row["profit_cost_of_alignment"] / REFERENCE_POWER_MW
+            slot["days"] += 1
+    left, right = st.columns(2)
+    if tag_rows:
+        by_tag = pd.DataFrame(
+            [
+                {**v, "gap": v["gap_sum"] / v["days"]}
+                for v in tag_rows.values()
+            ]
+        )
+        left.plotly_chart(chart_gap_by_daytype(by_tag), width="stretch")
+
+    stress_events = flags[flags["stress"]].nlargest(10, "residual_mw").copy()
+    if not stress_events.empty:
+        hourly_dispatch = sim_dispatch.reindex(
+            stress_events.index.floor("1h")
+        ).to_numpy()
+        fleet_net = (
+            profiles.groupby("time")["mw"].sum()
+            if not profiles.empty
+            else pd.Series(dtype=float)
+        )
+        table = pd.DataFrame(
+            {
+                "Time (UTC)": stress_events.index.strftime("%Y-%m-%d %H:%M"),
+                "Residual (GW)": stress_events["residual_mw"] / 1000.0,
+                "Benchmark (MW)": hourly_dispatch,
+                "Fleet net (MW)": fleet_net.reindex(stress_events.index).to_numpy()
+                if not fleet_net.empty
+                else float("nan"),
+            }
+        )
+        right.markdown("#### Top stress periods")
+        right.dataframe(
+            table.style.format(
+                {"Residual (GW)": "{:,.1f}", "Benchmark (MW)": "{:,.0f}",
+                 "Fleet net (MW)": "{:,.0f}"}
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+
+
+ALIGNMENT_METHODOLOGY = """
+The Alignment page quantifies the relationship between profit-optimal dispatch
+and system need, from the same public feeds as everything else.
+
+- **Residual load** — transmission demand (ITSDO) minus wind (FUELHH) minus
+  embedded solar (PV_Live), half-hourly. **Stress** = top decile of residual
+  load over the shown window; **surplus** = bottom decile, or any
+  negative-price period.
+- **Stress coverage / surplus absorption** — the share of discharged energy
+  delivered in stress periods and of charged energy drawn in surplus periods.
+  The same scorer runs on the benchmark's dispatch and on each fleet site's
+  Physical Notifications, so simulated and real behaviour are comparable.
+- **Readiness** — mean state of charge at the onset of each stress block.
+- **Alignment gap** — the benchmark's dispatch versus a resilience-optimal
+  counterfactual (identical SOC window, power, efficiency and cycle cap;
+  objective = deliver in stress, absorb in surplus). Both schedules are valued
+  at the cleared DA price with no intraday layer or fees, plus a symmetric
+  terminal-inventory credit (the day's SOC change valued at the day-mean DA
+  price), giving the profit cost of full alignment and the stress-hour energy
+  pure arbitrage leaves undelivered.
+- **Caveats** — demand is transmission-metered (embedded generation nets off);
+  stress is a residual-load proxy, not NESO margin data; benchmark dispatch
+  uses the perfect-foresight intraday engine.
+"""
+
+GLOSSARY = """
+| Term | Definition |
+|---|---|
+| **Capture** | Benchmark net PnL ÷ its perfect-foresight DA arbitrage ceiling for the same day |
+| **Realisation** | Fleet wholesale £/MW/day ÷ the matching-duration benchmark ceiling over the same days |
+| **Cycle** | One full discharge equivalent: discharged MWh ÷ nameplate MWh |
+| **Residual load** | Demand − wind − embedded solar (MW) |
+| **Stress / surplus** | Top-decile residual load / bottom decile or negative prices, over the shown window |
+| **Alignment gap** | DA value forgone by the resilience-optimal schedule vs the profit-optimal one |
+"""
+
+
 def _page_methodology():
     _page_header("Methodology", "What these numbers are — and what they are not")
     left, right = st.columns(2, gap="large")
     with left:
-        st.subheader("Simulated benchmark")
+        st.subheader("Benchmark battery")
         st.markdown(METHODOLOGY)
     with right:
         st.subheader("Live GB fleet")
         st.markdown(FLEET_METHODOLOGY)
+    st.subheader("Alignment")
+    st.markdown(ALIGNMENT_METHODOLOGY)
+    st.subheader("Definitions")
+    st.markdown(GLOSSARY)
 
 
 # --------------------------------------------------------------------------- #
@@ -1356,7 +1669,7 @@ def main():
         initial_sidebar_state="expanded",
     )
     pages = {
-        "Simulated benchmark": [
+        "Benchmark battery": [
             st.Page(
                 _page_latest,
                 title="Latest day",
@@ -1386,7 +1699,7 @@ def main():
             ),
             st.Page(
                 _page_sim_vs_fleet,
-                title="Sim vs fleet",
+                title="Benchmark vs fleet",
                 icon=":material/compare_arrows:",
                 url_path="sim-vs-fleet",
             ),
@@ -1397,6 +1710,12 @@ def main():
                 title="System overview",
                 icon=":material/electric_meter:",
                 url_path="system",
+            ),
+            st.Page(
+                _page_alignment,
+                title="Alignment gap",
+                icon=":material/balance:",
+                url_path="alignment",
             ),
         ],
         "About": [

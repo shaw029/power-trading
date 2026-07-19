@@ -9,6 +9,8 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from dashboard.charts import (
+    chart_alignment_day,
+    chart_alignment_scatter,
     chart_cycles_vs_revenue,
     chart_daytype_capture,
     chart_daytype_frequency,
@@ -17,6 +19,7 @@ from dashboard.charts import (
     chart_daytype_ratio,
     chart_duration_comparison,
     chart_equity_curve,
+    chart_gap_by_daytype,
     chart_generation_daily,
     chart_generation_mix,
     chart_price_capture,
@@ -248,3 +251,53 @@ def test_chart_daytype_profiles_returns_figure():
     fig = chart_daytype_profiles(df)
     assert isinstance(fig, go.Figure)
     assert len(fig.data) >= 1
+
+
+def test_chart_alignment_day_two_panels_with_shading():
+    idx = pd.date_range("2026-06-01T00:00:00Z", periods=8, freq="30min")
+    flags = pd.DataFrame(
+        {
+            "residual_mw": [20000.0, 21000, 22000, 25000, 26000, 24000, 15000, 12000],
+            "stress": [False, False, False, True, True, False, False, False],
+            "surplus": [False] * 6 + [True, True],
+        },
+        index=idx,
+    )
+    dispatch = pd.Series(
+        [0.0, -50.0, 0.0, 50.0],
+        index=pd.date_range("2026-06-01T00:00:00Z", periods=4, freq="1h"),
+    )
+    fig = chart_alignment_day(flags, dispatch)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 2                      # residual line + dispatch bars
+    # One stress + one surplus band, each drawn on both subplot rows.
+    assert len(fig.layout.shapes) == 4
+
+
+def test_chart_alignment_scatter_ghosts_excluded_and_stars_benchmark():
+    df = pd.DataFrame(
+        {
+            "site": ["A", "B", "C"],
+            "optimiser": ["x", "y", "z"],
+            "stress_coverage": [0.5, 0.2, 0.7],
+            "gbp_per_mw_day": [80.0, 30.0, 70.0],
+            "excluded": [False, True, False],
+        }
+    )
+    fig = chart_alignment_scatter(df, sim_coverage=0.6, sim_gbp=90.0)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 3                      # sites, ghosts, benchmark star
+
+
+def test_chart_gap_by_daytype_returns_figure():
+    df = pd.DataFrame(
+        {
+            "tag": ["windy", "volatile"],
+            "family": ["driver", "price"],
+            "gap": [40.0, 90.0],
+            "days": [7, 3],
+        }
+    )
+    fig = chart_gap_by_daytype(df)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 1
