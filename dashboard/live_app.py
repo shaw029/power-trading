@@ -38,6 +38,7 @@ from dashboard.charts import (  # noqa: E402
     chart_fleet_daily,
     chart_fleet_leaderboard,
     chart_generation_daily,
+    chart_low_carbon_daily,
     chart_generation_mix,
     chart_operation_explorer,
     chart_pnl_waterfall,
@@ -1193,6 +1194,8 @@ def _page_system():
     )
 
     st.plotly_chart(chart_generation_daily(sdf, group_cols), width="stretch")
+    low_carbon_cols = [g for g in gen_cols if g in fetch_live.LOW_CARBON_GROUPS]
+    st.plotly_chart(chart_low_carbon_daily(sdf, low_carbon_cols), width="stretch")
     price_daily = pd.DataFrame(
         {"day_ahead_price": sdf["avg_da"], "mid_price": sdf["avg_mid"]},
         index=pd.to_datetime(sdf["date"]),

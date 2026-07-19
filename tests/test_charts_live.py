@@ -22,6 +22,7 @@ from dashboard.charts import (
     chart_gap_by_daytype,
     chart_generation_daily,
     chart_generation_mix,
+    chart_low_carbon_daily,
     chart_price_capture,
     chart_shape_overlay,
     chart_sim_vs_fleet_daily,
@@ -199,6 +200,23 @@ def test_chart_generation_daily_stacks_one_bar_per_day():
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 3  # one stacked bar series per group
     assert fig.layout.barmode == "relative"
+
+
+def test_chart_low_carbon_daily_plots_percentage_and_energy_hover():
+    daily = pd.DataFrame(
+        {
+            "date": ["2024-01-01", "2024-01-02"],
+            "Wind": [100.0, 120.0],
+            "Solar": [10.0, 20.0],
+            "Gas": [90.0, 60.0],
+        }
+    )
+    fig = chart_low_carbon_daily(daily, ["Wind", "Solar"])
+    assert isinstance(fig, go.Figure)
+    assert list(fig.data[0].y) == [0.55, 0.7]
+    assert list(fig.data[0].customdata) == [110.0, 140.0]
+    assert fig.layout.yaxis.tickformat == ".0%"
+    assert tuple(fig.layout.yaxis.range) == (0, 1)
 
 
 def test_chart_system_prices_returns_figure():

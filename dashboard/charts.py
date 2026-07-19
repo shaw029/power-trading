@@ -1647,6 +1647,37 @@ def chart_generation_daily(daily: pd.DataFrame, group_cols: list[str]) -> go.Fig
     return fig
 
 
+def chart_low_carbon_daily(daily: pd.DataFrame, low_carbon_cols: list[str]) -> go.Figure:
+    """Daily low-carbon share of GB generation, with energy in hover."""
+    dates = pd.to_datetime(daily["date"])
+    low_carbon = daily[low_carbon_cols].fillna(0.0).sum(axis=1)
+    generation_cols = [
+        c for c in GENERATION_COLORS if c in daily.columns and c != "Interconnectors"
+    ]
+    total = daily[generation_cols].fillna(0.0).sum(axis=1)
+    share = low_carbon.div(total.where(total > 0))
+    fig = go.Figure(
+        go.Scatter(
+            x=dates,
+            y=share,
+            customdata=low_carbon,
+            name="Low-carbon share",
+            mode="lines+markers",
+            line=dict(color=GENERATION_COLORS["Hydro & storage"], width=3),
+            marker=dict(size=6),
+            fill="tozeroy",
+            fillcolor="rgba(27,175,122,0.14)",
+            hovertemplate=(
+                "%{x|%Y-%m-%d}<br>Low-carbon share: %{y:.1%}<br>"
+                "Low-carbon generation: %{customdata:,.0f} GWh<extra></extra>"
+            ),
+        )
+    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Daily low-carbon generation share")
+    fig.update_yaxes(title_text="Share of GB generation", tickformat=".0%", range=[0, 1])
+    return fig
+
+
 # --------------------------------------------------------------------------- #
 # Alignment (dispatch vs system state)
 # --------------------------------------------------------------------------- #
