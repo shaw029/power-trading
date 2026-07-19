@@ -306,5 +306,12 @@ def get_day_system(date: dt.date) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
     system = pd.concat(frames, axis=1).sort_index()
+    # FUELHH publishes with a short lag, so the latest day's tail periods can
+    # arrive with every fuel missing. Those are unpublished periods, not zero
+    # generation — drop them rather than fabricate zeros, which would crash
+    # the mix stack to zero and inflate residual load (demand minus nothing).
+    gen_cols = [c for c in system.columns if c.startswith("gen_")]
+    if gen_cols:
+        system = system[system[gen_cols].notna().any(axis=1)]
     system.index.name = "time"
     return system

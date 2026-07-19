@@ -46,6 +46,23 @@ def _fleet_mid(date):
     return pd.DataFrame({"mid_price": 80.0}, index=times)
 
 
+def _system(date):
+    """Half-hourly system snapshot: enough structure for residual load,
+    stress/surplus classification and the generation-mix stack."""
+    iso = date.isoformat() if isinstance(date, dt.date) else str(date)
+    times = pd.date_range(f"{iso}T00:00:00Z", periods=48, freq="30min")
+    demand = [25000.0 if i < 36 else 30000.0 for i in range(48)]  # evening peak
+    return pd.DataFrame(
+        {
+            "gen_WIND": 8000.0,
+            "gen_CCGT": 9000.0,
+            "solar_mw": [4000.0 if 18 <= i <= 30 else 0.0 for i in range(48)],
+            "demand_actual": demand,
+        },
+        index=times,
+    )
+
+
 @pytest.fixture
 def app(monkeypatch):
     import dashboard.live_app as live_app
@@ -59,6 +76,7 @@ def app(monkeypatch):
         fetch_fleet, "fetch_fleet_bm_cashflows", lambda d: {"bid": [], "offer": []}
     )
     monkeypatch.setattr(fetch_fleet, "fetch_day_mid_prices", _fleet_mid)
+    monkeypatch.setattr(fetch_live, "get_day_system", _system)
     # Keep the smoke test fast — settle a handful of days, not the full window.
     monkeypatch.setattr(live_app, "_MAX_HISTORY_DAYS", 5)
     # Drop any cached real data from other runs so the mocks take effect.
@@ -66,6 +84,10 @@ def app(monkeypatch):
     live_app._settle_range.clear()
     live_app._fleet_day.clear()
     live_app._day_labels.clear()
+    live_app._system_day.clear()
+    live_app._window_flags.clear()
+    live_app._system_summary_day.clear()
+    live_app._fleet_profile_day.clear()
     return live_app
 
 

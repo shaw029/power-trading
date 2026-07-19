@@ -211,3 +211,19 @@ def test_get_day_context_returns_none_when_fetchers_raise():
         "demand_gwh": None,
         "wind_share": None,
     }
+
+
+def test_get_day_system_drops_unpublished_generation_periods():
+    # FUELHH lag: the last two half-hours arrive with no fuel rows at all.
+    # Those periods must be dropped, not treated as zero generation.
+    gen = _generation_raw()
+    times = pd.date_range("2024-01-01T00:00:00Z", periods=48, freq="30min")
+    gen = gen[~gen["startTime"].isin(times[-2:])]
+    with (
+        mock.patch.object(fetch_live, "fetch_generation_actual", return_value=gen),
+        mock.patch.object(fetch_live, "fetch_solar_actual", return_value=_solar_raw()),
+        mock.patch.object(fetch_live, "fetch_demand_actual", return_value=_demand_raw()),
+    ):
+        system = fetch_live.get_day_system(_DAY)
+    assert len(system) == 46
+    assert not system[[c for c in system.columns if c.startswith("gen_")]].isna().all(axis=1).any()

@@ -169,6 +169,10 @@ def _warm_fetch(date_isos: tuple) -> None:
             _fetch_day(iso)
         except Exception:
             pass  # _settle_range skips unfetchable days
+        try:
+            _system_day(iso)  # warms the briefing/alignment system snapshots
+        except Exception:
+            pass
         bar.progress((i + 1) / n, text=f"Fetching GB market data · {iso} ({i + 1}/{n})")
     bar.empty()
     st.session_state["_prices_warmed"] = True
