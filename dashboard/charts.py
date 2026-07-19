@@ -1841,3 +1841,115 @@ def chart_gap_by_daytype(df: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(title_text="Forgone DA value (£/MW/day)")
     fig.update_yaxes(categoryorder="array", categoryarray=order)
     return fig
+
+
+def chart_day_composite(
+    prices: pd.DataFrame,
+    dispatch_mw: pd.Series,
+    da_mw: pd.Series,
+    soc_pct: pd.Series,
+    day_flags: pd.DataFrame,
+    min_soc_pct: float,
+    max_soc_pct: float,
+) -> go.Figure:
+    """One day on one timeline: prices, action, state and system, aligned.
+
+    Four stacked panels sharing the x-axis — DA/MID prices; dispatch bars with
+    the locked DA commitment as a step reference; the SOC path inside its
+    band; residual load — with stress (red) and surplus (green) periods shaded
+    across all panels. Empty ``day_flags`` simply omits the shading and the
+    residual panel's data.
+    """
+    fig = make_subplots(
+        rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.04,
+        row_heights=[0.28, 0.28, 0.22, 0.22],
+    )
+    for col, name, color in (
+        ("day_ahead_price", "DA price", COLORS["da"]),
+        ("mid_price", "MID price", COLORS["mid"]),
+    ):
+        if col in prices.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=prices.index, y=prices[col], name=name, mode="lines",
+                    line=dict(color=color, width=2),
+                    hovertemplate=name + "<br>%{x|%H:%M}<br>£%{y:,.1f}/MWh<extra></extra>",
+                ),
+                row=1, col=1,
+            )
+    fig.add_trace(
+        go.Scatter(
+            x=da_mw.index, y=da_mw.values, name="DA commitment",
+            mode="lines", line=dict(color=COLORS["ghost"], width=2, shape="hvh"),
+            hovertemplate="DA commitment<br>%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+        ),
+        row=2, col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=dispatch_mw.index, y=dispatch_mw.values, name="Dispatch",
+            marker_color=_dispatch_bar_colors(dispatch_mw.values),
+            hovertemplate="Dispatch<br>%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+        ),
+        row=2, col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=soc_pct.index, y=soc_pct.values, name="SOC",
+            mode="lines", line=dict(color=COLORS["soc"], width=2),
+            hovertemplate="SOC<br>%{x|%H:%M}<br>%{y:.0%}<extra></extra>",
+        ),
+        row=3, col=1,
+    )
+    for level in (min_soc_pct, max_soc_pct):
+        fig.add_hline(y=level, line=dict(color=_AXIS, width=1, dash="dot"), row=3, col=1)
+    if not day_flags.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=day_flags.index, y=day_flags["residual_mw"] / 1000.0,
+                name="Residual load", mode="lines",
+                line=dict(color=COLORS["net"], width=2),
+                hovertemplate="Residual<br>%{x|%H:%M}<br>%{y:,.1f} GW<extra></extra>",
+            ),
+            row=4, col=1,
+        )
+        for start, end in _flag_spans(day_flags["stress"]):
+            fig.add_vrect(x0=str(start), x1=str(end), fillcolor=_STRESS_FILL, line_width=0)
+        for start, end in _flag_spans(day_flags["surplus"]):
+            fig.add_vrect(x0=str(start), x1=str(end), fillcolor=_SURPLUS_FILL, line_width=0)
+
+    apply_theme(
+        fig, height=640,
+        title="The day on one timeline — prices, action, state, system "
+              "(stress red / surplus green)",
+    )
+    fig.update_layout(hovermode="x unified")
+    fig.update_yaxes(title_text="£/MWh", row=1, col=1)
+    fig.update_yaxes(title_text="MW", row=2, col=1)
+    fig.update_yaxes(title_text="SOC", tickformat=".0%", row=3, col=1)
+    fig.update_yaxes(title_text="GW", row=4, col=1)
+    return fig
+
+
+def chart_day_in_window(daily_gbp_per_mw: pd.Series, current: float) -> go.Figure:
+    """Where this day sits in the window's daily net £/MW distribution."""
+    fig = go.Figure(
+        go.Histogram(
+            x=daily_gbp_per_mw.values,
+            nbinsx=20,
+            marker_color=COLORS["ghost"],
+            name="Window days",
+            hovertemplate="£%{x:,.0f}/MW · %{y} day(s)<extra></extra>",
+        )
+    )
+    fig.add_vline(
+        x=current,
+        line=dict(color=COLORS["da"], width=3),
+        annotation_text="this day",
+        annotation_position="top",
+    )
+    apply_theme(fig, height=HEIGHT_SM, title="This day within the window — net £/MW per day")
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title_text="Net PnL (£/MW/day)")
+    fig.update_yaxes(title_text="Days")
+    return fig

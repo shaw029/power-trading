@@ -35,6 +35,8 @@ from dashboard.charts import (  # noqa: E402
     chart_daytype_matrix,
     chart_daytype_profiles,
     chart_daytype_ratio,
+    chart_day_composite,
+    chart_day_in_window,
     chart_fleet_by_optimiser,
     chart_fleet_by_region,
     chart_fleet_daily,
@@ -398,7 +400,9 @@ def _page_day():
     window_mean = sum(
         d["result"].durations[duration].net_pnl for d in shown
     ) / len(shown)
-    cols = st.columns(4)
+    _da_prices_day = [e["da_price_actual"] for e in dur_result.dispatch_log]
+    _da_spread = (max(_da_prices_day) - min(_da_prices_day)) if _da_prices_day else 0.0
+    cols = st.columns(5)
     cols[0].metric(
         "Net PnL",
         f"£{dur_result.net_pnl / REFERENCE_POWER_MW:,.0f}/MW",
@@ -406,6 +410,12 @@ def _page_day():
         help="Day-ahead revenue + intraday improvement − execution and degradation "
         f"costs, per MW of the {REFERENCE_POWER_MW:.0f} MW asset "
         f"(£{dur_result.net_pnl:,.0f} absolute).",
+    )
+    cols[4].metric(
+        "DA spread",
+        f"£{_da_spread:,.0f}/MWh",
+        help="Peak-to-trough of the day's cleared DA prices — the day's raw "
+        "arbitrage opportunity, before any strategy.",
     )
     cols[1].metric(
         "DA benchmark",
@@ -431,7 +441,7 @@ def _page_day():
     )
     cols[3].metric(
         "Capture",
-        f"{dur_result.capture:.2f}",
+        f"{dur_result.capture:.0%}",
         help=(
             "Net PnL as a share of the perfect-foresight day-ahead optimum — "
             "1.00 means every pound available was captured; 0.00 means the "
@@ -453,6 +463,36 @@ def _page_day():
         [e["final_mw"] for e in log],
         index=pd.date_range(picked, periods=len(log), freq="1h", tz="UTC"),
     )
+    # --- Composite: the whole day on one shared timeline --------------------
+    if not day_flags.empty:
+        _stress_hh = int(day_flags["stress"].sum())
+        if _stress_hh:
+            st.caption(f"{_stress_hh} stress half-hour(s) on this day.")
+    try:
+        _day_prices_df, _ = _fetch_day(picked)
+    except Exception:
+        _day_prices_df = pd.DataFrame()
+    _da_series = pd.Series(
+        [e["da_mw"] for e in log],
+        index=pd.date_range(picked, periods=len(log), freq="1h", tz="UTC"),
+    )
+    _soc_series = pd.Series(
+        [e["soc_after"] for e in log],
+        index=pd.date_range(picked, periods=len(log), freq="1h", tz="UTC"),
+    )
+    st.plotly_chart(
+        chart_day_composite(
+            _day_prices_df,
+            day_dispatch,
+            _da_series,
+            _soc_series,
+            day_flags,
+            params["soc_min"],
+            params["soc_max"],
+        ),
+        width="stretch",
+    )
+
     if not day_flags.empty:
         st.plotly_chart(chart_alignment_day(day_flags, day_dispatch), width="stretch")
     else:
@@ -478,6 +518,16 @@ def _page_day():
     )
     right.plotly_chart(
         chart_pnl_waterfall(pd.DataFrame([_pnl_row(record["date"], dur_result)])),
+        width="stretch",
+    )
+
+    _window_daily = pd.Series(
+        [d["result"].durations[duration].net_pnl / REFERENCE_POWER_MW for d in shown]
+    )
+    st.plotly_chart(
+        chart_day_in_window(
+            _window_daily, dur_result.net_pnl / REFERENCE_POWER_MW
+        ),
         width="stretch",
     )
 

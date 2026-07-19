@@ -17,6 +17,8 @@ from dashboard.charts import (
     chart_daytype_matrix,
     chart_daytype_profiles,
     chart_daytype_ratio,
+    chart_day_composite,
+    chart_day_in_window,
     chart_duration_comparison,
     chart_equity_curve,
     chart_gap_by_daytype,
@@ -319,3 +321,44 @@ def test_chart_gap_by_daytype_returns_figure():
     fig = chart_gap_by_daytype(df)
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 1
+
+
+def test_chart_day_composite_four_panels_with_shading():
+    hidx = pd.date_range("2026-06-01T00:00:00Z", periods=24, freq="1h")
+    prices = pd.DataFrame(
+        {"day_ahead_price": range(40, 64), "mid_price": range(38, 62)}, index=hidx
+    )
+    dispatch = pd.Series([0.0] * 8 + [-50.0] * 4 + [0.0] * 6 + [50.0] * 4 + [0.0] * 2,
+                         index=hidx)
+    da = dispatch * 0.5
+    soc = pd.Series([0.5] * 24, index=hidx)
+    fidx = pd.date_range("2026-06-01T00:00:00Z", periods=48, freq="30min")
+    flags = pd.DataFrame(
+        {
+            "residual_mw": [20000.0] * 36 + [27000.0] * 8 + [20000.0] * 4,
+            "stress": [False] * 36 + [True] * 8 + [False] * 4,
+            "surplus": [False] * 16 + [True] * 8 + [False] * 24,
+        },
+        index=fidx,
+    )
+    fig = chart_day_composite(prices, dispatch, da, soc, flags, 0.1, 0.9)
+    assert isinstance(fig, go.Figure)
+    # DA line, MID line, commitment step, dispatch bars, SOC, residual.
+    assert len(fig.data) == 6
+
+
+def test_chart_day_composite_survives_empty_flags():
+    hidx = pd.date_range("2026-06-01T00:00:00Z", periods=4, freq="1h")
+    prices = pd.DataFrame({"day_ahead_price": [40.0] * 4, "mid_price": [41.0] * 4},
+                          index=hidx)
+    zeros = pd.Series([0.0] * 4, index=hidx)
+    fig = chart_day_composite(prices, zeros, zeros, zeros + 0.5, pd.DataFrame(), 0.1, 0.9)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 5  # no residual trace
+
+
+def test_chart_day_in_window_marks_current():
+    daily = pd.Series([50.0, 80.0, 90.0, 120.0, 60.0])
+    fig = chart_day_in_window(daily, 90.0)
+    assert isinstance(fig, go.Figure)
+    assert fig.layout.shapes[0].x0 == 90.0
