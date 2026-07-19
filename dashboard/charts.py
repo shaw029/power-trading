@@ -221,7 +221,7 @@ def chart_realized_shape(
         go.Bar(
             x=da_commit.index,
             y=da_commit.values,
-            name="DA commitment (locked plan)",
+            name="Mean DA commitment MW",
             yaxis="y2",
             marker_color=COLORS["ghost"],
             opacity=0.45,
