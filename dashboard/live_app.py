@@ -1630,10 +1630,11 @@ def _benchmark_parameters() -> tuple:
                 saved["commit"],
                 5,
                 help=(
-                    "Market allocation: how much of the battery's power the "
-                    "day-ahead auction may commit. The rest is held back for "
-                    "the intraday stage — free to chase MID without first "
-                    "unwinding a DA position (and paying slippage on it)."
+                    "Market allocation: the share of the battery's power and "
+                    "of its daily cycle budget the day-ahead auction may "
+                    "commit. The rest is held back for the intraday stage — "
+                    "free to chase MID without first unwinding a DA position "
+                    "(and paying slippage on it)."
                 ),
             )
             if st.form_submit_button("Apply", type="primary", width="stretch"):

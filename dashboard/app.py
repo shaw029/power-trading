@@ -337,10 +337,11 @@ def render_bess(prices: pd.DataFrame):
         100,
         int(round(bess_cfg.get("da_commit_fraction", 1.0) * 100)),
         step=5,
-        help="Share of the battery's power the day-ahead auction may commit "
-        "(100% = greedy all-in bid). Held-back capacity stays free for the "
-        "intraday stage — it can chase MID without first unwinding a DA "
-        "position and paying slippage on the unwind.",
+        help="Share of the battery's power and of its daily cycle budget the "
+        "day-ahead auction may commit (100% = greedy all-in bid). The "
+        "held-back share of both stays free for the intraday stage — it can "
+        "chase MID without first unwinding a DA position and paying slippage "
+        "on the unwind.",
     )
 
     st.sidebar.markdown("### Intraday Re-optimisation Levers")

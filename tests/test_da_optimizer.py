@@ -57,6 +57,22 @@ class TestDAOptimizer:
         explicit = optimize_da_schedule(prices, battery, commit_fraction=1.0)
         assert greedy == pytest.approx(explicit)
 
+    def test_commit_fraction_scales_cycle_budget(self, battery: BESSAsset) -> None:
+        # Six cheap hours then a long expensive block: with plentiful high-price
+        # hours the cycle budget binds, so a 50% allocation must halve the DA
+        # plan's discharged energy — not just its power. (Power-only scaling
+        # would let the auction spread the full budget over more hours.)
+        prices = [0.0] * 6 + [100.0] * 18
+        target = 0.8  # 80 MWh discharge budget on the 100 MWh fixture
+        full = optimize_da_schedule(prices, battery, target_daily_cycles=target)
+        half = optimize_da_schedule(
+            prices, battery, target_daily_cycles=target, commit_fraction=0.5
+        )
+        full_mwh = sum(mw for mw in full if mw > 0)
+        half_mwh = sum(mw for mw in half if mw > 0)
+        assert full_mwh == pytest.approx(target * battery.capacity_mwh, rel=1e-4)
+        assert half_mwh == pytest.approx(0.5 * target * battery.capacity_mwh, rel=1e-4)
+
     def test_commit_fraction_zero_bids_nothing(self, battery: BESSAsset) -> None:
         prices = [0.0] * 12 + [100.0] * 12
         schedule = optimize_da_schedule(prices, battery, commit_fraction=0.0)

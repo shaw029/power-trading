@@ -63,9 +63,10 @@ bess:
   resolution_h: 1.0
   soc_drift_tolerance: 0.05
   target_daily_cycles: 1.5   # max average daily cycling target; null disables the limit
-  # Market allocation: share of power_mw the day-ahead auction may commit
-  # (1.0 = greedy all-in). Held-back capacity stays free for the intraday
-  # stage, avoiding the slippage of unwinding a DA position to chase MID.
+  # Market allocation: share of the battery's power AND of its daily cycle
+  # budget the day-ahead auction may commit (1.0 = greedy all-in). The
+  # held-back share of both stays free for the intraday stage, avoiding the
+  # slippage of unwinding a DA position to chase MID.
   da_commit_fraction: 1.0
   # MID is not observable intraday, so it is proxied from the known cleared DA
   # price plus a configurable basis. The rolling re-optimisation only deviates

@@ -44,11 +44,14 @@ def optimize_da_schedule(
     """Solve the locked day-ahead schedule for one delivery day.
 
     ``commit_fraction`` is the market-allocation lever: the share of the
-    battery's power the day-ahead auction is allowed to commit (1.0 = the
-    all-in greedy bid). Committing less holds capacity back for the intraday
-    stage — the intraday engine always sees the full ``power_mw``, so whatever
-    the auction doesn't take remains tradable there without first unwinding a
-    DA position (and paying slippage on the unwind).
+    battery's power **and of its daily cycle budget** the day-ahead auction is
+    allowed to commit (1.0 = the all-in greedy bid). Scaling the power alone
+    would let the auction spread the full discharge budget over more hours and
+    still consume the battery's scarce resource — the reservation must
+    partition the energy budget, not just the MW. The intraday engine always
+    sees the full ``power_mw`` and the full physical cycle cap, so the
+    unallocated ``(1 − commit_fraction)`` share of the budget remains genuinely
+    tradable intraday without first unwinding a DA position.
     """
     if not 0.0 <= commit_fraction <= 1.0:
         raise ValueError(f"commit_fraction must be within [0, 1], got {commit_fraction}")
@@ -89,7 +92,7 @@ def optimize_da_schedule(
     if target_daily_cycles is not None:
         prob += (
             pulp.lpSum(discharge[h] * duration_h for h in periods)
-            <= target_daily_cycles * asset.capacity_mwh
+            <= target_daily_cycles * asset.capacity_mwh * commit_fraction
         )
 
     try:
