@@ -189,7 +189,7 @@ def chart_realized_shape(
     """Mean realised physical dispatch and execution prices by hour-of-day.
 
     The execution layer: what the battery physically did after the rolling
-    re-optimisation reshaped the committed schedule. Faint ghost bars are the DA
+    re-optimisation reshaped the committed schedule. Faint reference bars are the locked DA
     commitment, so the gap to the solid bars is the net intraday reshaping — the
     re-optimisation's deviation (``spread_mw``) moving energy across the day. The
     lines are the realised DA price (the proxy the engine *decides* on) and the
@@ -221,7 +221,7 @@ def chart_realized_shape(
         go.Bar(
             x=da_commit.index,
             y=da_commit.values,
-            name="DA commitment (ghost)",
+            name="DA commitment (locked plan)",
             yaxis="y2",
             marker_color=COLORS["ghost"],
             opacity=0.45,

@@ -409,10 +409,21 @@ def _page_day():
         help="What the frozen day-ahead schedule alone would have earned, before "
         f"any intraday re-optimisation (£{dur_result.benchmark_da_revenue:,.0f} absolute).",
     )
+    _da_committed = sum(mw for mw in dur_result.da_schedule if mw > 0)
+    _da_budget = (
+        params["cycle_target"] * REFERENCE_POWER_MW * _duration_hours(duration)
+        * params["commit"]
+    )
     cols[2].metric(
         "Cycles",
         f"{dur_result.cycles:.2f}",
-        help=f"Equivalent full charge/discharge cycles used this day (target ≤ {params['cycle_target']:.1f}).",
+        help=(
+            "Physical cycles this day: discharged MWh ÷ nameplate MWh "
+            f"(target ≤ {params['cycle_target']:.1f}). The locked DA leg "
+            f"separately committed {_da_committed:,.0f} MWh of its "
+            f"{_da_budget:,.0f} MWh allocation "
+            f"({params['commit']:.0%} of the cycle budget)."
+        ),
     )
     cols[3].metric(
         "Capture",
