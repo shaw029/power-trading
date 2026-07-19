@@ -165,3 +165,26 @@ def test_alignment_gap_credits_terminal_inventory():
     # (+1500) → profit_res = +1000, not −500.
     assert gap["profit_res"] == pytest.approx(50 * 30.0 - 50 * 10.0)
     assert gap["profit_arb"] == pytest.approx(0.0)
+
+
+def test_resilience_dispatch_serves_stress_under_cycle_cap_no_churn():
+    # Regression: with gross-flow surplus credit, a cycle-capped LP spent its
+    # whole discharge budget enabling charge/discharge churn inside the surplus
+    # window and left the stress hour unserved. The anti-gaming weights must
+    # (a) serve the stress hour at full power, and (b) never discharge outside
+    # stress periods.
+    stress = [False] * 19 + [True] + [False] * 4
+    surplus = [False] * 9 + [True] * 7 + [False] * 8
+    asset = BESSAsset(
+        capacity_mwh=100.0, power_mw=50.0,
+        charge_efficiency=0.94, discharge_efficiency=0.94,
+        degradation_cost_per_mwh=5.0, initial_soc_pct=0.10,
+        min_soc_pct=0.10, max_soc_pct=0.90,
+    )
+    schedule = resilience.optimize_resilience_dispatch(
+        stress, surplus, asset, target_daily_cycles=1.5
+    )
+    assert schedule[19] == pytest.approx(50.0, abs=1e-6)
+    for h, mw in enumerate(schedule):
+        if not stress[h]:
+            assert mw <= 1e-6, f"off-stress discharge at hour {h}: {mw}"

@@ -140,11 +140,22 @@ def optimize_resilience_dispatch(
 ) -> list[float]:
     """Resilience-optimal dispatch: same physics, system-value objective.
 
-    Maximises energy discharged in stress periods plus energy charged in
-    surplus periods, subject to the identical SOC window, power limit,
-    efficiencies and cycle cap the profit LP faces. A small penalty on
-    off-flag activity keeps the schedule quiet outside flagged periods
-    instead of cycling on ties. Returns MW per period (positive = discharge).
+    Maximises energy discharged in stress periods (priority weight 2) plus
+    energy charged in surplus periods (weight 1), subject to the identical SOC
+    window, power limit, efficiencies and cycle cap the profit LP faces.
+
+    The weights are chosen so that no charge/discharge *churn* loop is ever
+    profitable. Crediting gross surplus charging invites gaming: dump energy
+    off-flag for a token penalty, then re-charge in surplus for fresh credit —
+    each dumped MWh frees ``1/(ηc·ηd)`` MWh of creditable charging (≈1.13 at
+    0.94² round trip), so any dump penalty below that is exploitable, and
+    under a cycle cap the whole discharge budget flows to churn instead of
+    stress delivery. Discharge outside stress and charge during stress are
+    therefore penalised at weight 2 (> ``1/(ηc·ηd)`` for any round-trip
+    efficiency above 50%), which makes every loop strictly negative while
+    leaving the legitimate pattern — charge cheaply off-flag or in surplus,
+    deliver in stress — essentially free (off-flag charging costs only a
+    tie-break). Returns MW per period (positive = discharge).
     """
     n = len(stress)
     periods = range(n)
@@ -158,10 +169,19 @@ def optimize_resilience_dispatch(
         pulp.LpVariable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)
     ]
 
-    tie_break = 1e-3
+    w_stress, w_surplus, w_block, tie_break = 2.0, 1.0, 2.0, 1e-3
+
+    def _coeff_discharge(h: int) -> float:
+        return w_stress if stress[h] else -w_block
+
+    def _coeff_charge(h: int) -> float:
+        if surplus[h]:
+            return w_surplus
+        return -w_block if stress[h] else -tie_break
+
     prob += pulp.lpSum(
-        discharge[h] * duration_h * (1.0 if stress[h] else -tie_break)
-        + charge[h] * duration_h * (1.0 if surplus[h] else -tie_break)
+        discharge[h] * duration_h * _coeff_discharge(h)
+        + charge[h] * duration_h * _coeff_charge(h)
         for h in periods
     )
 
