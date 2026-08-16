@@ -30,6 +30,7 @@ from dashboard.charts import (
     chart_sim_vs_fleet_daily,
     chart_sim_vs_fleet_sites,
     chart_system_prices,
+    chart_system_tightness,
 )
 
 
@@ -307,6 +308,55 @@ def test_chart_alignment_scatter_ghosts_excluded_and_stars_benchmark():
     fig = chart_alignment_scatter(df, sim_coverage=0.6, sim_gbp=90.0)
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 3                      # sites, ghosts, benchmark star
+
+
+def test_chart_system_tightness_panels_threshold_and_shading():
+    idx = pd.date_range("2026-06-01T00:00:00Z", periods=8, freq="30min")
+    tiers = pd.DataFrame(
+        {
+            "drm_mw": [9000.0, 8000, 1500, 1400, 6000, 7000, 8000, 9000],
+            "lolp": [0.0, 0.0, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "tier1": [False] * 8,
+            "tier2": [False, False, True, True, False, False, False, False],
+            "tier2_known": [True] * 8,
+            "tier3": [False] * 4 + [True, True, False, False],
+        },
+        index=idx,
+    )
+    dispatch = pd.Series(
+        [0.0, -50.0, 50.0, 0.0],
+        index=pd.date_range("2026-06-01T00:00:00Z", periods=4, freq="1h"),
+    )
+    fig = chart_system_tightness(tiers, dispatch, drm_tight_mw=2000.0)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 3  # DRM line + LoLP markers + dispatch bars
+    # One tier-2 span and one tier-3 span, each drawn on both subplot rows,
+    # plus the dotted threshold line.
+    assert len(fig.layout.shapes) == 5
+    # The CMN band is annotated so the rare event is named on the chart.
+    assert any(a.text == "CMN" for a in fig.layout.annotations)
+
+
+def test_chart_system_tightness_survives_empty_frame():
+    empty = pd.DataFrame(columns=["drm_mw", "lolp", "tier1", "tier2", "tier2_known", "tier3"])
+    fig = chart_system_tightness(empty, dispatch_mw=None)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 0
+
+    idx = pd.date_range("2026-06-01T00:00:00Z", periods=4, freq="30min")
+    all_nan = pd.DataFrame(
+        {
+            "drm_mw": [float("nan")] * 4,
+            "lolp": [float("nan")] * 4,
+            "tier1": [False] * 4,
+            "tier2": [False] * 4,
+            "tier2_known": [False] * 4,
+            "tier3": [False] * 4,
+        },
+        index=idx,
+    )
+    fig = chart_system_tightness(all_nan, dispatch_mw=pd.Series(dtype=float))
+    assert isinstance(fig, go.Figure)
 
 
 def test_chart_gap_by_daytype_returns_figure():

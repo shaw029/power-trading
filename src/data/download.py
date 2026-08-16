@@ -5,7 +5,7 @@ import pandas as pd
 import requests
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 from src.utils.config import (
     START_DATE,
@@ -16,6 +16,7 @@ from src.utils.config import (
     ENTSOE_API_KEY,
     NORDPOOL_DA_BASE_URL,
     PVLIVE_BASE_URL,
+    CMN_BASE_URL,
     NESO_BASE_URL,
     NESO_NDFD_RESOURCE_ID,
     DEFAULT_DEMAND_FORECAST_SOURCE,
@@ -613,6 +614,135 @@ def fetch_solar_actual(start_date: str = START_DATE, end_date: str = END_DATE) -
     df = df.sort_values("time").drop_duplicates(subset=["time"])
     logger.info("PV_Live solar processed. Shape: %s", df.shape)
     return df[["time", "solar_mw"]]
+
+
+_LOLPDRM_COLUMNS = [
+    "publishTime",
+    "startTime",
+    "settlementDate",
+    "settlementPeriod",
+    "forecastHorizon",
+    "lossOfLoadProbability",
+    "deratedMargin",
+]
+
+
+def _fetch_lolpdrm_day(market_day: pd.Timestamp) -> list[dict]:
+    """Fetch one UTC day of Loss of Load Probability / De-rated Margin prints.
+
+    Elexon publishes LoLP/DRM per settlement period at ~12/8/4/2/1 hours ahead
+    (``forecastHorizon``), so a period usually has several prints. The full
+    record list is cached — horizon selection happens in preprocess, not here.
+    Returns raw records; empty on any error (and never cached empty, so a day
+    whose prints arrive late is retried on the next run).
+    """
+    date_str = market_day.strftime("%Y%m%d")
+    cache_dir = os.path.join(RAW_DATA_DIR, "LOLPDRM")
+    daily_file = os.path.join(cache_dir, f"LOLPDRM_{date_str}.json")
+
+    if os.path.exists(daily_file):
+        with open(daily_file, encoding="utf-8") as fp:
+            cached: list[dict] = json.load(fp).get("data", [])
+        return cached
+
+    params = {
+        "from": market_day.strftime("%Y-%m-%dT00:00:00Z"),
+        "to": (market_day + pd.Timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z"),
+    }
+    url = f"{ELEXON_BASE_URL.rstrip('/')}/forecast/system/loss-of-load"
+    resp = requests.get(url, params=params, headers={"Accept": "application/json"}, timeout=30)
+    if resp.status_code != 200 or not resp.content:
+        logger.warning("LoLP/DRM %s: HTTP %s (no data)", market_day.date(), resp.status_code)
+        return []
+    payload = resp.json()
+    day_start = market_day.tz_localize("UTC") if market_day.tz is None else market_day
+    day_end = day_start + pd.Timedelta(days=1)
+    records = []
+    for rec in payload.get("data", []):
+        start = pd.to_datetime(rec.get("startTime"), utc=True, errors="coerce")
+        if pd.notna(start) and day_start <= start < day_end:
+            records.append(rec)
+    if not records:
+        logger.warning("LoLP/DRM %s: empty payload (not cached)", market_day.date())
+        return []
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(daily_file, "w", encoding="utf-8") as fp:
+        json.dump({"data": records}, fp)
+    logger.info("Downloaded LoLP/DRM %s: %d records", market_day.date(), len(records))
+    return records
+
+
+def fetch_lolpdrm(start_date: str, end_date: str) -> pd.DataFrame:
+    """Fetch LoLP/De-rated Margin prints over a date range (inclusive).
+
+    Returns the raw print-level frame — every ``forecastHorizon`` per
+    settlement period — with columns ``publishTime``, ``startTime``,
+    ``settlementDate``, ``settlementPeriod``, ``forecastHorizon``,
+    ``lossOfLoadProbability``, ``deratedMargin``; empty (with those columns)
+    if nothing could be fetched.
+    """
+    logger.info("Fetching LoLP/De-rated Margin from Elexon")
+    current = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
+    all_records: list[dict] = []
+    while current <= end:
+        all_records.extend(_fetch_lolpdrm_day(current))
+        current += pd.Timedelta(days=1)
+
+    if not all_records:
+        logger.warning("No LoLP/DRM data fetched")
+        return pd.DataFrame(columns=_LOLPDRM_COLUMNS)
+    df = pd.DataFrame(all_records)
+    logger.info("LoLP/DRM fetched. Shape: %s", df.shape)
+    return df
+
+
+def fetch_cmn_notices(number: int = 200) -> list[dict]:
+    """Fetch the NESO GB Capacity Market Notice register (newest first).
+
+    The register is not settlement-day-partitioned, so the snapshot is cached
+    under the *fetch* date (``CMN/CMN_<today>.json``) — at most one network
+    hit per calendar day. The ``types[]`` filter is mandatory (the API returns
+    nothing without it); params go as a list of tuples so the repeated key
+    survives encoding. ``number=200`` spans years at observed CMN frequency.
+    TODO: follow the response's ``next`` cursor if the register ever outgrows
+    a single page.
+    Returns raw notice dicts; empty on any error (and never cached empty).
+    """
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    cache_dir = os.path.join(RAW_DATA_DIR, "CMN")
+    daily_file = os.path.join(cache_dir, f"CMN_{today_str}.json")
+
+    if os.path.exists(daily_file):
+        with open(daily_file, encoding="utf-8") as fp:
+            cached: list[dict] = json.load(fp).get("data", [])
+        return cached
+
+    params = [
+        ("number", str(number)),
+        ("order", "desc"),
+        ("types[]", "1"),
+        ("types[]", "4"),
+    ]
+    resp = requests.get(
+        CMN_BASE_URL, params=params, headers={"Accept": "application/json"}, timeout=30
+    )
+    if resp.status_code != 200 or not resp.content:
+        logger.warning("CMN register: HTTP %s (no data)", resp.status_code)
+        return []
+    payload = resp.json()
+    if not payload.get("success"):
+        logger.warning("CMN register: unsuccessful payload")
+        return []
+    results: list[dict] = payload.get("data", {}).get("results", [])
+    if not results:
+        logger.warning("CMN register: empty result list (not cached)")
+        return []
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(daily_file, "w", encoding="utf-8") as fp:
+        json.dump({"data": results}, fp)
+    logger.info("Downloaded CMN register: %d notices", len(results))
+    return results
 
 
 def _save_entsoe_daily(df: pd.DataFrame, dataset_name: str, date_str: str) -> None:

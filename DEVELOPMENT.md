@@ -267,6 +267,8 @@ Both live feeds are public, so the benchmark needs **no secrets**:
 |---|---|
 | GB Day-Ahead price | **Nord Pool** data portal (`N2EX_DayAhead`, area `UK`, GBP). Serves the recent ~60 days without a subscription; older days return `401` and are skipped. ENTSO-E no longer publishes GB day-ahead prices, so it is not used for the live path. |
 | Intraday MID, generation, demand | **Elexon** BMRS (API key optional). |
+| System tightness (LoLP / de-rated margin) | **Elexon** BMRS `forecast/system/loss-of-load` (keyless). Several prints per settlement period (12/8/4/2/1 h ahead); the dashboard uses the latest print. |
+| Capacity Market Notices | **NESO** GB CMN register (`gbcmn.nationalenergyso.com`, keyless; the `types[]` filter is mandatory). Rare events — the dashboard degrades to "None in window". |
 
 ### The `live/` package
 
@@ -275,7 +277,8 @@ All live-benchmark code lives in `live/`. Every module reuses the production dat
 | Module | Responsibility |
 |---|---|
 | `assets.py` | Defines the three canonical reference batteries — all 50 MW, differing only in storage duration (1h/2h/4h → 50/100/200 MWh). Every non-capacity parameter (efficiencies, SOC band, degradation, cycling target, margins, slippage) is read from the `bess` block of `configs/config.example.yaml`, so there is no second copy of those numbers. |
-| `fetch_live.py` | Single-day adapter over `src.data.download` / `src.data.preprocess`. `get_day_prices` returns hourly DA (Nord Pool) + MID (Elexon) prices on a 60-min grid; `get_day_context` returns tier-2 generation/demand aggregates. The only new API code is the Nord Pool fetcher in `src/data/download` (source `"NORDPOOL"`). |
+| `fetch_live.py` | Single-day adapter over `src.data.download` / `src.data.preprocess`. `get_day_prices` returns hourly DA (Nord Pool) + MID (Elexon) prices on a 60-min grid; `get_day_context` returns tier-2 generation/demand aggregates; `get_day_lolpdrm` returns the half-hourly LoLP / de-rated margin (latest print per period); `get_cmn_notices` returns the CMN register as a frame. The only new API code in `src/data/download` is the Nord Pool fetcher (source `"NORDPOOL"`), the LoLP/DRM fetcher, and the CMN register fetcher. |
+| `resilience.py` | System-alignment metrics: residual load, stress/surplus classification, the three-tier stress ladder (`classify_tiers`/`tier_metrics`; tier 2 = LoLP > 0 or DRM < `DRM_TIGHT_MW`, tier 3 = active CMN), alignment scores and the resilience-optimal counterfactual LP. Pure pandas/PuLP. |
 | `settle.py` | Pure, deterministic single-day settlement. For each reference duration it resets the asset to the carried-over end-of-day SOC, solves the Day-Ahead LP schedule, then runs the rolling intraday session against the actual DA and observed MID prices — exactly as `pipeline._run_bess_pipeline` drives it. Does no file or network IO. |
 | `classify.py` | Tags a day with zero or more descriptive labels from a fixed vocabulary (`windy`, `sunny`, `volatile`, `calm`, `high_demand`, `low_demand`). Pure, deterministic, and never raises. |
 

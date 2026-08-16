@@ -6,6 +6,9 @@ delivery day:
 
   * :func:`get_day_prices`  — hourly day-ahead and market-index prices.
   * :func:`get_day_context` — tier-2 generation/demand aggregates for the day.
+  * :func:`get_day_system`  — half-hourly whole-system snapshot (gen/solar/demand).
+  * :func:`get_day_lolpdrm` — half-hourly LoLP / de-rated margin (latest print).
+  * :func:`get_cmn_notices` — the GB Capacity Market Notice register (not day-keyed).
 
 No new HTTP/API code lives here: every number ultimately comes from the
 ``fetch_*`` functions in :mod:`src.data.download` and the ``process_*``
@@ -18,9 +21,11 @@ import logging
 import pandas as pd
 
 from src.data.download import (
+    fetch_cmn_notices,
     fetch_day_ahead_price,
     fetch_demand_actual,
     fetch_generation_actual,
+    fetch_lolpdrm,
     fetch_market_index_price,
     fetch_solar_actual,
 )
@@ -28,6 +33,7 @@ from src.data.preprocess import (
     process_day_ahead_price,
     process_demand_actual,
     process_generation_mix,
+    process_lolpdrm,
     process_market_index_price,
     process_solar_actual,
 )
@@ -315,3 +321,84 @@ def get_day_system(date: dt.date) -> pd.DataFrame:
         system = system[system[gen_cols].notna().any(axis=1)]
     system.index.name = "time"
     return system
+
+
+def get_day_lolpdrm(date: dt.date) -> pd.DataFrame:
+    """Half-hourly ``lolp``/``drm_mw`` for one delivery day; empty on failure.
+
+    Latest print per settlement period (shortest forecast horizon — see
+    :func:`src.data.preprocess.process_lolpdrm`). Periods without a print are
+    simply absent, never filled: downstream tier classification treats them
+    as unknown, not calm.
+    """
+    start, end = _day_window(date)
+    date_str = date.isoformat()
+    try:
+        lolpdrm = process_lolpdrm(fetch_lolpdrm(date_str, date_str))
+    except Exception as exc:
+        logger.warning("LoLP/DRM unavailable for %s: %s", date, exc)
+        return pd.DataFrame()
+    return lolpdrm[(lolpdrm.index >= start) & (lolpdrm.index < end)]
+
+
+# CMN notice type ids (the register's mandatory types[] filter values).
+CMN_ISSUE_TYPE = 1
+CMN_EXPIRY_TYPE = 4
+
+_CMN_COLUMNS = ["notice_id", "type_id", "type_name", "title", "posted_utc", "start_utc", "end_utc"]
+
+# Epoch-second sanity bounds for CMN timestamps: the register started in 2014,
+# and anything far in the future is a parse artefact, not a notice.
+_CMN_EPOCH_MIN = pd.Timestamp("2014-01-01", tz="UTC")
+
+
+def _cmn_timestamp(node: object) -> pd.Timestamp:
+    """Epoch-seconds ``{"timestamp": ...}`` node → UTC Timestamp (NaT if absent/absurd)."""
+    if not isinstance(node, dict):
+        return pd.NaT
+    ts = pd.to_datetime(node.get("timestamp"), unit="s", utc=True, errors="coerce")
+    if pd.isna(ts):
+        return pd.NaT
+    if ts < _CMN_EPOCH_MIN or ts > pd.Timestamp.now(tz="UTC") + pd.Timedelta(days=730):
+        logger.warning("CMN timestamp out of range: %s", ts)
+        return pd.NaT
+    return ts
+
+
+def get_cmn_notices() -> pd.DataFrame:
+    """The GB Capacity Market Notice register as a frame; never raises.
+
+    One row per notice, newest first. Columns: ``notice_id``, ``type_id``
+    (1 = CMN issued, 4 = expiry/cancellation), ``type_name``, ``title``,
+    ``posted_utc`` and the notice's target window ``start_utc``/``end_utc``
+    (tz-aware UTC; NaT where the register omits them). Empty frame with those
+    columns on any failure — CMNs are rare, so empty is the normal case for
+    most windows.
+    """
+    try:
+        raw = fetch_cmn_notices()
+    except Exception as exc:
+        logger.warning("CMN register unavailable: %s", exc)
+        raw = []
+    rows = []
+    for rec in raw:
+        if not isinstance(rec, dict):
+            continue
+        type_node = rec.get("type") or {}
+        extended = rec.get("extended") or {}
+        rows.append(
+            {
+                "notice_id": rec.get("id"),
+                "type_id": type_node.get("id"),
+                "type_name": type_node.get("name"),
+                "title": rec.get("title"),
+                "posted_utc": _cmn_timestamp(rec.get("posted")),
+                "start_utc": _cmn_timestamp(extended.get("startDate")),
+                "end_utc": _cmn_timestamp(extended.get("endDate")),
+            }
+        )
+    if not rows:
+        return pd.DataFrame(columns=_CMN_COLUMNS)
+    return pd.DataFrame(rows, columns=_CMN_COLUMNS).sort_values(
+        "posted_utc", ascending=False, ignore_index=True
+    )

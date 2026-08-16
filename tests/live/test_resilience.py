@@ -206,3 +206,112 @@ def test_resilience_dispatch_serves_stress_under_cycle_cap_no_churn():
     for h, mw in enumerate(schedule):
         if not stress[h]:
             assert mw <= 1e-6, f"off-stress discharge at hour {h}: {mw}"
+
+
+def _tier_flags(n: int = 6) -> pd.DataFrame:
+    idx = _idx(n)
+    return pd.DataFrame(
+        {
+            "residual_mw": [float(10 * (i + 1)) for i in range(n)],
+            "stress": [False] * (n - 2) + [True, True],
+            "surplus": [True] + [False] * (n - 1),
+        },
+        index=idx,
+    )
+
+
+def test_classify_tiers_thresholds_and_unknowns():
+    flags = _tier_flags(6)
+    lolpdrm = pd.DataFrame(
+        {
+            # Period 2: LoLP alone trips tier 2. Period 3: DRM 1999 < 2000 trips.
+            # Period 4: DRM exactly 2000 does NOT (strict <). Period 5: no data.
+            "lolp": [0.0, 0.0, 0.02, 0.0, 0.0, float("nan")],
+            "drm_mw": [9000.0, 9000.0, 9000.0, 1999.0, 2000.0, float("nan")],
+        },
+        index=flags.index,
+    )
+    tiers = resilience.classify_tiers(flags, lolpdrm)
+    assert tiers["tier2"].tolist() == [False, False, True, True, False, False]
+    assert tiers["tier2_known"].tolist() == [True] * 5 + [False]
+    # Unknown is not calm: period 5 is excluded, not classified False-with-data.
+    assert not tiers["tier2_known"].iloc[5]
+    # tier = highest active: period 4 is tier-1 stress only, period 5 tier 1.
+    assert tiers["tier"].tolist() == [0, 0, 2, 2, 1, 1]
+
+
+def test_classify_tiers_without_feeds_degrades_gracefully():
+    flags = _tier_flags(4)
+    tiers = resilience.classify_tiers(flags, lolpdrm=None, cmn_windows=None)
+    assert not tiers["tier2_known"].any()
+    assert not tiers["tier2"].any()
+    assert not tiers["tier3"].any()
+    assert tiers["tier"].tolist() == [int(s) for s in flags["stress"]]
+
+
+def test_cmn_flags_half_open_overlap():
+    idx = _idx(4)  # 10:00 handled generically: periods at 00:00..01:30
+    windows = pd.DataFrame(
+        {
+            "start_utc": [pd.Timestamp("2026-06-01T00:15:00Z")],
+            "end_utc": [pd.Timestamp("2026-06-01T00:45:00Z")],
+        }
+    )
+    flagged = resilience.cmn_flags(idx, windows)
+    # The 00:00 and 00:30 half-hours overlap [00:15, 00:45); 01:00 does not —
+    # a window ending exactly at a period's start must not flag it.
+    assert flagged.tolist() == [True, True, False, False]
+
+    nat_rows = pd.DataFrame({"start_utc": [pd.NaT], "end_utc": [pd.NaT]})
+    assert not resilience.cmn_flags(idx, nat_rows).any()
+    assert not resilience.cmn_flags(idx, None).any()
+    assert not resilience.cmn_flags(idx, pd.DataFrame()).any()
+
+    # An issued-and-still-open notice has a start but no end yet (the register
+    # only stamps the end on cancellation): it must flag its target settlement
+    # period, never be silently dropped.
+    open_notice = pd.DataFrame(
+        {"start_utc": [pd.Timestamp("2026-06-01T01:00:00Z")], "end_utc": [pd.NaT]}
+    )
+    assert resilience.cmn_flags(idx, open_notice).tolist() == [False, False, True, False]
+
+
+def test_tier_metrics_arithmetic_and_unknown_exclusion():
+    flags = _tier_flags(6)
+    lolpdrm = pd.DataFrame(
+        {
+            "lolp": [0.0, 0.0, 0.1, 0.0, 0.0, float("nan")],
+            "drm_mw": [9000.0, 8000.0, 1500.0, 3000.0, 2500.0, float("nan")],
+        },
+        index=flags.index,
+    )
+    tiers = resilience.classify_tiers(flags, lolpdrm)
+    # Discharge 30 in the tier-2 period, 10 in a known non-tier-2 period, and
+    # 40 in the unknown period (must not enter the coverage denominator).
+    dispatch = pd.Series([0.0, -20.0, 30.0, 10.0, 0.0, 40.0], index=flags.index)
+    m = resilience.tier_metrics(tiers, dispatch)
+    assert m["min_drm_mw"] == pytest.approx(1500.0)
+    assert m["min_drm_time"] == flags.index[2]
+    assert m["n_lolp_positive"] == 1
+    assert m["n_tier2"] == 1
+    assert m["n_tier2_known"] == 5
+    assert m["tier2_coverage"] == pytest.approx(30.0 / 40.0)
+    # min DRM while discharging considers known-DRM periods only.
+    assert m["min_drm_at_discharge"] == pytest.approx(1500.0)
+    # Both tier-1 stress periods (4, 5): period 5 unknown → confirmable = {4},
+    # which is not tier 2, so the confirm rate is 0.
+    assert m["tier2_confirm_rate"] == pytest.approx(0.0)
+
+
+def test_tier_metrics_none_denominators_and_no_cmn():
+    flags = _tier_flags(4)
+    tiers = resilience.classify_tiers(flags, lolpdrm=None)
+    idle = pd.Series([0.0] * 4, index=flags.index)
+    soc = pd.Series([0.5] * 4, index=flags.index)
+    m = resilience.tier_metrics(tiers, idle, soc)
+    assert m["min_drm_mw"] is None
+    assert m["min_drm_time"] is None
+    assert m["tier2_coverage"] is None
+    assert m["min_drm_at_discharge"] is None
+    assert m["tier2_confirm_rate"] is None  # no stress period has tier-2 data
+    assert m["readiness_at_cmn"] is None  # no CMN onset anywhere

@@ -227,3 +227,88 @@ def test_get_day_system_drops_unpublished_generation_periods():
         system = fetch_live.get_day_system(_DAY)
     assert len(system) == 46
     assert not system[[c for c in system.columns if c.startswith("gen_")]].isna().all(axis=1).any()
+
+
+def _lolpdrm_raw() -> pd.DataFrame:
+    """Two settlement periods, several horizon prints each; plus one row on
+    the next UTC day that the day window must slice off."""
+    rows = []
+    for minute, horizons in ((0, (8, 1)), (30, (4,))):
+        start = pd.Timestamp(f"2024-01-01T00:{minute:02d}:00Z")
+        for h in horizons:
+            rows.append(
+                {
+                    "publishTime": start - pd.Timedelta(hours=h),
+                    "startTime": start,
+                    "forecastHorizon": h,
+                    "lossOfLoadProbability": 0.0,
+                    "deratedMargin": 8000.0 + h,
+                }
+            )
+    rows.append(
+        {
+            "publishTime": pd.Timestamp("2024-01-01T23:00:00Z"),
+            "startTime": pd.Timestamp("2024-01-02T00:00:00Z"),
+            "forecastHorizon": 1,
+            "lossOfLoadProbability": 0.9,
+            "deratedMargin": 100.0,
+        }
+    )
+    return pd.DataFrame(rows)
+
+
+def test_get_day_lolpdrm_windows_to_day_and_softfails():
+    with mock.patch.object(fetch_live, "fetch_lolpdrm", return_value=_lolpdrm_raw()):
+        day = fetch_live.get_day_lolpdrm(_DAY)
+    assert list(day.columns) == ["lolp", "drm_mw"]
+    assert len(day) == 2  # next-day row sliced off
+    # Latest print per period: horizon 1 for 00:00, the only (4h) for 00:30.
+    assert day["drm_mw"].tolist() == [8001.0, 8004.0]
+
+    boom = mock.Mock(side_effect=RuntimeError("elexon down"))
+    with mock.patch.object(fetch_live, "fetch_lolpdrm", boom):
+        assert fetch_live.get_day_lolpdrm(_DAY).empty
+
+
+def _cmn_raw() -> list[dict]:
+    return [
+        {
+            "id": 37,
+            "type": {"id": 1, "name": "CMN"},
+            "title": "Electricity Capacity Market Notice Currently Active",
+            "posted": {"timestamp": 1736337674},
+            "extended": {
+                "startDate": {"timestamp": 1736353800},
+                "endDate": {"timestamp": 1736368200},
+            },
+        },
+        {
+            "id": 38,
+            "type": {"id": 4, "name": "CMN Expiry"},
+            "title": "Electricity Capacity Market Notice Cancelled",
+            "posted": {"timestamp": 1736339569},
+            "extended": {},  # no target window on the expiry row
+        },
+    ]
+
+
+def test_get_cmn_notices_parses_timestamps_and_softfails():
+    with mock.patch.object(fetch_live, "fetch_cmn_notices", return_value=_cmn_raw()):
+        notices = fetch_live.get_cmn_notices()
+
+    assert list(notices.columns) == fetch_live._CMN_COLUMNS
+    assert len(notices) == 2
+    # Sorted newest-posted first; epoch seconds become tz-aware UTC stamps.
+    assert notices["notice_id"].tolist() == [38, 37]
+    issued = notices[notices["type_id"] == fetch_live.CMN_ISSUE_TYPE].iloc[0]
+    assert issued["posted_utc"] == pd.Timestamp(1736337674, unit="s", tz="UTC")
+    assert issued["start_utc"] == pd.Timestamp(1736353800, unit="s", tz="UTC")
+    # The expiry row has no target window — NaT, never a fabricated time.
+    expiry = notices[notices["type_id"] == fetch_live.CMN_EXPIRY_TYPE].iloc[0]
+    assert pd.isna(expiry["start_utc"])
+
+    boom = mock.Mock(side_effect=RuntimeError("register down"))
+    with mock.patch.object(fetch_live, "fetch_cmn_notices", boom):
+        empty = fetch_live.get_cmn_notices()
+    assert empty.empty
+    assert list(empty.columns) == fetch_live._CMN_COLUMNS

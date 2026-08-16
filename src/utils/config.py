@@ -44,6 +44,10 @@ NORDPOOL_DA_BASE_URL = "https://dataportal-api.nordpoolgroup.com/api/DayAheadPri
 # and invisible to transmission metering), so this is the only free source of
 # actual GB solar generation. Free, no API key.
 PVLIVE_BASE_URL = "https://api.pvlive.uk/pvlive/api/v4/gsp/0"
+# NESO GB Capacity Market Notice register. Public, keyless. The types[] filter
+# is MANDATORY — without it the API returns no results (1 = CMN issued,
+# 4 = CMN expiry/cancellation, 3 = general announcement).
+CMN_BASE_URL = "https://gbcmn.nationalenergyso.com/api/notifications"
 
 # NESO CKAN Resource IDs
 NESO_NDFD_RESOURCE_ID = "9847e7bb-986e-49be-8138-717b25933fbb"

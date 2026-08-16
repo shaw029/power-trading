@@ -11,6 +11,8 @@ Column naming conventions:
   wind_fc_rel_{N}h    wind rolling snapshots       (WINDFOR, 24/12/6/3/1h before delivery)
   wind_fc_da_*        wind auction snapshots       (WINDFOR, d-2 noon / d-1 00h/07h/10h30)
   day_ahead_price     day-ahead auction price      (ENTSOE, expanded)
+  lolp                loss of load probability     (LOLPDRM, latest print per period: horizon 1, else shortest)
+  drm_mw              de-rated margin, MW          (LOLPDRM, same print as lolp)
   demand_fc_rel_{N}h  demand rolling snapshots     (NESO_API/ENTSOE/CSV, 24/12/6/3/1h before delivery)
   demand_fc_da_*      demand auction snapshots     (NESO_API/ENTSOE/CSV, d-2 noon / d-1 00h/07h/10h30)
                       NOTE: ENTSOE stamps all periods with a single D-1 10:30 Europe/London publish time
@@ -84,6 +86,31 @@ def process_solar_actual(df: pd.DataFrame) -> pd.DataFrame:
     df = df[["solar_mw"]].sort_index()
     df = df[~df.index.duplicated(keep="first")]
     logger.info("Solar actual (PV_Live) processed. Shape: %s", df.shape)
+    return df
+
+
+def process_lolpdrm(df: pd.DataFrame) -> pd.DataFrame:
+    """LOLPDRM → lolp, drm_mw; latest print per settlement period (30-min native).
+
+    Elexon publishes several prints per period (``forecastHorizon`` 12/8/4/2/1
+    hours ahead). The shortest horizon is the final, most accurate print, so
+    rows are sorted horizon-ascending (publishTime descending as tie-break)
+    and the dedupe keeps the first — horizon 1 where available, else the
+    shortest horizon that was published.
+    """
+    if df.empty:
+        empty = pd.DataFrame(columns=["lolp", "drm_mw"])
+        empty.index = pd.DatetimeIndex([], tz="UTC", name="time")
+        logger.info("LoLP/DRM processed. Shape: %s", empty.shape)
+        return empty
+    df = df.copy()
+    df = df.sort_values(["forecastHorizon", "publishTime"], ascending=[True, False])
+    df.index = _utc_index(df["startTime"])
+    df["lolp"] = pd.to_numeric(df["lossOfLoadProbability"], errors="coerce")
+    df["drm_mw"] = pd.to_numeric(df["deratedMargin"], errors="coerce")
+    df = df[["lolp", "drm_mw"]]
+    df = df[~df.index.duplicated(keep="first")].sort_index()
+    logger.info("LoLP/DRM processed. Shape: %s", df.shape)
     return df
 
 

@@ -63,6 +63,27 @@ def _system(date):
     )
 
 
+def _lolpdrm(date):
+    """Half-hourly LoLP/DRM with one tight period (DRM < 2,000) and one LoLP>0."""
+    iso = date.isoformat() if isinstance(date, dt.date) else str(date)
+    times = pd.date_range(f"{iso}T00:00:00Z", periods=48, freq="30min")
+    drm = [9000.0] * 48
+    lolp = [0.0] * 48
+    drm[36] = 1500.0  # evening-peak tight half-hour
+    lolp[37] = 0.05
+    return pd.DataFrame({"lolp": lolp, "drm_mw": drm}, index=times)
+
+
+def _no_cmn():
+    """Empty register — the normal case; the page must degrade gracefully."""
+    return pd.DataFrame(
+        columns=[
+            "notice_id", "type_id", "type_name", "title",
+            "posted_utc", "start_utc", "end_utc",
+        ]
+    )
+
+
 @pytest.fixture
 def app(monkeypatch):
     import dashboard.live_app as live_app
@@ -77,6 +98,8 @@ def app(monkeypatch):
     )
     monkeypatch.setattr(fetch_fleet, "fetch_day_mid_prices", _fleet_mid)
     monkeypatch.setattr(fetch_live, "get_day_system", _system)
+    monkeypatch.setattr(fetch_live, "get_day_lolpdrm", _lolpdrm)
+    monkeypatch.setattr(fetch_live, "get_cmn_notices", _no_cmn)
     # Keep the smoke test fast — settle a handful of days, not the full window.
     monkeypatch.setattr(live_app, "_MAX_HISTORY_DAYS", 5)
     # Drop any cached real data from other runs so the mocks take effect.
@@ -88,6 +111,8 @@ def app(monkeypatch):
     live_app._window_flags.clear()
     live_app._system_summary_day.clear()
     live_app._fleet_profile_day.clear()
+    live_app._lolpdrm_window.clear()
+    live_app._cmn_notices.clear()
     return live_app
 
 
@@ -102,6 +127,25 @@ def test_app_boots_on_latest_day_page(app):
     # the parameter form and the page shows the four-KPI row.
     assert "Cycle target (cycles/day)" in [s.label for s in at.slider]
     assert len(at.metric) >= 4  # Net PnL · DA benchmark · Cycles · Capture
+
+
+def test_alignment_page_renders_system_tightness(app):
+    from streamlit.testing.v1 import AppTest
+    from streamlit.testing.v1.app_test import calc_hash
+
+    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    # Function pages hash on their url_path (st.Page(..., url_path="alignment")),
+    # and AppTest.switch_page only accepts file paths — target the hash directly.
+    at._page_hash = calc_hash("alignment")
+    at.run()
+
+    assert not at.exception
+    labels = [m.label for m in at.metric]
+    # The System tightness KPI row rendered, including the no-CMN degradation
+    # path ("None in window" with an empty register).
+    assert "Min de-rated margin" in labels
+    assert "Capacity Market Notices" in labels
+    assert "Tier-2 stress coverage" in labels
 
 
 def test_filter_days_by_period_and_day_type():

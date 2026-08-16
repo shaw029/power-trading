@@ -22,6 +22,14 @@ Definitions (all computed from the same public feeds the benchmark uses):
   resilience-optimal counterfactual (same asset, same physics, objective =
   deliver in stress and absorb in surplus), valued both ways: profit forgone
   by full alignment and stress delivery forgone by pure arbitrage.
+* **Tier ladder** — stress severity in three independent tiers. Tier 1
+  (relative): top-decile residual load, as above. Tier 2 (system-confirmed):
+  Elexon's loss-of-load probability is positive OR the de-rated margin is
+  below ``DRM_TIGHT_MW`` — tight by the operator's own absolute measure, not
+  relative to the window on screen. Tier 3 (declared): the half-hour overlaps
+  an active Capacity Market Notice window. Periods without a LoLP/DRM print
+  are *unknown* at tier 2 — excluded from every tier-2 denominator, never
+  assumed calm.
 
 Pure pandas/PuLP — no HTTP and no Streamlit — so everything is unit-testable.
 """
@@ -38,6 +46,12 @@ logger = logging.getLogger(__name__)
 # Decile thresholds for stress/surplus classification over the window.
 STRESS_QUANTILE = 0.9
 SURPLUS_QUANTILE = 0.1
+
+# Tier-2 absolute de-rated margin floor (MW). ~2,000 MW is roughly one large
+# CCGT plus operating reserve — the territory where NESO has historically
+# issued margin notices. Absolute by design: tier 2 must mean tight in MW
+# terms, not tight relative to the window on screen (that is tier 1's job).
+DRM_TIGHT_MW = 2000.0
 
 
 def residual_load(system: pd.DataFrame) -> pd.Series:
@@ -139,6 +153,129 @@ def readiness_at_stress(soc_before: pd.Series, stress: pd.Series) -> float | Non
     onset = aligned & ~aligned.shift(1, fill_value=False)
     values = soc_before[onset]
     return float(values.mean()) if len(values) else None
+
+
+def cmn_flags(
+    index: pd.DatetimeIndex,
+    cmn_windows: pd.DataFrame | None,
+    period: pd.Timedelta = pd.Timedelta(minutes=30),
+) -> pd.Series:
+    """Boolean per grid timestamp: does ``[ts, ts + period)`` overlap a CMN window?
+
+    ``cmn_windows`` carries one row per notice with tz-aware ``start_utc`` /
+    ``end_utc`` columns (:func:`live.fetch_live.get_cmn_notices` rows). Both
+    intervals are half-open, so a notice ending exactly at a period's start
+    does not flag it. Rows with a missing start are skipped; a missing *end*
+    is the register's normal shape for an issued-and-still-open notice, so it
+    defaults to ``start + period`` — the targeted settlement period is always
+    flagged, never silently dropped. An empty or ``None`` frame yields
+    all-False — the normal case, CMNs are rare.
+    """
+    flags = pd.Series(False, index=index, name="cmn")
+    if cmn_windows is None or cmn_windows.empty:
+        return flags
+    for _, row in cmn_windows.iterrows():
+        start, end = row.get("start_utc"), row.get("end_utc")
+        if pd.isna(start):
+            continue
+        if pd.isna(end) or end <= start:
+            end = start + period
+        flags |= (index < end) & ((index + period) > start)
+    return flags
+
+
+def classify_tiers(
+    flags: pd.DataFrame,
+    lolpdrm: pd.DataFrame | None = None,
+    cmn_windows: pd.DataFrame | None = None,
+    drm_tight_mw: float = DRM_TIGHT_MW,
+) -> pd.DataFrame:
+    """Layer the tier ladder onto :func:`classify_periods` output.
+
+    ``lolpdrm`` is the half-hourly ``lolp``/``drm_mw`` frame (latest print per
+    period); it is reindexed onto the flags' grid with no fill — a period
+    without a print stays NaN and is *unknown* at tier 2 (``tier2_known``
+    False), which is different from calm. ``cmn_windows`` as in
+    :func:`cmn_flags`. Returns an index-aligned frame with columns ``lolp``,
+    ``drm_mw``, ``tier1`` (= the relative stress flag), ``tier2``,
+    ``tier2_known``, ``tier3`` and ``tier`` (0–3, the highest active tier).
+    """
+    tiers = pd.DataFrame(index=flags.index)
+    nan = pd.Series(float("nan"), index=flags.index)
+    if lolpdrm is not None and not lolpdrm.empty:
+        aligned = lolpdrm.reindex(flags.index)
+        tiers["lolp"] = aligned["lolp"] if "lolp" in aligned.columns else nan
+        tiers["drm_mw"] = aligned["drm_mw"] if "drm_mw" in aligned.columns else nan
+    else:
+        tiers["lolp"] = nan
+        tiers["drm_mw"] = nan
+    tiers["tier1"] = flags["stress"].astype(bool)
+    tiers["tier2_known"] = tiers["lolp"].notna() | tiers["drm_mw"].notna()
+    # NaN comparisons are False, so unknown periods land False here; the
+    # tier2_known mask is what keeps them out of every denominator.
+    tiers["tier2"] = (tiers["lolp"] > 0.0) | (tiers["drm_mw"] < drm_tight_mw)
+    tiers["tier3"] = cmn_flags(flags.index, cmn_windows)
+    tiers["tier"] = (
+        tiers["tier1"].astype(int)
+        .where(~tiers["tier2"], 2)
+        .where(~tiers["tier3"], 3)
+    )
+    return tiers
+
+
+def tier_metrics(
+    tiers: pd.DataFrame,
+    dispatch_mw: pd.Series | None = None,
+    soc_before: pd.Series | None = None,
+) -> dict:
+    """Window-level tightness metrics from a :func:`classify_tiers` frame.
+
+    Dispatch-dependent entries use the same inner-join-and-drop rule as
+    :func:`alignment_scores`; every share is ``None`` when its denominator is
+    zero or the underlying feed is absent, so callers can render "—" instead
+    of a fabricated number. ``tier2_coverage`` is computed over *known*
+    periods only.
+    """
+    drm = tiers["drm_mw"].dropna()
+    min_drm_mw = float(drm.min()) if len(drm) else None
+    min_drm_time = drm.idxmin() if len(drm) else None
+    n_lolp_positive = int((tiers["lolp"] > 0.0).sum())
+    n_tier2 = int(tiers["tier2"].sum())
+    n_tier2_known = int(tiers["tier2_known"].sum())
+
+    tier2_coverage = None
+    min_drm_at_discharge = None
+    if dispatch_mw is not None:
+        joined = tiers.join(dispatch_mw.rename("mw"), how="inner").dropna(subset=["mw"])
+        known = joined[joined["tier2_known"]]
+        discharge = known["mw"].clip(lower=0.0)
+        total_discharge = float(discharge.sum())
+        if total_discharge > 0:
+            tier2_coverage = float(discharge[known["tier2"]].sum()) / total_discharge
+        discharging_drm = joined.loc[joined["mw"] > 0, "drm_mw"].dropna()
+        if len(discharging_drm):
+            min_drm_at_discharge = float(discharging_drm.min())
+
+    tier2_confirm_rate = None
+    confirmable = tiers[tiers["tier1"] & tiers["tier2_known"]]
+    if len(confirmable):
+        tier2_confirm_rate = float(confirmable["tier2"].mean())
+
+    readiness_at_cmn = None
+    if soc_before is not None:
+        readiness_at_cmn = readiness_at_stress(soc_before, tiers["tier3"])
+
+    return {
+        "min_drm_mw": min_drm_mw,
+        "min_drm_time": min_drm_time,
+        "n_lolp_positive": n_lolp_positive,
+        "n_tier2": n_tier2,
+        "n_tier2_known": n_tier2_known,
+        "tier2_coverage": tier2_coverage,
+        "min_drm_at_discharge": min_drm_at_discharge,
+        "tier2_confirm_rate": tier2_confirm_rate,
+        "readiness_at_cmn": readiness_at_cmn,
+    }
 
 
 def optimize_resilience_dispatch(

@@ -14,6 +14,7 @@ from src.data.preprocess import (
     _utc_index,
     process_imbalance_price,
     process_generation_mix,
+    process_lolpdrm,
     process_market_index_price,
     process_demand_actual,
     process_day_ahead_price,
@@ -576,3 +577,71 @@ class TestMergeAll:
         with patch("src.data.preprocess.pd.DataFrame.to_parquet"):
             result = merge_all(gen, self._imbalance(), self._da_price())
         assert len(result) == 4
+
+
+# ---------------------------------------------------------------------------
+# process_lolpdrm
+# ---------------------------------------------------------------------------
+
+
+class TestProcessLolpdrm:
+    def _make(self):
+        """Period A carries every horizon print; period B only 8h and 4h."""
+        rows = []
+        for h in (12, 8, 4, 2, 1):
+            rows.append(
+                {
+                    "publishTime": f"2026-08-10 {12 - h:02d}:00:00+00:00",
+                    "startTime": "2026-08-10 12:00:00+00:00",
+                    "forecastHorizon": h,
+                    "lossOfLoadProbability": 0.0 if h > 1 else 0.05,
+                    "deratedMargin": 10000.0 + h,
+                }
+            )
+        for h in (8, 4):
+            rows.append(
+                {
+                    "publishTime": f"2026-08-10 {12 - h:02d}:30:00+00:00",
+                    "startTime": "2026-08-10 12:30:00+00:00",
+                    "forecastHorizon": h,
+                    "lossOfLoadProbability": 0.0,
+                    "deratedMargin": 20000.0 + h,
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def test_latest_print_prefers_horizon_1_else_shortest(self):
+        result = process_lolpdrm(self._make())
+        assert list(result.columns) == ["lolp", "drm_mw"]
+        assert len(result) == 2
+        # Period A: the horizon-1 print wins.
+        assert result["drm_mw"].iloc[0] == pytest.approx(10001.0)
+        assert result["lolp"].iloc[0] == pytest.approx(0.05)
+        # Period B has no horizon-1 print: the shortest available (4h) wins.
+        assert result["drm_mw"].iloc[1] == pytest.approx(20004.0)
+
+    def test_index_is_sorted_utc_named_time(self):
+        result = process_lolpdrm(self._make())
+        assert isinstance(result.index, pd.DatetimeIndex)
+        assert result.index.tz == UTC
+        assert result.index.name == "time"
+        assert result.index.is_monotonic_increasing
+
+    def test_non_numeric_coerced_to_nan(self):
+        df = self._make()
+        df["deratedMargin"] = df["deratedMargin"].astype(object)
+        df.loc[df["forecastHorizon"] == 1, "deratedMargin"] = "n/a"
+        result = process_lolpdrm(df)
+        assert np.isnan(result["drm_mw"].iloc[0])
+
+    def test_empty_input_keeps_columns(self):
+        result = process_lolpdrm(pd.DataFrame())
+        assert list(result.columns) == ["lolp", "drm_mw"]
+        assert result.empty
+        assert result.index.name == "time"
+
+    def test_does_not_mutate_input(self):
+        df = self._make()
+        original_cols = list(df.columns)
+        process_lolpdrm(df)
+        assert list(df.columns) == original_cols

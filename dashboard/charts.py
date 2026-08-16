@@ -1754,6 +1754,105 @@ def chart_alignment_day(day_flags: pd.DataFrame, dispatch_mw: pd.Series) -> go.F
     return fig
 
 
+# Tier shading escalates within the stress-red family: tier 2 (system-confirmed
+# tight) at the familiar low alpha, tier 3 (declared CMN) noticeably stronger.
+_TIER2_FILL = "rgba(227, 73, 72, 0.14)"
+_TIER3_FILL = "rgba(227, 73, 72, 0.30)"
+
+
+def chart_system_tightness(
+    tiers: pd.DataFrame,
+    dispatch_mw: pd.Series | None = None,
+    drm_tight_mw: float = 2000.0,
+) -> go.Figure:
+    """De-rated margin, LoLP and the tier ladder over the window, with dispatch.
+
+    ``tiers`` is the half-hourly frame from ``resilience.classify_tiers``
+    (columns ``drm_mw``, ``lolp``, ``tier2``, ``tier3``); ``dispatch_mw`` the
+    benchmark's net dispatch (positive = discharge). Two stacked panels share
+    the time axis — margin is a system quantity, dispatch a battery quantity,
+    so they never share a y-axis. Tier-2 tight periods are shaded like stress,
+    tier-3 (declared CMN) darker with a label. Survives an empty or all-NaN
+    frame: the theme and threshold still render, just with no marks.
+    """
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.06,
+        row_heights=[0.6, 0.4],
+    )
+    drm = tiers["drm_mw"].dropna() if "drm_mw" in tiers.columns else pd.Series(dtype=float)
+    if len(drm):
+        fig.add_trace(
+            go.Scatter(
+                x=drm.index,
+                y=drm.values,
+                name="De-rated margin",
+                mode="lines",
+                line=dict(color=COLORS["net"], width=2),
+                hovertemplate="%{x|%b %d %H:%M}<br>DRM %{y:,.0f} MW<extra></extra>",
+            ),
+            row=1, col=1,
+        )
+        lolp_hot = tiers[(tiers["lolp"] > 0.0) & tiers["drm_mw"].notna()]
+        if len(lolp_hot):
+            fig.add_trace(
+                go.Scatter(
+                    x=lolp_hot.index,
+                    y=lolp_hot["drm_mw"].values,
+                    name="LoLP > 0",
+                    mode="markers",
+                    marker=dict(color=COLORS["cost"], size=8,
+                                line=dict(width=1, color="white")),
+                    customdata=lolp_hot["lolp"].values,
+                    hovertemplate=(
+                        "%{x|%b %d %H:%M}<br>LoLP %{customdata:.1%} · "
+                        "DRM %{y:,.0f} MW<extra></extra>"
+                    ),
+                ),
+                row=1, col=1,
+            )
+    fig.add_hline(
+        y=drm_tight_mw,
+        row=1, col=1,
+        line=dict(color=COLORS["cost"], width=1, dash="dot"),
+        annotation_text=f"tight < {drm_tight_mw:,.0f} MW",
+        annotation_position="bottom right",
+        annotation_font=dict(size=11, color=COLORS["cost"]),
+    )
+    if dispatch_mw is not None and len(dispatch_mw):
+        fig.add_trace(
+            go.Bar(
+                x=dispatch_mw.index,
+                y=dispatch_mw.values,
+                name="Benchmark dispatch",
+                marker_color=_dispatch_bar_colors(dispatch_mw.values),
+                hovertemplate="%{x|%b %d %H:%M}<br>%{y:,.0f} MW<extra></extra>",
+            ),
+            row=2, col=1,
+        )
+    # ISO strings keep the shapes serialisable for every renderer (kaleido's
+    # JSON encoder rejects raw Timestamps).
+    if "tier2" in tiers.columns:
+        for start, end in _flag_spans(tiers["tier2"].fillna(False)):
+            fig.add_vrect(x0=str(start), x1=str(end), fillcolor=_TIER2_FILL, line_width=0)
+    if "tier3" in tiers.columns:
+        for start, end in _flag_spans(tiers["tier3"].fillna(False)):
+            fig.add_vrect(
+                x0=str(start), x1=str(end), fillcolor=_TIER3_FILL, line_width=0,
+                annotation_text="CMN", annotation_position="top left",
+                annotation_font=dict(size=11, color=COLORS["cost"]),
+            )
+
+    apply_theme(
+        fig,
+        height=HEIGHT_LG,
+        title="System tightness — de-rated margin, LoLP and declared notices",
+    )
+    fig.update_layout(hovermode="x unified", showlegend=True)
+    fig.update_yaxes(title_text="De-rated margin (MW)", row=1, col=1)
+    fig.update_yaxes(title_text="Dispatch (MW)", row=2, col=1)
+    return fig
+
+
 def chart_alignment_scatter(df: pd.DataFrame, sim_coverage: float | None,
                             sim_gbp: float) -> go.Figure:
     """Profit vs alignment: each fleet site by stress coverage and £/MW/day.

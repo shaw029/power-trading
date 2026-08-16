@@ -51,6 +51,7 @@ from dashboard.charts import (  # noqa: E402
     chart_alignment_day,
     chart_alignment_scatter,
     chart_gap_by_daytype,
+    chart_system_tightness,
     chart_shape_overlay,
     chart_system_prices,
     chart_sim_vs_fleet_daily,
@@ -80,7 +81,9 @@ the settlement engine run over published market data.
   (1h / 2h / 4h).
 - **Data (live, free)** — Nord Pool N2EX day-ahead price; Elexon MID price plus
   generation and demand for day-type context; Sheffield Solar PV_Live for GB
-  embedded solar (Elexon's transmission-metered mix carries no solar at all).
+  embedded solar (Elexon's transmission-metered mix carries no solar at all);
+  Elexon LoLP / de-rated margin and the NESO Capacity Market Notice register
+  for system tightness.
 - **Trading** — the day-ahead schedule optimises against the actual cleared DA
   price (published the day before, so legitimate information). The intraday
   layer then re-optimises against the realised MID curve with **perfect
@@ -1392,6 +1395,30 @@ def _window_flags(date_isos: tuple) -> pd.DataFrame:
     return resilience.classify_periods(residual, prices)
 
 
+@st.cache_data(show_spinner=False)
+def _lolpdrm_window(date_isos: tuple) -> pd.DataFrame:
+    """Half-hourly LoLP / de-rated margin over the shown window.
+
+    Latest print per settlement period. Days whose feed is unavailable simply
+    contribute no rows; empty frame when nothing is available.
+    """
+    parts = []
+    for iso in date_isos:
+        day = fetch_live.get_day_lolpdrm(dt.date.fromisoformat(iso))
+        if not day.empty:
+            parts.append(day)
+    if not parts:
+        return pd.DataFrame()
+    return pd.concat(parts).sort_index()
+
+
+@st.cache_data(show_spinner=False)
+def _cmn_notices(fetch_date_iso: str) -> pd.DataFrame:
+    """Capacity Market Notice register snapshot, keyed on today so it refreshes daily."""
+    del fetch_date_iso  # cache key only
+    return fetch_live.get_cmn_notices()
+
+
 def _sim_series(shown: list, duration: str) -> tuple[pd.Series, pd.Series]:
     """Hourly benchmark dispatch (MW, +discharge) and SOC-before series."""
     dispatch, soc = {}, {}
@@ -1523,6 +1550,105 @@ def _page_alignment():
     else:
         st.info("No overlapping system data for this day.")
 
+    # --- System tightness: operator-grade margin + declared notices -----------
+    st.subheader("System tightness")
+    st.caption(
+        "The tier ladder checks the relative stress signal against the "
+        "operator's own numbers. Tier 1 = top-decile residual load (above); "
+        "tier 2 = Elexon LoLP > 0 or de-rated margin below "
+        f"{resilience.DRM_TIGHT_MW:,.0f} MW; tier 3 = a declared Capacity "
+        "Market Notice."
+    )
+    lolpdrm = _lolpdrm_window(tuple(dates_shown))
+    cmn = _cmn_notices(dt.datetime.now(dt.timezone.utc).date().isoformat())
+    window_start = pd.Timestamp(dates_shown[0], tz="UTC")
+    window_end = pd.Timestamp(dates_shown[-1], tz="UTC") + pd.Timedelta(days=1)
+    cmn_issued = (
+        cmn[cmn["type_id"] == fetch_live.CMN_ISSUE_TYPE] if not cmn.empty else pd.DataFrame()
+    )
+    if not cmn_issued.empty:
+        # Issued notices normally have no end yet (the end arrives on the
+        # cancellation row), so an open notice counts as its target half-hour.
+        _eff_end = cmn_issued["end_utc"].fillna(
+            cmn_issued["start_utc"] + pd.Timedelta(minutes=30)
+        )
+        cmn_win = cmn_issued[
+            (cmn_issued["start_utc"] < window_end) & (_eff_end > window_start)
+        ]
+    else:
+        cmn_win = pd.DataFrame()
+    tiers = resilience.classify_tiers(flags, lolpdrm, cmn_win)
+    dispatch_hh = sim_dispatch.reindex(tiers.index, method="ffill", limit=1)
+    tm = resilience.tier_metrics(tiers, dispatch_hh, sim_soc)
+
+    tcols = st.columns(4)
+    tcols[0].metric(
+        "Min de-rated margin",
+        f"{tm['min_drm_mw']:,.0f} MW" if tm["min_drm_mw"] is not None else "—",
+        tm["min_drm_time"].strftime("%Y-%m-%d %H:%M") if tm["min_drm_time"] is not None else None,
+        delta_color="off",
+        help="Tightest de-rated margin in the window (Elexon LoLP/DRM, latest "
+        "print per period). The system's spare de-rated capacity after "
+        "outages and interconnectors — the operator's own tightness measure.",
+    )
+    tcols[1].metric(
+        "Periods LoLP > 0",
+        f"{tm['n_lolp_positive']}",
+        help="Half-hours whose final loss-of-load probability print was "
+        f"positive, out of {tm['n_tier2_known']} with data.",
+    )
+    tcols[2].metric(
+        "Tier-2 stress coverage",
+        f"{tm['tier2_coverage']:.0%}" if tm["tier2_coverage"] is not None else "—",
+        help="Share of the benchmark's discharged energy delivered while the "
+        "system was tight by the operator's measure (LoLP > 0 or DRM below "
+        f"{resilience.DRM_TIGHT_MW:,.0f} MW). '—' when no tier-2 tight period "
+        "or no discharge fell in periods with LoLP/DRM data.",
+    )
+    _last_cmn = (
+        cmn_issued["posted_utc"].dropna().max() if not cmn_issued.empty else None
+    )
+    tcols[3].metric(
+        "Capacity Market Notices",
+        f"{len(cmn_win)} in window" if len(cmn_win) else "None in window",
+        f"last: {_last_cmn.date().isoformat()}" if _last_cmn is not None else None,
+        delta_color="off",
+        help="Declared shortfall notices from the NESO CMN register — the "
+        "strongest stress signal there is, and rare by design. The delta "
+        "shows the register's most recent notice regardless of window.",
+    )
+
+    n_unknown = int(len(tiers) - tm["n_tier2_known"])
+    if tm["tier2_confirm_rate"] is not None:
+        st.caption(
+            f"System confirmation: {tm['tier2_confirm_rate']:.0%} of tier-1 "
+            "(top-decile residual load) stress periods were also "
+            "system-confirmed tight (tier 2)."
+            + (
+                f" {n_unknown} period(s) lacked LoLP/DRM data and are excluded."
+                if n_unknown
+                else ""
+            )
+        )
+    elif tm["n_tier2_known"]:
+        st.caption(
+            "System confirmation: no tier-1 stress period had LoLP/DRM data "
+            "to check against."
+        )
+
+    if tm["n_tier2_known"]:
+        st.plotly_chart(
+            chart_system_tightness(tiers, dispatch_hh, resilience.DRM_TIGHT_MW),
+            width="stretch",
+        )
+    else:
+        st.info("LoLP/De-rated Margin feed unavailable for this window.")
+    st.caption(
+        "Sources — LoLP/de-rated margin: Elexon (latest print per period, "
+        "shortest forecast horizon); Capacity Market Notices: NESO GB CMN "
+        "register. Both free, public feeds."
+    )
+
     # --- Fleet: profit vs alignment ------------------------------------------
     fleet_df = _with_duration(_fleet_range(_dates()))
     scatter_df = pd.DataFrame()
@@ -1639,6 +1765,17 @@ and system need, from the same public feeds as everything else.
   The same scorer runs on the benchmark's dispatch and on each fleet site's
   Physical Notifications, so simulated and real behaviour are comparable.
 - **Readiness** — mean state of charge at the onset of each stress block.
+- **Tier ladder (System tightness)** — stress severity in three tiers. Tier 1
+  is the relative signal above (top-decile residual load). Tier 2 is
+  system-confirmed tightness from Elexon's LoLP / de-rated margin feed —
+  latest print per settlement period (forecast horizon 1, else the shortest
+  published) — tight when LoLP > 0 or the de-rated margin is below 2,000 MW
+  (roughly one large CCGT plus operating reserve; an absolute threshold by
+  design, unlike tier 1's window-relative decile). Tier 3 is a declared
+  Capacity Market Notice: the half-hour overlaps an issued notice's target
+  window (cancellations are not applied in this version — a cancelled CMN can
+  over-shade, never hide stress). Periods without a LoLP/DRM print are
+  *unknown* at tier 2 and excluded from tier-2 shares, never assumed calm.
 - **Alignment gap** — the benchmark's dispatch versus a resilience-optimal
   counterfactual (identical SOC window, power, efficiency and cycle cap;
   objective = deliver in stress, absorb in surplus). Both schedules are valued
@@ -1647,8 +1784,9 @@ and system need, from the same public feeds as everything else.
   price), giving the profit cost of full alignment and the stress-hour energy
   pure arbitrage leaves undelivered.
 - **Caveats** — demand is transmission-metered (embedded generation nets off);
-  stress is a residual-load proxy, not NESO margin data; benchmark dispatch
-  uses the perfect-foresight intraday engine.
+  tier-1 stress is a residual-load proxy while tiers 2–3 are the operator's
+  own margin and notice data; benchmark dispatch uses the perfect-foresight
+  intraday engine.
 """
 
 GLOSSARY = """
@@ -1660,6 +1798,10 @@ GLOSSARY = """
 | **Residual load** | Demand − wind − embedded solar (MW) |
 | **Stress / surplus** | Top-decile residual load / bottom decile or negative prices, over the shown window |
 | **Alignment gap** | DA value forgone by the resilience-optimal schedule vs the profit-optimal one |
+| **LoLP** | Loss of load probability — Elexon's per-period chance that demand exceeds available supply |
+| **De-rated margin** | Spare supply after de-rating for reliability (MW); the operator's tightness measure |
+| **CMN** | Capacity Market Notice — NESO's declared warning of a possible capacity shortfall |
+| **Tier 1 / 2 / 3** | Stress: relative (top-decile residual) / confirmed (LoLP > 0, DRM < 2,000 MW) / declared (CMN) |
 """
 
 
