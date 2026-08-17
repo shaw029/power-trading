@@ -152,6 +152,73 @@ def site_profile(pn_records: list[dict]) -> pd.DataFrame:
     return grouped[["site", "time", "mw"]]
 
 
+def site_limit_profile(records: list[dict]) -> pd.DataFrame:
+    """Effective declared limit per fleet site per half-hour, in MW.
+
+    Works for MELS (export limits, levels ≥ 0) and MILS (import limits,
+    levels ≤ 0). Unlike PN spans, limit records are irregular — redeclarations
+    cut settlement periods into sub-spans and overlap earlier declarations —
+    so each BMU is painted onto a 1-minute UTC grid in notification order
+    (``notificationTime``, tie-broken by ``notificationSequence``), later
+    notifications overwriting earlier ones, then averaged per half-hour.
+    Time-weighting is deliberate: a unit derated for 24 of 30 minutes was 80%
+    unavailable that period, which is exactly the availability signal — a
+    last-effective rule would read it as 0% or 100%. Returns tidy
+    ``['site', 'time', 'mw']`` like :func:`site_profile`.
+    """
+    site_of = bmu_to_site()
+    df = pd.DataFrame(records)
+    if df.empty or "bmUnit" not in df.columns:
+        return pd.DataFrame(columns=["site", "time", "mw"])
+    df = df[df["bmUnit"].isin(site_of)].copy()
+    if df.empty:
+        return pd.DataFrame(columns=["site", "time", "mw"])
+    df["timeFrom"] = pd.to_datetime(df["timeFrom"], utc=True)
+    df["timeTo"] = pd.to_datetime(df["timeTo"], utc=True)
+    if "notificationTime" not in df.columns:
+        df["notificationTime"] = pd.NaT
+    if "notificationSequence" not in df.columns:
+        df["notificationSequence"] = 0
+    df["notificationTime"] = pd.to_datetime(df["notificationTime"], utc=True)
+    df = df.sort_values(["notificationTime", "notificationSequence"], na_position="first")
+
+    parts = []
+    for bmu, spans in df.groupby("bmUnit"):
+        start = spans["timeFrom"].min().floor(_MID_FREQ)
+        end = spans["timeTo"].max().ceil(_MID_FREQ)
+        minutes = pd.date_range(start, end, freq="1min", inclusive="left")
+        level = pd.Series(float("nan"), index=minutes)
+        for row in spans.itertuples():
+            span_min = pd.date_range(row.timeFrom, row.timeTo, freq="1min", inclusive="left")
+            if len(span_min) == 0:
+                continue
+            ramp = pd.Series(
+                [
+                    row.levelFrom
+                    + (row.levelTo - row.levelFrom) * i / max(len(span_min) - 1, 1)
+                    for i in range(len(span_min))
+                ],
+                index=span_min,
+            )
+            level.loc[ramp.index] = ramp
+        half_hourly = level.resample(_MID_FREQ).mean().dropna()
+        if half_hourly.empty:
+            continue
+        parts.append(
+            pd.DataFrame(
+                {
+                    "site": site_of[bmu].site,
+                    "time": half_hourly.index,
+                    "mw": half_hourly.values,
+                }
+            )
+        )
+    if not parts:
+        return pd.DataFrame(columns=["site", "time", "mw"])
+    tidy = pd.concat(parts, ignore_index=True)
+    return tidy.groupby(["site", "time"], as_index=False)["mw"].sum()
+
+
 def filter_daily(
     daily: pd.DataFrame,
     start: str | None = None,

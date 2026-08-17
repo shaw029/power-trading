@@ -218,3 +218,70 @@ def test_fleet_daily_splits_components():
     assert day1["discharge_mwh"] == pytest.approx(250.0)
     assert day1["charge_mwh"] == pytest.approx(275.0)
     assert day1["cycles"] == pytest.approx(250.0 / 250.0)
+
+
+def _limit_record(bmu: str, t_from: str, t_to: str, level: float,
+                  notified: str = "2024-01-01T00:00:00Z", seq: int = 1) -> dict:
+    return {
+        "bmUnit": bmu,
+        "settlementDate": _DATE,
+        "timeFrom": f"{_DATE}T{t_from}:00Z",
+        "timeTo": f"{_DATE}T{t_to}:00Z",
+        "levelFrom": level,
+        "levelTo": level,
+        "notificationTime": notified,
+        "notificationSequence": seq,
+    }
+
+
+def test_site_limit_profile_time_weights_partial_spans():
+    # 50 MW declared for 24 of 30 minutes, 0 MW for the rest: the half-hour
+    # reads 40 MW — a last-effective rule would wrongly say 0 or 50.
+    records = [
+        _limit_record("E_PILLB-1", "18:00", "18:24", 50.0),
+        _limit_record("E_PILLB-1", "18:24", "18:30", 0.0),
+    ]
+    profile = performance.site_limit_profile(records)
+    assert list(profile.columns) == ["site", "time", "mw"]
+    assert len(profile) == 1
+    assert profile["site"].iloc[0] == "Pillswood"
+    assert profile["time"].iloc[0] == pd.Timestamp(f"{_DATE}T18:00:00Z")
+    assert profile["mw"].iloc[0] == pytest.approx(50.0 * 24 / 30)
+
+
+def test_site_limit_profile_later_notification_overrides():
+    # A redeclaration posted later overwrites the original across the overlap.
+    records = [
+        _limit_record("E_PILLB-1", "18:00", "18:30", 50.0,
+                      notified="2024-01-01T10:00:00Z", seq=1),
+        _limit_record("E_PILLB-1", "18:00", "18:30", 10.0,
+                      notified="2024-01-01T17:00:00Z", seq=2),
+    ]
+    profile = performance.site_limit_profile(records)
+    assert profile["mw"].iloc[0] == pytest.approx(10.0)
+
+
+def test_site_limit_profile_sums_bmus_within_site():
+    records = [
+        _limit_record("E_PILLB-1", "18:00", "18:30", 49.0),
+        _limit_record("E_PILLB-2", "18:00", "18:30", 49.0),
+    ]
+    profile = performance.site_limit_profile(records)
+    assert len(profile) == 1
+    assert profile["mw"].iloc[0] == pytest.approx(98.0)
+
+
+def test_site_limit_profile_negative_mils_levels():
+    records = [_limit_record("E_PILLB-1", "18:00", "18:30", -11.0)]
+    profile = performance.site_limit_profile(records)
+    assert profile["mw"].iloc[0] == pytest.approx(-11.0)
+
+
+def test_site_limit_profile_empty_and_unknown_bmus():
+    empty = performance.site_limit_profile([])
+    assert list(empty.columns) == ["site", "time", "mw"]
+    assert empty.empty
+    unknown = performance.site_limit_profile(
+        [_limit_record("T_NOTAFLEETUNIT-1", "18:00", "18:30", 50.0)]
+    )
+    assert unknown.empty

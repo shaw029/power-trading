@@ -267,7 +267,8 @@ Both live feeds are public, so the benchmark needs **no secrets**:
 |---|---|
 | GB Day-Ahead price | **Nord Pool** data portal (`N2EX_DayAhead`, area `UK`, GBP). Serves the recent ~60 days without a subscription; older days return `401` and are skipped. ENTSO-E no longer publishes GB day-ahead prices, so it is not used for the live path. |
 | Intraday MID, generation, demand | **Elexon** BMRS (API key optional). |
-| System tightness (LoLP / de-rated margin) | **Elexon** BMRS `forecast/system/loss-of-load` (keyless). Several prints per settlement period (12/8/4/2/1 h ahead); the dashboard uses the latest print. |
+| System tightness (LoLP / de-rated margin) | **Elexon** BMRS `forecast/system/loss-of-load` (keyless). Several prints per settlement period (12/8/4/2/1 h ahead); the dashboard uses the latest print, and the stress-response study keeps all of them. |
+| Fleet declared limits (MELS / MILS) | **Elexon** BMRS `datasets/MELS,MILS/stream` per BM Unit (keyless). Used by the stress-response study for availability and headroom. |
 | Capacity Market Notices | **NESO** GB CMN register (`gbcmn.nationalenergyso.com`, keyless; the `types[]` filter is mandatory). Rare events — the dashboard degrades to "None in window". |
 
 ### The `live/` package
@@ -300,6 +301,38 @@ It hosts for free on **Streamlit Community Cloud**:
 1. Push the branch to GitHub.
 2. On [share.streamlit.io](https://share.streamlit.io), **Create app** → pick the repo and branch, and set the **main file path** to `dashboard/live_app.py`.
 3. Deploy. **No secrets are required** (both feeds are public), and `requirements.txt` already lists every dependency. First load fetches and settles the full window (~30–60 s), then results are cached.
+
+## Stress Response Study (notebook 05)
+
+`notebooks/05_stress_response_study.ipynb` measures what the **real** GB battery fleet did
+under **operator-grade** scarcity signals over three winters — a separate question from the
+live benchmark's priced alignment gap, and on a much longer window because it uses no
+subscription price feed.
+
+**The store.** The window is ~1,050 days across eight day-cached feeds, so the notebook never
+fetches inline. `scripts/build_stress_store.py` does the acquisition once — day by day,
+failure-tolerant, resumable — and writes tidy parquet tables to
+`data/processed/stress_study/` that the analysis cells load in seconds:
+
+```bash
+python scripts/build_stress_store.py --start 2023-10-01 --end 2026-08-16
+```
+
+A cold build takes hours and thousands of HTTP calls; re-running after a partial build only
+re-hits the days that failed, because every underlying fetcher is day-file cached. The
+`coverage` table records what each feed actually returned per day, so every statistic in the
+notebook can state what it is missing instead of silently averaging over gaps.
+
+**Fast iteration.** Set `DRY_RUN = True` in the notebook's constants cell to build a two-week
+store under `data/processed/stress_study/dry_run/` and run the whole notebook in minutes.
+Conditioning sets will be near-empty in a summer fortnight; every analysis cell is written to
+print `n=0 — skipped` rather than error, which is also how the empty-data paths get tested.
+
+**What is repo code vs notebook code.** Only reusable acquisition and reshaping live in the
+repo (`fetch_fleet_mels`/`fetch_fleet_mils`, `fleet.performance.site_limit_profile`, the store
+builder), all unit-tested. The study's analysis — state-of-charge inference, conditioning
+sets, matched controls, event studies — deliberately stays in notebook cells until it has
+earned promotion to the dashboard.
 
 ## VS Code
 

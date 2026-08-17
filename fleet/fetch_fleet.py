@@ -30,6 +30,8 @@ from src.utils.config import ELEXON_BASE_URL, RAW_DATA_DIR
 logger = logging.getLogger(__name__)
 
 _PN_DIR = "FLEET_PN"
+_MELS_DIR = "FLEET_MELS"
+_MILS_DIR = "FLEET_MILS"
 _CASHFLOW_DIR = "FLEET_EBOCF"
 _TIMEOUT_S = 30
 
@@ -67,14 +69,14 @@ def _get_json(url: str, params: list[tuple[str, str]] | None = None):
     return response.json()
 
 
-def fetch_fleet_pn(date: dt.date) -> list[dict]:
-    """Physical Notification records for every fleet BMU on one settlement day.
+def _fetch_day_stream(dataset: str, subdir: str, date: dt.date) -> list[dict]:
+    """One settlement day of a per-BMU Elexon ``/datasets/<X>/stream`` feed.
 
-    Returns the raw Elexon ``PN`` stream records (one per BMU per settlement
-    period, with ``levelFrom``/``levelTo`` MW and a UTC ``timeFrom``/``timeTo``
-    span), filtered to ``settlementDate == date``.
+    Queries a ±2h-padded UTC window for every fleet BMU, filters back to
+    ``settlementDate == date``, and day-file caches non-empty results under
+    ``subdir``.
     """
-    cached = _read_cache(_PN_DIR, date)
+    cached = _read_cache(subdir, date)
     if cached is not None:
         return cast(list[dict], cached)
 
@@ -86,12 +88,45 @@ def fetch_fleet_pn(date: dt.date) -> list[dict]:
     ]
     params += [("bmUnit", bmu) for bmu in all_bmu_ids()]
 
-    url = f"{ELEXON_BASE_URL.rstrip('/')}/datasets/PN/stream"
+    url = f"{ELEXON_BASE_URL.rstrip('/')}/datasets/{dataset}/stream"
     records = _get_json(url, params)
     records = [r for r in records if r.get("settlementDate") == date.isoformat()]
     if records:
-        _write_cache(_PN_DIR, date, records)
+        _write_cache(subdir, date, records)
     return records
+
+
+def fetch_fleet_pn(date: dt.date) -> list[dict]:
+    """Physical Notification records for every fleet BMU on one settlement day.
+
+    Returns the raw Elexon ``PN`` stream records (one per BMU per settlement
+    period, with ``levelFrom``/``levelTo`` MW and a UTC ``timeFrom``/``timeTo``
+    span), filtered to ``settlementDate == date``.
+    """
+    return _fetch_day_stream("PN", _PN_DIR, date)
+
+
+def fetch_fleet_mels(date: dt.date) -> list[dict]:
+    """Maximum Export Limit records for every fleet BMU on one settlement day.
+
+    Raw Elexon ``MELS`` stream records: declared export capability in MW
+    (``levelFrom``/``levelTo`` ≥ 0). Unlike PNs, spans are *irregular* —
+    redeclarations cut periods into sub-spans (e.g. 18:00→18:24) and carry
+    ``notificationTime``/``notificationSequence``. Resolving overlaps onto the
+    half-hourly grid is :func:`fleet.performance.site_limit_profile`'s job,
+    not this fetcher's.
+    """
+    return _fetch_day_stream("MELS", _MELS_DIR, date)
+
+
+def fetch_fleet_mils(date: dt.date) -> list[dict]:
+    """Maximum Import Limit records for every fleet BMU on one settlement day.
+
+    Raw Elexon ``MILS`` stream records: declared import capability in MW
+    (``levelFrom``/``levelTo`` ≤ 0, i.e. charge headroom). Same irregular-span
+    shape as MELS; see :func:`fetch_fleet_mels`.
+    """
+    return _fetch_day_stream("MILS", _MILS_DIR, date)
 
 
 def fetch_fleet_bm_cashflows(date: dt.date) -> dict[str, list[dict]]:

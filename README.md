@@ -89,8 +89,14 @@ python main.py --config configs/config.yaml --mode all
 | **Intraday exit (hybrid)** | Each position is split into two slices. The passive slice (`baseline_hedge_ratio`, default 15% — selected in notebook 02) exits at MID, paying the £2/MWh spread-to-MID friction. The active slice targets MID via a TP/SL engine; if neither trigger fires within the delivery window, it settles at the imbalance price (SSP for longs, SBP for shorts). Imbalance is the deliberate terminal fallback for the active slice, not an unavoidable residual. | `02_hybrid_execution_analysis.ipynb` |
 | **BESS dispatch** | The Day-Ahead schedule is solved via LP optimisation (PuLP/HiGHS) against an ML price forecast, maximising charge/discharge revenue subject to SOC window (`min_soc_pct`–`max_soc_pct`, default 10–90%), power, efficiency, and an optional `target_daily_cycles` cap. End-of-day SOC is unconstrained and carried forward as the next day's starting SOC — days are not treated independently. Revenue settles against the actual cleared DA price. During the intraday window a rolling-horizon LP walks the day period by period: each quarter's MID is observed shortly before its delivery, so the current period is priced at the **observed MID** and the unseen future at a **DA proxy** (cleared DA price ± a configurable `margin_sell`/`margin_buy` basis — the hurdle is conservatism on the guessed future only). Only the visible period is executed and locked before rolling forward, clamped to feasibility and settled at its observed MID. That settled deviation value is the Intraday DA Improvement; imbalance is ≈ 0 by construction. | `03_bess_dispatch_analysis.ipynb` |
 | `04_alignment_gap.ipynb` | Alignment-gap study on the latest ~60 days of live GB data: residual-load stress/surplus classification, alignment scores (stress coverage, surplus absorption, readiness) for the benchmark and for each real fleet site's Physical Notifications, a resilience-optimal counterfactual under identical physics, the priced alignment gap by day type, and the fleet on the profit/alignment plane |
+| `05_stress_response_study.ipynb` | What the **real** GB fleet did under **operator-grade** scarcity signals (Elexon LoLP / de-rated margin, NESO Capacity Market Notices) over three winters from 2023-10. Fleet availability and inferred state of charge in the tightest periods, net position by margin band ("cannibalistic" charging), forecast-horizon foresight and dispatch around scarcity triggers against matched controls, and cashout-spike frequency by fleet-discharge quartile at equal stress. No prices from subscription feeds, so the window is years rather than the 60 days of notebook 04 |
 
-All notebooks live in `notebooks/`.
+All notebooks live in `notebooks/`. Notebook 05 reads a tidy parquet store built once by
+`scripts/build_stress_store.py` (day-cached, resumable, hours on a cold cache):
+
+```bash
+python scripts/build_stress_store.py --start 2023-10-01 --end 2026-08-16
+```
 
 ---
 

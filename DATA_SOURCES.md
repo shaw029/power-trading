@@ -84,7 +84,12 @@ rm -rf data/raw/NORDPOOL_DA/             # day-ahead price (Nord Pool N2EX, live
 rm -rf data/raw/PVLIVE_SOLAR/            # GB embedded solar outturn (PV_Live)
 rm -rf data/raw/LOLPDRM/                 # LoLP / de-rated margin (Elexon, live GB)
 rm -rf data/raw/CMN/                     # Capacity Market Notice register (NESO)
+rm -rf data/raw/FLEET_PN/                # per-BMU Physical Notifications (fleet)
+rm -rf data/raw/FLEET_MELS/              # per-BMU max export limits (fleet)
+rm -rf data/raw/FLEET_MILS/              # per-BMU max import limits (fleet)
 ```
+
+> **Fleet declared-limit feeds:** `MELS` and `MILS` (per-BMU maximum export / import limits) are fetched by `fleet/fetch_fleet.py` alongside `PN`, for the stress-response study's availability metrics. Records carry *irregular* sub-period spans — a mid-period redeclaration cuts a settlement period into pieces and each carries a `notificationTime`/`notificationSequence` — so `fleet.performance.site_limit_profile` resolves them onto the half-hourly grid by painting a minute grid in notification order and time-weighting. A unit derated for 24 of 30 minutes reads as 80% available, which is the point.
 
 > **Live-dashboard-only feeds:** two datasets are fetched only by the live benchmark (`dashboard/live_app.py`), not the historical pipeline. **LoLP / De-rated Margin** comes from Elexon's `forecast/system/loss-of-load` endpoint (keyless, not under `/datasets/`); the raw cache keeps every forecast-horizon print (12/8/4/2/1 h ahead) per settlement period, and `process_lolpdrm` reduces to the latest print (`lolp`, `drm_mw`). **Capacity Market Notices** come from the NESO GB CMN register (`gbcmn.nationalenergyso.com/api/notifications`); the `types[]` filter is mandatory (1 = issued, 4 = expiry/cancellation), and since the register is not day-partitioned the snapshot is cached under the *fetch* date (`CMN/CMN_<today>.json`) — at most one network hit per day.
 
