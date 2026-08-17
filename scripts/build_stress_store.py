@@ -158,22 +158,30 @@ def _assemble_sbp(days: list[dt.date]) -> pd.DataFrame:
 
 
 def _assemble_cmn(days: list[dt.date]) -> pd.DataFrame:
-    """Issued Capacity Market Notices overlapping the window.
+    """Capacity Market Notices overlapping the window — issued *and* expiry rows.
 
-    An issued notice normally carries no end time (the register stamps that on
-    cancellation), so an open notice is treated as covering its target
+    Both types are kept because they answer different questions: an issued
+    notice (type 1) carries the target window, while its expiry (type 4) is
+    what says whether the notice was still standing when that target arrived —
+    GB routinely withdraws a notice hours before the period it warned about.
+    Pairing them is the analysis's job, not this function's.
+
+    An issued notice normally carries no end time (the register stamps one only
+    on cancellation), so an open notice is treated as covering its target
     settlement period — the same rule as :func:`live.resilience.cmn_flags`.
     """
     notices = fetch_live.get_cmn_notices()
     if notices.empty:
         return notices
-    issued = notices[notices["type_id"] == fetch_live.CMN_ISSUE_TYPE].copy()
-    if issued.empty:
-        return issued
+    keep = notices[
+        notices["type_id"].isin((fetch_live.CMN_ISSUE_TYPE, fetch_live.CMN_EXPIRY_TYPE))
+    ].copy()
+    if keep.empty:
+        return keep
     lo = pd.Timestamp(days[0], tz="UTC")
     hi = pd.Timestamp(days[-1], tz="UTC") + pd.Timedelta(days=1)
-    eff_end = issued["end_utc"].fillna(issued["start_utc"] + pd.Timedelta(minutes=30))
-    return issued[(issued["start_utc"] < hi) & (eff_end > lo)].reset_index(drop=True)
+    eff_end = keep["end_utc"].fillna(keep["start_utc"] + pd.Timedelta(minutes=30))
+    return keep[(keep["start_utc"] < hi) & (eff_end > lo)].reset_index(drop=True)
 
 
 def store_is_current(store: Path, days: list[dt.date]) -> bool:
