@@ -184,8 +184,9 @@ def _assemble_cmn(days: list[dt.date]) -> pd.DataFrame:
     return keep[(keep["start_utc"] < hi) & (eff_end > lo)].reset_index(drop=True)
 
 
-def store_is_current(store: Path, days: list[dt.date]) -> bool:
+def store_is_current(store: Path | str, days: list[dt.date]) -> bool:
     """True when ``store`` already holds a complete build for this window."""
+    store = Path(store)
     manifest = store / "manifest.json"
     if not manifest.exists():
         return False

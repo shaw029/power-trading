@@ -133,6 +133,14 @@ def test_second_build_reuses_current_store(tmp_path, patched):
     assert not bss.store_is_current(tmp_path, _DAYS + [dt.date(2024, 1, 3)])
 
 
+def test_store_is_current_accepts_str_paths(tmp_path, patched):
+    # build_store normalises its store argument, so this must too — a str path
+    # used to raise TypeError and would read as "store is broken, rebuild".
+    bss.build_store(_DAYS, tmp_path, log=lambda _m: None)
+    assert bss.store_is_current(str(tmp_path), _DAYS)
+    assert not bss.store_is_current(str(tmp_path / "nope"), _DAYS)
+
+
 def test_coverage_marks_sbp_days_from_assembled_frame(tmp_path, patched):
     bss.build_store(_DAYS, tmp_path, log=lambda _m: None)
     coverage = pd.read_parquet(tmp_path / "coverage.parquet")
