@@ -1,200 +1,182 @@
 # Dashboard KPI sheet
 
-Source of truth for **everything the live dashboard displays**. One row per visible element.
+What the live dashboard shows, page by page, in plain terms.
 
-## How this is used
-
-1. **Plan here.** A new metric starts as a `proposed` row in this file — never as code.
-2. **Design from here.** The design pass reads the rows: `type` says what shape the element is,
-   `format` says what it looks like, `source` says whether the data already exists.
-3. **Build from here.** Implementation quotes the row `id` in the PR, flips `status` to `built`,
-   and lands the sheet edit in the *same commit* as the code.
-
-A row and its code go in together. If the sheet and `dashboard/live_app.py` disagree, the sheet is wrong.
-
-## Conventions
-
-**ID** — `<PAGE>-<TYPE><n>`, stable forever. Retire an ID (`status: removed`) rather than reuse it.
-Page codes: `GLB` global · `DAY` · `HIS` history · `SYS` system · `FLT` fleet · `DTY` day types ·
-`SVF` benchmark vs fleet · `ALN` alignment gap · `MTH` methodology.
-
-**Type** — the distinction that drives design:
-
-| Type | Means | Streamlit |
-|---|---|---|
-| `number` | Single headline figure, optional delta line | `st.metric` |
-| `chart` | Plot | `st.plotly_chart` |
-| `table` | Rows the reader scans or sorts | `st.dataframe` |
-| `control` | Filter or selector that changes what is shown | widget |
-| `text` | Caption carrying a *computed* value (not static prose) | `st.caption` |
-| `file` | Download | `st.download_button` |
-
-**Status** — `built` · `proposed` · `removed`.
-
-**Source** — the feed, then the function that computes it. This column is what says whether a
-proposed row is cheap (data already flows) or expensive (needs a new downloader).
+Use it to decide what to add or cut, hand it to a design pass, then hand it to a build.
+Every row is either **Built** (on screen now) or an **Idea** (not yet). Types are
+**Number**, **Graph**, **Table**, **Filter**, **Note**, **Download** — that's the distinction
+design cares about.
 
 ---
 
-## GLB — global controls
+## Filters — always on the sidebar
 
-Sidebar, present on every page.
+These set which days every page is about.
 
-| ID | Element | Type | Format | Source | Status |
-|---|---|---|---|---|---|
-| GLB-X1 | Period | control | segmented: 7D/14D/30D/60D/Custom, default 30D | `_global_filters` | built |
-| GLB-X2 | Custom range | control | date pair, bounded to available days; shown only when Period=Custom | `_global_filters` | built |
-| GLB-X3 | Day types | control | multiselect, 10 tags + `untagged`, none = all | `live.classify` tags | built |
-| GLB-X4 | Duration | control | radio 1h/2h/4h | `live.assets.REFERENCE_DURATIONS` | built |
-| GLB-X5 | Cycle target | control | slider 0.5–3.0 cycles/day, step 0.5 | `_benchmark_parameters` | built |
-| GLB-X6 | Degradation cost | control | slider £0–20/MWh, step 0.5 | `_benchmark_parameters` | built |
-| GLB-X7 | SOC band | control | range slider 0–100%, step 5 | `_benchmark_parameters` | built |
-| GLB-X8 | DA commitment | control | slider 0–100%, step 5 | `_benchmark_parameters` | built |
+| ID | Shows | Type | What it does | Status |
+|---|---|---|---|---|
+| GLB-1 | Period | Filter | Last 7 / 14 / 30 / 60 days, or a custom range. Defaults to 30 days. | Built |
+| GLB-2 | Day types | Filter | Show only windy days, volatile days, weekends, and so on. Nothing selected means all days. | Built |
 
-Levers X4–X8 sit in a form: nothing re-settles until **Apply**. They are hidden on SYS and FLT,
-which show a "levers do not affect this page" caption instead.
+## Battery settings — sidebar, on the simulated pages only
 
-## DAY — Day (`/latest`, landing page)
+Change one and the whole simulation re-runs, but only after **Apply**. Hidden on the two
+pages that show real-world data, since they aren't affected.
 
-| ID | Element | Type | Format | Source | Status |
-|---|---|---|---|---|---|
-| DAY-X1 | Day picker | control | selectbox, defaults to latest settled day; persists across pages | `_page_day` | built |
-| DAY-N1 | Net PnL | number | £X/MW + delta vs window avg | `settle_day` → `net_pnl` | built |
-| DAY-N2 | DA benchmark | number | £X/MW | `settle_day` → `benchmark_da_revenue` | built |
-| DAY-N3 | Cycles | number | X.XX | `settle_day` → `cycles` | built |
-| DAY-N4 | Capture | number | X% | `settle_day` → `capture` | built |
-| DAY-N5 | DA spread | number | £X/MWh | Nord Pool DA, peak−trough of the day | built |
-| DAY-C1 | Day composite | chart | 4 panels: prices / dispatch vs DA / SOC band / residual load | `chart_day_composite` | built |
-| DAY-C2 | Dispatch vs system state | chart | 2 panels, stress+surplus shading; falls back to realised shape | `chart_alignment_day` | built |
-| DAY-C3 | System prices | chart | DA vs MID | `chart_system_prices` | built |
-| DAY-C4 | SOC tracker | chart | SOC path in band | `chart_soc_tracker` | built |
-| DAY-C5 | PnL waterfall | chart | attribution | `chart_pnl_waterfall` | built |
-| DAY-C6 | Day in window | chart | where this day sits in the window | `chart_day_in_window` | built |
-| DAY-C7 | Generation mix | chart | in **System detail** expander | `chart_generation_mix` | built |
-| DAY-C8 | Realised shape | chart | in **Battery detail** expander | `chart_realized_shape` | built |
-| DAY-T1 | Raw half-hourly system | table | in **System detail** expander | `fetch_live.get_day_system` | built |
-| DAY-T2 | Fleet this day | table | top sites by £/MW | `fleet_perf.day_site_metrics` | built |
-| DAY-Z1 | Stress half-hours on this day | text | "N stress half-hour(s)" | `_window_flags` | built |
-| DAY-F1 | System CSV | file | download | `fetch_live.get_day_system` | built |
-
-## HIS — History (`/history`)
-
-| ID | Element | Type | Format | Source | Status |
-|---|---|---|---|---|---|
-| HIS-N1 | Avg net PnL | number | £X/MW/day | window mean of `net_pnl` | built |
-| HIS-N2 | Total net PnL | number | £X absolute | window sum | built |
-| HIS-N3 | Positive days | number | n / N | count `net_pnl > 0` | built |
-| HIS-N4 | Best day | number | £X/MW + date delta | window max | built |
-| HIS-C1 | Daily attribution | chart | stacked PnL components per day | `chart_daily_attribution` | built |
-| HIS-C2 | Price capture | chart | charge/discharge by hour vs avg DA | `chart_price_capture` | built |
-
-## SYS — System overview (`/system`) — observed data only
-
-| ID | Element | Type | Format | Source | Status |
-|---|---|---|---|---|---|
-| SYS-N1 | Days shown | number | N | filtered window | built |
-| SYS-N2 | Avg peak demand | number | X.X GW | Elexon ITSDO → `_system_summary_day` | built |
-| SYS-N3 | Low-carbon generation | number | X% of GB generation | Elexon FUELHH + PV_Live | built |
-| SYS-N4 | Net interconnectors | number | ±X GWh (+ = import) | Elexon FUELHH INT* | built |
-| SYS-C1 | Daily generation stack | chart | by fuel group | `chart_generation_daily` | built |
-| SYS-C2 | Low-carbon share | chart | over time | `chart_low_carbon_daily` | built |
-| SYS-C3 | Daily avg wholesale price | chart | DA vs MID | `chart_system_prices` | built |
-
-## FLT — Fleet performance (`/fleet`) — observed data only
-
-| ID | Element | Type | Format | Source | Status |
-|---|---|---|---|---|---|
-| FLT-X1 | Sites / Optimisers / Regions / Battery hours | control | 4 multiselects, default all | `_fleet_filters` | built |
-| FLT-X2 | Metric | control | segmented: Revenue/Volume/Cycles/Capacity | `_render_fleet` | built |
-| FLT-N1 | Fleet tracked | number | X MW nameplate | `fleet.registry` | built |
-| FLT-N2 | Top vs median spread | number | £X/MW/day + median delta | `summarise_by_site` | built |
-| FLT-N3 | Fleet avg | number | £X/MW/day, MW-day weighted | `summarise_by_site` | built |
-| FLT-N4 | Top site | number | site name + £/MW/day | `summarise_by_site` | built |
-| FLT-C1 | Site leaderboard | chart | by selected metric | `chart_fleet_leaderboard` | built |
-| FLT-C2 | Fleet daily | chart | series by selected metric | `chart_fleet_daily` | built |
-| FLT-T1 | Per-site detail | table | one row per site | `summarise_by_site` | built |
-
-Revenue = Physical Notifications × MID + indicative BM cashflows. Ancillary income is not public,
-so ancillary-tilted sites read low and are flagged, never silently mixed in.
-
-## DTY — Day types (`/day-types`)
-
-| ID | Element | Type | Format | Source | Status |
-|---|---|---|---|---|---|
-| DTY-C1 | Capture by day type | chart | bar | `chart_daytype_capture` | built |
-| DTY-C2 | Tag co-occurrence | chart | matrix | `chart_daytype_matrix` | built |
-| DTY-C3 | Tag frequency | chart | bar | `chart_daytype_frequency` | built |
-| DTY-C4 | Dispatch profiles by tag | chart | profiles | `chart_daytype_profiles` | built |
-| DTY-T1 | Days behind the tags | table | day → tags | `live.classify` | built |
-
-**No KPI row on this page.** Deliberate gap or oversight — decide before adding one (see backlog).
-
-## SVF — Benchmark vs fleet (`/sim-vs-fleet`)
-
-| ID | Element | Type | Format | Source | Status |
-|---|---|---|---|---|---|
-| SVF-X1 | Include ⚠ ancillary-tilted sites | control | toggle, default off | `_page_sim_vs_fleet` | built |
-| SVF-N1 | Sim ceiling | number | £X/MW/day | benchmark over common days | built |
-| SVF-N2 | Fleet wholesale avg | number | £X/MW/day, PN×MID leg only | `summarise_by_site` | built |
-| SVF-N3 | Realisation | number | X% of ceiling | N2 ÷ N1 | built |
-| SVF-N4 | Sites compared | number | n × duration + excluded count | `summarise_by_site` | built |
-| SVF-C1 | Sim vs fleet daily | chart | paired series | `chart_sim_vs_fleet_daily` | built |
-| SVF-C2 | Dispatch shape overlay | chart | mean shapes | `chart_shape_overlay` | built |
-| SVF-C3 | Capture ratio by day type | chart | bar | `chart_daytype_ratio` | built |
-
-## ALN — Alignment gap (`/alignment`)
-
-Two KPI rows. The heaviest page in the app — check crowding before adding a ninth number.
-
-| ID | Element | Type | Format | Source | Status |
-|---|---|---|---|---|---|
-| ALN-X1 | Exemplar day | control | selectbox, auto = highest residual-load day | `_page_alignment` | built |
-| ALN-N1 | Stress coverage | number | X% of discharge in stress | `resilience.alignment_scores` | built |
-| ALN-N2 | Surplus absorption | number | X% of charge in surplus | `resilience.alignment_scores` | built |
-| ALN-N3 | Readiness at stress | number | X% mean SOC at onset | `resilience.readiness_at_stress` | built |
-| ALN-N4 | Cost of full alignment | number | £X/MW/day + MWh forgone | `resilience.alignment_gap` | built |
-| ALN-N5 | Min de-rated margin | number | X MW + timestamp | Elexon LOLPDRM → `tier_metrics` | built |
-| ALN-N6 | Periods LoLP > 0 | number | N of periods with data | Elexon LOLPDRM → `tier_metrics` | built |
-| ALN-N7 | Tier-2 stress coverage | number | X% | `resilience.tier_metrics` | built |
-| ALN-N8 | Capacity Market Notices | number | "N in window" + last notice date | NESO CMN → `_cmn_notices` | built |
-| ALN-C1 | Exemplar day dispatch | chart | 2 panels, stress shading | `chart_alignment_day` | built |
-| ALN-C2 | System tightness | chart | DRM line + threshold + LoLP markers + tier shading + dispatch | `chart_system_tightness` | built |
-| ALN-C3 | Profit vs alignment | chart | fleet scatter, benchmark starred | `chart_alignment_scatter` | built |
-| ALN-C4 | Cost of alignment by day type | chart | bar | `chart_gap_by_daytype` | built |
-| ALN-T1 | Top stress periods | table | 10 rows: residual, benchmark MW, fleet MW | `_window_flags` | built |
-| ALN-Z1 | System confirmation rate | text | "X% of tier-1 stress was tier-2 confirmed" | `tier_metrics` | built |
-
-## MTH — Methodology (`/methodology`)
-
-Static prose and the glossary. No computed elements; nothing to track here beyond keeping
-definitions in step with rows above.
+| ID | Shows | Type | What it does | Status |
+|---|---|---|---|---|
+| GLB-3 | Duration | Filter | 1h, 2h or 4h of storage at 50 MW. | Built |
+| GLB-4 | Cycle target | Filter | How hard the battery is allowed to work each day. | Built |
+| GLB-5 | Degradation cost | Filter | What wear costs per MWh — higher makes it pickier about trades. | Built |
+| GLB-6 | State-of-charge band | Filter | How full and how empty it's allowed to get. | Built |
+| GLB-7 | Day-ahead commitment | Filter | How much of the battery the day-ahead auction may book, versus held back for intraday. | Built |
 
 ---
 
-## Backlog — proposed
+## Day — one day in full
 
-Candidates from `notebooks/05_stress_response_study.ipynb`, which already computes all of these
-over 2023-10 → 2026-08. Nothing here is committed to; the point is that each row states its cost.
+The landing page. Everything about a single delivery day.
+*Data: day-ahead and intraday prices, generation, demand, the real fleet.*
 
-| ID | Element | Type | Source | Cost | Note |
-|---|---|---|---|---|---|
-| ALN-N9 | Fleet response at stress | number | `fleet_pn` + LOLPDRM | data flows already | Fleet net MW per MW online in top-LoLP periods vs baseline. The single strongest number in the study. |
-| ALN-C5 | Cannibalistic charging by margin band | chart | `fleet_pn` + LOLPDRM | data flows already | Charging share falls monotonically as margin tightens — the "does the fleet deepen stress" answer. |
-| ALN-N10 | Advance visibility | number | LOLPDRM all horizons | needs horizon-resolved accessor | % of critical periods already over threshold at the 12 h print. |
-| ALN-C6 | SoC run-up into stress | chart | inferred SoC + matched controls | needs SoC estimator in repo | Contested methodology — promote only with its caveats and sensitivity check. |
-| FLT-N5 | Availability factor | number | Elexon MELS | fetcher exists, not wired to dashboard | Declared export limit ÷ online nameplate. |
-| DTY-N1 | Capture spread across tags | number | existing day-type data | trivial | Fills the page's missing KPI row, if the gap is judged real. |
+| ID | Shows | Type | What it tells you | Status |
+|---|---|---|---|---|
+| DAY-1 | Day picker | Filter | Which day you're looking at. Defaults to the most recent. | Built |
+| DAY-2 | Net PnL | Number | What the battery made that day, per MW, and how that compares to a typical day in the window. | Built |
+| DAY-3 | DA benchmark | Number | What it would have made on the day-ahead plan alone, before any intraday trading. | Built |
+| DAY-4 | Cycles | Number | How hard it worked — one cycle is one full discharge. | Built |
+| DAY-5 | Capture | Number | How much of the day's available money it actually caught. | Built |
+| DAY-6 | DA spread | Number | Cheapest to dearest hour — the raw opportunity before any strategy. | Built |
+| DAY-7 | The day on one timeline | Graph | Prices, what it did, how full it was, and how stressed the grid was — all stacked on the same clock. | Built |
+| DAY-8 | Dispatch vs grid stress | Graph | Did it discharge when the system was tight? | Built |
+| DAY-9 | Prices | Graph | Day-ahead against intraday. | Built |
+| DAY-10 | State of charge | Graph | How full it was through the day. | Built |
+| DAY-11 | Where the money came from | Graph | Revenue broken into its parts. | Built |
+| DAY-12 | This day vs the window | Graph | Was this a good day or a dull one? | Built |
+| DAY-13 | Generation mix | Graph | What was powering GB that day (in a fold-out panel). | Built |
+| DAY-14 | Half-hourly detail | Table | The underlying numbers, plus a CSV download. | Built |
+| DAY-15 | Real batteries this day | Table | What actual GB sites earned. | Built |
 
-## Maintenance
+## History — the whole window
 
-- Sheet and code change together, one commit.
-- Built totals across 8 pages: **29 `number`**, 26 `chart`, 5 `table`, 13 `control`, 1 `file`, 2 `text`.
-- The sheet must agree with the source. Both sides of this must print the same number:
+*Data: the simulation across every day shown.*
 
-```bash
-grep -cE '^\|.*\| number \|.*\| built \|' specs/dashboard_kpis.md   # sheet says
-grep -c '\.metric(' dashboard/live_app.py                           # code says
-```
+| ID | Shows | Type | What it tells you | Status |
+|---|---|---|---|---|
+| HIS-1 | Average daily PnL | Number | Typical earnings per MW per day — the number every other page compares against. | Built |
+| HIS-2 | Total PnL | Number | Everything made across the window. | Built |
+| HIS-3 | Positive days | Number | How often it made money at all. | Built |
+| HIS-4 | Best day | Number | The high-water mark, and when. | Built |
+| HIS-5 | Daily earnings | Graph | Day by day, split by where the money came from. | Built |
+| HIS-6 | When it trades | Graph | Charging and discharging by hour, against the average price. | Built |
 
-  The `| built |` guard keeps the backlog out of the count, and the `^\|` anchor keeps this
-  snippet from counting itself.
+## System overview — the GB grid itself
+
+No simulation here, only observed data.
+*Data: generation by fuel, demand, solar, wholesale prices.*
+
+| ID | Shows | Type | What it tells you | Status |
+|---|---|---|---|---|
+| SYS-1 | Days shown | Number | How many days the filters left. | Built |
+| SYS-2 | Average peak demand | Number | How high demand typically climbed. | Built |
+| SYS-3 | Low-carbon share | Number | How much came from wind, solar, nuclear, hydro and biomass. | Built |
+| SYS-4 | Net interconnectors | Number | Whether GB was importing or exporting overall. | Built |
+| SYS-5 | Generation mix over time | Graph | What powered GB, day by day. | Built |
+| SYS-6 | Low-carbon over time | Graph | Is the mix getting cleaner across the window? | Built |
+| SYS-7 | Wholesale prices | Graph | Daily average price. | Built |
+
+## Fleet performance — real GB batteries
+
+Estimated from public data. Sites earning mainly from grid services look worse than they
+are, so they're flagged rather than quietly mixed in.
+*Data: real sites' declared output, market prices, balancing payments.*
+
+| ID | Shows | Type | What it tells you | Status |
+|---|---|---|---|---|
+| FLT-1 | Site / operator / region / duration | Filter | Narrow to the batteries you care about. | Built |
+| FLT-2 | Metric switch | Filter | View by revenue, volume, cycles or size. | Built |
+| FLT-3 | Fleet tracked | Number | How much battery capacity is on screen. | Built |
+| FLT-4 | Best vs typical site | Number | What operator skill and location were worth. | Built |
+| FLT-5 | Fleet average | Number | Typical real-world earnings per MW per day. | Built |
+| FLT-6 | Top site | Number | Who won the window. | Built |
+| FLT-7 | Site league table | Graph | Ranked by the chosen metric. | Built |
+| FLT-8 | Fleet over time | Graph | How the fleet did day by day. | Built |
+| FLT-9 | Site detail | Table | Every site's numbers. | Built |
+
+## Day types — what kind of day pays
+
+*Data: day tags from the classifier, plus simulated earnings.*
+
+| ID | Shows | Type | What it tells you | Status |
+|---|---|---|---|---|
+| DTY-1 | Earnings by day type | Graph | Which kinds of day actually pay. | Built |
+| DTY-2 | Which tags travel together | Graph | Windy days are often also low-price days, etc. | Built |
+| DTY-3 | How common each type is | Graph | Frequency of each kind of day. | Built |
+| DTY-4 | Trading shape by type | Graph | Does it trade differently on a windy day? | Built |
+| DTY-5 | Days behind the tags | Table | Which real dates sit in each group. | Built |
+| DTY-6 | *(no headline number)* | — | This page has no Number at the top. Decide whether that's a gap. | Idea |
+
+## Benchmark vs fleet — simulation against reality
+
+*Data: the simulation and the real fleet over the days they share.*
+
+| ID | Shows | Type | What it tells you | Status |
+|---|---|---|---|---|
+| SVF-1 | Include grid-services sites | Filter | Off by default — including them exaggerates the gap. | Built |
+| SVF-2 | Simulation ceiling | Number | The best a perfect trader could have done. | Built |
+| SVF-3 | Real fleet average | Number | What real batteries actually made on the same footing. | Built |
+| SVF-4 | Realisation | Number | Real earnings as a share of the ceiling — the headline gap. | Built |
+| SVF-5 | Sites compared | Number | How many real batteries are in the comparison. | Built |
+| SVF-6 | Day by day | Graph | Simulation against fleet over time. | Built |
+| SVF-7 | Trading shape | Graph | Do real batteries trade at the same hours? | Built |
+| SVF-8 | Gap by day type | Graph | On which kinds of day does reality fall furthest short? | Built |
+
+## Alignment gap — does profit serve the grid?
+
+The research page, and the busiest one: eight Numbers in two rows. Check crowding before
+adding a ninth.
+*Data: grid stress signals, the operator's own margin warnings, the simulation, the fleet.*
+
+| ID | Shows | Type | What it tells you | Status |
+|---|---|---|---|---|
+| ALN-1 | Exemplar day | Filter | Picks the most stressed day automatically; override to inspect another. | Built |
+| ALN-2 | Stress coverage | Number | How much of its discharge landed when the grid was tight. | Built |
+| ALN-3 | Surplus absorption | Number | How much of its charging landed when power was abundant. | Built |
+| ALN-4 | Readiness | Number | How full it was when stress began — the energy actually available. | Built |
+| ALN-5 | Cost of full alignment | Number | What it would cost to always serve the grid instead of the spread. | Built |
+| ALN-6 | Tightest margin | Number | The thinnest the grid's spare capacity got, and when. | Built |
+| ALN-7 | Risk periods | Number | How many half-hours the operator saw real risk of falling short. | Built |
+| ALN-8 | Coverage at confirmed stress | Number | Same as ALN-2, but judged against the operator's own margin data instead of our proxy. | Built |
+| ALN-9 | Capacity Market Notices | Number | Formal shortfall warnings. Usually "None in window" — they're rare by design. | Built |
+| ALN-10 | Exemplar day dispatch | Graph | The chosen day against grid stress. | Built |
+| ALN-11 | System tightness | Graph | Spare capacity over the window, with risk periods and warnings marked. | Built |
+| ALN-12 | Profit vs alignment | Graph | Every real site plotted on money against grid service. | Built |
+| ALN-13 | Cost by day type | Graph | Which days make alignment expensive. | Built |
+| ALN-14 | Tightest periods | Table | The hardest half-hours, and what each battery did. | Built |
+
+## Methodology
+
+Plain-English explanation of every number above, plus a glossary. Nothing computed.
+
+---
+
+## Ideas — not built
+
+From the three-winter study in `notebooks/05_stress_response_study.ipynb`. The numbers already
+exist there; these rows are about whether they belong on screen.
+
+| ID | Shows | Type | What it would tell you | Effort |
+|---|---|---|---|---|
+| ALN-15 | What the real fleet did under stress | Number | Real batteries discharge hard when the grid is tight — roughly twelve times their normal output. The strongest single finding in the study. | Small — data already flows |
+| ALN-16 | Charging while the grid is tight | Graph | How often the fleet is *taking* power as margins thin. It falls to zero at the tightest, which is the reassuring answer. | Small — data already flows |
+| ALN-17 | How much warning there was | Number | Nearly all risk periods were visible twelve hours ahead. | Medium |
+| ALN-18 | Reserve built before stress | Graph | The fleet does *not* arrive fuller than usual, despite the warning. The most interesting finding, and the most arguable. | Larger — needs care, and its caveats shown |
+| FLT-10 | Declared availability | Number | How much of the fleet was offered to the market at all. | Medium |
+| DTY-6 | Headline number for Day types | Number | Fills the one page with no Number at the top. | Small |
+
+---
+
+## Keeping it current
+
+Edit a row when you decide something; the build updates it when something ships. If it drifts
+slightly it's still useful — this is a thinking document, not a build artifact, and it isn't
+worth wrapping in process.
