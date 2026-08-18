@@ -1672,14 +1672,13 @@ def chart_stress_vs_demand(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def chart_stress_surplus_frequency(df: pd.DataFrame) -> go.Figure:
-    """How many half-hours each day fell into each system state.
+def chart_stress_frequency(df: pd.DataFrame) -> go.Figure:
+    """How often each day was tight, and how often power was being given away.
 
-    ``df`` columns: ``date``, ``stress`` (top-decile residual load),
-    ``negative`` (day-ahead hours below £0) and ``surplus`` (bottom-decile
-    residual load). Grouped rather than stacked because the three can overlap —
-    a negative-price hour is often also a surplus period, and stacking would
-    imply a total that does not exist.
+    ``df`` columns: ``date``, ``stress`` (top-decile residual load) and
+    ``negative`` (day-ahead hours below £0) — the two ends of the same story,
+    scarcity and glut. Grouped rather than stacked: the two can coincide, and
+    stacking would imply a total that does not exist.
     """
     d = df.copy()
     d["date"] = pd.to_datetime(d["date"])
@@ -1687,7 +1686,6 @@ def chart_stress_surplus_frequency(df: pd.DataFrame) -> go.Figure:
     for col, name, colour in (
         ("stress", "Top-decile stress", COLORS["cost"]),
         ("negative", "Negative price", COLORS["soc"]),
-        ("surplus", "Bottom-decile surplus", COLORS["discharge"]),
     ):
         if col not in d.columns:
             continue
@@ -1698,7 +1696,7 @@ def chart_stress_surplus_frequency(df: pd.DataFrame) -> go.Figure:
             )
         )
     apply_theme(fig, height=HEIGHT_SM,
-                title="Stress & surplus frequency — periods per day")
+                title="Stress & negative-price frequency — periods per day")
     fig.update_layout(barmode="group", bargap=0.25, hovermode="x unified")
     fig.update_yaxes(title_text="Periods per day")
     return fig

@@ -28,7 +28,7 @@ from dashboard.charts import (
     chart_price_capture,
     chart_price_volatility,
     chart_shape_overlay,
-    chart_stress_surplus_frequency,
+    chart_stress_frequency,
     chart_stress_vs_demand,
     chart_sim_vs_fleet_daily,
     chart_sim_vs_fleet_sites,
@@ -464,24 +464,23 @@ def test_chart_stress_vs_demand_without_residual():
     assert len(fig.data) == 1
 
 
-def test_chart_stress_surplus_frequency_three_grouped_series():
+def test_chart_stress_frequency_two_grouped_series():
     df = pd.DataFrame(
         {
             "date": ["2026-08-01", "2026-08-02", "2026-08-03"],
             "stress": [4, 0, 6],
             "negative": [0, 3, 0],
-            "surplus": [2, 5, 1],
         }
     )
-    fig = chart_stress_surplus_frequency(df)
+    fig = chart_stress_frequency(df)
     assert isinstance(fig, go.Figure)
-    assert len(fig.data) == 3
-    # Grouped, not stacked: the three states overlap, so a stack would imply a
-    # total that does not exist.
+    assert [t.name for t in fig.data] == ["Top-decile stress", "Negative price"]
+    # Grouped, not stacked: the two states can coincide, so a stack would imply
+    # a total that does not exist.
     assert fig.layout.barmode == "group"
 
 
-def test_chart_stress_surplus_frequency_survives_empty():
-    fig = chart_stress_surplus_frequency(pd.DataFrame(columns=["date"]))
+def test_chart_stress_frequency_survives_empty():
+    fig = chart_stress_frequency(pd.DataFrame(columns=["date"]))
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 0

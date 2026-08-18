@@ -48,7 +48,7 @@ from dashboard.charts import (  # noqa: E402
     chart_pnl_waterfall,
     chart_price_capture,
     chart_price_volatility,
-    chart_stress_surplus_frequency,
+    chart_stress_frequency,
     chart_stress_vs_demand,
     chart_realized_shape,
     chart_alignment_day,
@@ -1312,32 +1312,20 @@ def _system_summary_day(date_iso: str) -> dict | None:
     return row
 
 
-def _stress_surplus_frequency(date_isos: tuple, sdf: pd.DataFrame) -> pd.DataFrame:
-    """Per-day counts of stress, negative-price and surplus periods.
+def _stress_frequency(date_isos: tuple, sdf: pd.DataFrame) -> pd.DataFrame:
+    """Per-day counts of stress periods and negative-price hours.
 
-    Stress and surplus are window-relative deciles of residual load, so they
-    are classified once across the whole shown window (the same call the Day
-    and Alignment pages make) and then counted per day. Surplus here is the
-    *residual* bottom decile only — :func:`resilience.classify_periods` also
-    folds negative prices into its surplus flag, and that would double-count
-    against the negative-price series shown alongside it.
+    Stress is a window-relative decile of residual load, so it is classified
+    once across the whole shown window — the same call the Day and Alignment
+    pages make — and then counted per day.
     """
     flags = _window_flags(date_isos)
     if flags.empty:
         return pd.DataFrame()
-    residual = flags["residual_mw"]
-    surplus_level = residual.quantile(resilience.SURPLUS_QUANTILE)
-    per_day = pd.DataFrame(
-        {
-            "stress": flags["stress"].astype(int),
-            "surplus": (residual <= surplus_level).astype(int),
-        }
-    )
-    counts = per_day.groupby(flags.index.date).sum()
+    counts = flags["stress"].astype(int).groupby(flags.index.date).sum()
     counts.index = [d.isoformat() for d in counts.index]
     out = pd.DataFrame({"date": sdf["date"]}).set_index("date")
-    out["stress"] = counts["stress"]
-    out["surplus"] = counts["surplus"]
+    out["stress"] = counts
     out["negative"] = sdf.set_index("date")["da_negative_hours"]
     return out.fillna(0).reset_index()
 
@@ -1459,21 +1447,21 @@ def _page_system():
     st.plotly_chart(chart_low_carbon_daily(sdf, low_carbon_cols), width="stretch")
     st.plotly_chart(chart_stress_vs_demand(sdf), width="stretch")
 
-    # Stress and surplus are window-relative deciles, so they are classified
-    # once across the shown days rather than per day — the same classifier the
-    # Day and Alignment pages use, so one word cannot mean two things.
-    freq = _stress_surplus_frequency(tuple(days), sdf)
+    # Stress is a window-relative decile, so it is classified once across the
+    # shown days rather than per day — the same classifier the Day and
+    # Alignment pages use, so one word cannot mean two things.
+    freq = _stress_frequency(tuple(days), sdf)
     if freq.empty:
-        st.info("Not enough system data in this window to classify stress and surplus.")
+        st.info("Not enough system data in this window to classify system stress.")
     else:
-        st.plotly_chart(chart_stress_surplus_frequency(freq), width="stretch")
+        st.plotly_chart(chart_stress_frequency(freq), width="stretch")
 
     st.caption(
         "Sources — generation mix: Elexon FUELHH (transmission-metered); solar: "
         "Sheffield Solar PV_Live (embedded); demand: Elexon ITSDO; day-ahead: "
         "Nord Pool N2EX. All free, all public. Stress is the top decile of "
-        "residual load across the window shown and surplus the bottom decile, "
-        "so both move when the date filter moves."
+        "residual load across the window shown, so it moves when the date "
+        "filter moves."
     )
 
     st.caption(

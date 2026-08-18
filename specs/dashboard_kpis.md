@@ -119,7 +119,7 @@ moves when the date filter moves.
 | SYS-14 | Max system stress | Number | The highest residual load (demand − wind − solar) — the biggest burden the rest of the fleet had to carry. | Built |
 | SYS-15 | Daily price volatility | Graph | A daily envelope of min, P10, average, P90 and max price, so intraday spread is visible day by day. | Built |
 | SYS-16 | Stress vs total demand | Graph | Daily peak demand against daily peak residual load — the gap between the two lines is what renewables covered. | Built |
-| SYS-17 | Stress & surplus frequency | Graph | Daily counts of three things side by side: top-decile stress periods, negative-price hours, and bottom-decile surplus periods. | Built |
+| SYS-17 | Stress & negative-price frequency | Graph | Daily counts of the two ends of the story side by side: top-decile stress periods, and hours that cleared below £0. | Built |
 
 **Placement.** SYS-1 is a badge in the page header beside the date range, not a tile. The eight
 Numbers sit in two rows of four — low-carbon share, average price, highest price, lowest price,
