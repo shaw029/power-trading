@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 
 from dashboard.charts import (
     chart_alignment_day,
+    chart_capture_spread_daily,
     chart_alignment_scatter,
     chart_cycles_vs_revenue,
     chart_daytype_capture,
@@ -552,3 +553,44 @@ def test_leaderboard_flips_negative_capture_spread_to_red():
     assert colours.count(COLORS["cost"]) == 1
     # Cycles cannot be negative, so nothing flips.
     assert COLORS["cost"] not in list(chart_fleet_leaderboard(df, "cycles").data[0].marker.color)
+
+
+def test_chart_capture_spread_daily_lines_and_wear_threshold():
+    df = pd.DataFrame(
+        {
+            "date": ["2026-08-01", "2026-08-02", "2026-08-03"],
+            "capture_spread": [80.0, 12.0, 45.0],
+        }
+    )
+    fig = chart_capture_spread_daily(df, degradation_cost=5.0)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 1
+    # Window mean and the wear line the lever is set to.
+    assert len(fig.layout.shapes) == 2
+    texts = [a.text for a in fig.layout.annotations]
+    assert any("degradation" in t for t in texts)
+
+
+def test_chart_capture_spread_daily_without_degradation_lever():
+    df = pd.DataFrame({"date": ["2026-08-01"], "capture_spread": [80.0]})
+    fig = chart_capture_spread_daily(df, degradation_cost=0.0)
+    # Mean only — no wear line to draw when the lever is off.
+    assert len(fig.layout.shapes) == 1
+
+
+def test_price_capture_days_divides_into_a_daily_average():
+    df = pd.DataFrame(
+        {
+            "hour": [18, 18, 3, 3],
+            "final_mw": [50.0, 50.0, -50.0, -50.0],
+            "da_price": [90.0, 90.0, 10.0, 10.0],
+        }
+    )
+    totals = chart_price_capture(df, duration_h=1.0)
+    per_day = chart_price_capture(df, duration_h=1.0, days=2)
+    hour18 = list(totals.data[0].y)[18]
+    hour18_daily = list(per_day.data[0].y)[18]
+    assert hour18 == 100.0
+    assert hour18_daily == 50.0
+    assert "per day" in per_day.layout.yaxis.title.text
+    assert "per day" not in totals.layout.yaxis.title.text

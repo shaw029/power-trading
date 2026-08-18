@@ -105,11 +105,11 @@ The landing page. Everything about a single delivery day.
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | HIS-1 | Avg net PnL | Number | Typical earnings per MW per day — the unit every other page and every fleet estimate reports in. | Built |
-| HIS-2 | Total net PnL | Number | Everything the 50 MW battery made across the window, in absolute pounds. | Built |
-| HIS-3 | Positive days | Number | How many days closed in profit, out of how many. | Built |
 | HIS-4 | Best day | Number | The high-water mark per MW, with the date beneath it. | Built |
 | HIS-5 | Daily attribution | Graph | Each day's earnings split into where the money came from. | Built |
-| HIS-6 | Price capture | Graph | Charging and discharging by hour of day across the whole window, against the average day-ahead price — when the battery trades, not just how much. | Built |
+| HIS-6 | Price capture | Graph | Charging and discharging by hour of day, averaged per day, against the average day-ahead price — when the battery trades, not just how much. Per day rather than window totals, which would say more about the date filter than the battery. | Built |
+| HIS-9 | Avg capture spread | Number | Margin on every MWh discharged, averaged over the window — the same measure the fleet page reports, so simulated and real batteries compare on margin. | Built |
+| HIS-10 | Capture spread by day | Graph | That margin day by day, against the window mean and the degradation cost the lever is set to. Days below the wear line earned less per MWh than cycling cost. | Built |
 | HIS-8 | Dispatch explorer | Graph | Hour by hour across the shown days: prices, what the battery traded, and its state of charge on one timeline. Uses the sidebar period — it had its own day slider, which was a second filter competing with the first. | Built |
 
 ## System overview — the GB grid itself  ·  *GB power system*

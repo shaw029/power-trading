@@ -329,6 +329,47 @@ def chart_soc_tracker(
     return fig
 
 
+def chart_capture_spread_daily(df: pd.DataFrame, degradation_cost: float = 0.0) -> go.Figure:
+    """The benchmark's gross margin per MWh discharged, day by day.
+
+    ``df`` columns: ``date`` and ``capture_spread`` (£/MWh). The same measure
+    the fleet page reports, so the simulated battery and the real ones can be
+    compared on margin rather than only on £/MW/day. ``degradation_cost``
+    draws the wear line the lever is set to: days below it earned less per MWh
+    than the cycling cost, which is the point at which trading destroys value.
+    """
+    d = df.copy()
+    d["date"] = pd.to_datetime(d["date"])
+    values = pd.to_numeric(d["capture_spread"], errors="coerce")
+    fig = go.Figure(
+        go.Scatter(
+            x=d["date"], y=values, mode="lines",
+            name="Capture spread",
+            line=dict(color=COLORS["da"], width=2),
+            hovertemplate="Capture £%{y:,.1f}/MWh<extra></extra>",
+        )
+    )
+    mean = float(values.mean()) if values.notna().any() else 0.0
+    fig.add_hline(
+        y=mean, line=dict(color=_MUTED, width=1, dash="dash"),
+        annotation_text=f"window mean £{mean:,.1f}",
+        annotation_position="top left",
+        annotation_font=dict(size=11, color=_MUTED),
+    )
+    if degradation_cost > 0:
+        fig.add_hline(
+            y=degradation_cost, line=dict(color=COLORS["cost"], width=1, dash="dot"),
+            annotation_text=f"degradation £{degradation_cost:,.1f}/MWh",
+            annotation_position="bottom left",
+            annotation_font=dict(size=11, color=COLORS["cost"]),
+        )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
+                title="Capture spread by day — margin on every MWh discharged")
+    fig.update_layout(hovermode="x unified", showlegend=False)
+    fig.update_yaxes(title_text="Capture spread (£/MWh)")
+    return fig
+
+
 def chart_operation_explorer(
     prices_hourly: pd.DataFrame,
     dispatch_df: pd.DataFrame,
@@ -992,6 +1033,7 @@ def chart_price_capture(
     price_col: str = "da_price",
     hour_col: str = "hour",
     mid_col: str = "mid_price",
+    days: int | None = None,
 ):
     """Charge/discharge energy by hour of day against the average DA price.
 
@@ -1004,6 +1046,10 @@ def chart_price_capture(
     dispatch column (``+`` discharge / ``−`` charge MW) and the DA price each
     period settled at. Energy is ``MW × duration_h``; bars are summed over every
     period in the frame, so the chart works for a single day or a whole range.
+
+    ``days`` divides those sums into a per-day average. Over a window, totals
+    say as much about how many days were selected as about the battery, so a
+    range view should pass it; a single day should not.
     """
     df = dispatch_df[[hour_col, mw_col, price_col]].dropna()
     hours = list(range(24))
@@ -1017,8 +1063,9 @@ def chart_price_capture(
 
     discharge = df[df[mw_col] > 0]
     charge = df[df[mw_col] < 0]
-    dis_mwh = (discharge[mw_col] * duration_h).groupby(discharge[hour_col]).sum()
-    chg_mwh = (-charge[mw_col] * duration_h).groupby(charge[hour_col]).sum()
+    scale = float(days) if days else 1.0
+    dis_mwh = (discharge[mw_col] * duration_h).groupby(discharge[hour_col]).sum() / scale
+    chg_mwh = (-charge[mw_col] * duration_h).groupby(charge[hour_col]).sum() / scale
     avg_da = df.groupby(hour_col)[price_col].mean()
 
     dis_e = discharge[mw_col] * duration_h
@@ -1032,10 +1079,10 @@ def chart_price_capture(
         go.Bar(
             x=hours,
             y=[float(dis_mwh.get(h, 0.0)) for h in hours],
-            name="Discharge (sell) MWh",
+            name="Discharge (sell)",
             marker_color=COLORS["discharge"],
             opacity=0.85,
-            hovertemplate="%{x:02d}:00<br>Discharge %{y:,.1f} MWh<extra></extra>",
+            hovertemplate="Discharge %{y:,.1f} MWh<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -1043,10 +1090,10 @@ def chart_price_capture(
         go.Bar(
             x=hours,
             y=[float(chg_mwh.get(h, 0.0)) for h in hours],
-            name="Charge (buy) MWh",
+            name="Charge (buy)",
             marker_color=COLORS["charge"],
             opacity=0.85,
-            hovertemplate="%{x:02d}:00<br>Charge %{y:,.1f} MWh<extra></extra>",
+            hovertemplate="Charge %{y:,.1f} MWh<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -1081,7 +1128,9 @@ def chart_price_capture(
         legend=dict(orientation="h", x=0, y=1.12),
     )
     fig.update_xaxes(title_text="Hour of Day", dtick=2)
-    fig.update_yaxes(title_text="Energy (MWh)", secondary_y=False)
+    fig.update_yaxes(
+        title_text="Energy per day (MWh)" if days else "Energy (MWh)", secondary_y=False
+    )
     fig.update_yaxes(title_text="Avg Price (£/MWh)", secondary_y=True)
     return fig
 

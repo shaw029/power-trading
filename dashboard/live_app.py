@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dashboard.charts import (  # noqa: E402
     chart_cycles_vs_revenue,
+    chart_capture_spread_daily,
     chart_daily_attribution,
     chart_daytype_capture,
     chart_daytype_frequency,
@@ -319,6 +320,11 @@ def _da_sched_frame(dispatch_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _pnl_row(date_iso, dur_result) -> dict:
+    # Throughput comes from the dispatch log rather than the result summary,
+    # so the benchmark can report the same capture spread the fleet page does.
+    discharge_mwh = sum(
+        max(entry["final_mw"], 0.0) for entry in dur_result.dispatch_log
+    ) * RESOLUTION_H
     return {
         "date": date_iso,
         "benchmark_da_revenue": dur_result.benchmark_da_revenue,
@@ -326,6 +332,10 @@ def _pnl_row(date_iso, dur_result) -> dict:
         "execution_costs_paid": dur_result.execution_costs_paid,
         "degradation_cost": dur_result.degradation_cost,
         "net_pnl": dur_result.net_pnl,
+        "discharge_mwh": discharge_mwh,
+        "capture_spread": (
+            dur_result.net_pnl / discharge_mwh if discharge_mwh > 0 else float("nan")
+        ),
     }
 
 
@@ -609,27 +619,24 @@ def _page_history():
 
     net = results_df["net_pnl"]
     best_i = int(net.idxmax())
-    cols = st.columns(4)
+    spread = pd.to_numeric(results_df["capture_spread"], errors="coerce").dropna()
+    cols = st.columns(3)
     cols[0].metric(
-        "Avg net PnL",
-        f"£{net.mean() / REFERENCE_POWER_MW:,.0f}/MW/day",
+        _unit_label("Avg net PnL", "£/MW/day"),
+        f"{net.mean() / REFERENCE_POWER_MW:,.0f}",
         help="Average daily net PnL per MW over the shown window — the unit every "
         "page (and the fleet estimates) reports revenue in.",
     )
     cols[1].metric(
-        "Total net PnL",
-        f"£{net.sum():,.0f}",
-        help=f"Sum of daily net PnL for the {REFERENCE_POWER_MW:.0f} MW asset "
-        "over the shown window.",
+        _unit_label("Avg capture spread", "£/MWh"),
+        f"{spread.mean():,.1f}" if len(spread) else "—",
+        help="Margin on every MWh discharged, averaged over the shown days. The "
+        "same measure the fleet page reports, so the simulated battery and "
+        "the real ones compare on margin rather than only on £/MW/day.",
     )
     cols[2].metric(
-        "Positive days",
-        f"{int((net > 0).sum())}/{len(net)}",
-        help="Days that closed with a positive net PnL.",
-    )
-    cols[3].metric(
-        "Best day",
-        f"£{net.max() / REFERENCE_POWER_MW:,.0f}/MW",
+        _unit_label("Best day", "£/MW"),
+        f"{net.max() / REFERENCE_POWER_MW:,.0f}",
         delta=results_df.loc[best_i, "date"],
         delta_color="off",
         help=f"Highest single-day net PnL in the shown window "
@@ -637,11 +644,18 @@ def _page_history():
     )
 
     st.plotly_chart(chart_daily_attribution(results_df), width="stretch")
+    st.plotly_chart(
+        chart_capture_spread_daily(results_df, params["degradation"]), width="stretch"
+    )
 
-    # Price-capture profile aggregated over the whole range: charge/discharge by
-    # hour of day against the average DA price.
+    # Price-capture profile over the whole range, as a per-day average: totals
+    # here would say more about how many days were selected than about the
+    # battery.
     dispatch = _range_dispatch(shown, duration)
-    st.plotly_chart(chart_price_capture(dispatch, duration_h=RESOLUTION_H), width="stretch")
+    st.plotly_chart(
+        chart_price_capture(dispatch, duration_h=RESOLUTION_H, days=len(shown)),
+        width="stretch",
+    )
 
     # Dispatch explorer over the window the sidebar already selected. It used
     # to carry its own day slider, which was a second filter competing with
