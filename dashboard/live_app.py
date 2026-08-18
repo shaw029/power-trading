@@ -1284,7 +1284,7 @@ def _page_fleet():
     st.sidebar.caption("The benchmark levers do not affect this page.")
     tags = ", ".join(day_types) if day_types else "all day types"
     _page_header(
-        "Real GB fleet",
+        "Real GB fleet performance",
         f"{start} → {end} · {tags} · estimated performance of real grid-scale batteries",
     )
     # Nothing on this page carries from one day to the next, so only the
@@ -1402,7 +1402,7 @@ def _page_system():
     ]
     tags = ", ".join(day_types) if day_types else "all day types"
     _page_header(
-        "System overview",
+        "GB system overview",
         f"{start} → {end} · {tags} · how expensive and how stretched the GB system "
         "was, from the same free feeds the benchmark runs on.",
     )
