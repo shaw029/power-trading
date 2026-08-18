@@ -2,15 +2,16 @@
 
 What the live dashboard shows, page by page, in plain terms.
 
-**Everything listed here is meant to be on screen.** The **Status** column says whether it
-already is:
+**This is both the record and the plan.** The **Status** column says where each row stands:
 
 - **Built** — on the dashboard now.
-- **To build** — you want it; it doesn't exist yet.
+- **Added** — you want it; it doesn't exist yet.
+- **Removed** — on the dashboard now, but it should come off.
 
-To plan, edit this file: add a row and mark it *To build*, reword one to change what it says,
-delete one to remove it, or move it between pages. That edit is the instruction — hand the
-file over and the *To build* rows are the job. They flip to *Built* when they ship.
+To plan, edit this file: add a row marked *Added*, mark an existing row *Removed*, reword one
+to change what it says, or move one between pages. That edit is the instruction — hand the file
+over and every *Added* and *Removed* row is the job. Both flip to *Built* (or disappear) once
+the dashboard matches.
 
 Types are **Number**, **Graph**, **Table** and **Filter** — that's the distinction design
 cares about.
@@ -94,18 +95,44 @@ The landing page. Everything about a single delivery day.
 
 ## System overview — the GB grid itself  ·  *GB power system*
 
-No simulation here, only observed data.
-*Data: generation by fuel, demand, solar, wholesale prices.*
+No simulation here, only observed data. The page shifts from "what did GB generate" toward
+"how expensive and how stretched was it" — prices and stress, not just the mix.
+*Data: generation by fuel, demand, solar, day-ahead prices.*
+
+**Prices here are day-ahead** (the auction price the benchmark trades against). Day-ahead is
+hourly, so period counts on this page are hours. **Stress** is a half-hour in the top decile of
+residual load across the window shown, the same definition the Alignment page uses — so it
+moves when the date filter moves.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| SYS-1 | Days shown | Number | How many days the filters left. | Built |
-| SYS-2 | Average peak demand | Number | How high demand typically climbed. | Built |
-| SYS-3 | Low-carbon share | Number | How much came from wind, solar, nuclear, hydro and biomass. | Built |
-| SYS-4 | Net interconnectors | Number | Whether GB was importing or exporting overall. | Built |
-| SYS-5 | Generation mix over time | Graph | What powered GB, day by day. | Built |
-| SYS-6 | Low-carbon over time | Graph | Is the mix getting cleaner across the window? | Built |
-| SYS-7 | Wholesale prices | Graph | Daily average price. | Built |
+| SYS-1 | Days shown | Number | How many days the active date filter covers. Sits as a small chip in the page header beside the date range — deliberately not a KPI tile, because it describes the filter rather than the grid. | Built |
+| SYS-2 | Average peak demand | Number | How high demand typically climbed. | Removed |
+| SYS-3 | Low-carbon share | Number | How much generation came from wind, solar, nuclear, hydro and biomass. | Built |
+| SYS-4 | Net interconnectors | Number | Whether GB was importing or exporting overall. | Removed |
+| SYS-5 | Generation mix over time | Graph | What powered GB day by day, aggregated into presentation groups. | Built |
+| SYS-6 | Low-carbon over time | Graph | Is the mix getting cleaner across the window? | Removed |
+| SYS-7 | Wholesale prices | Graph | Daily average price line. | Removed |
+| SYS-8 | Average wholesale price | Number | Mean day-ahead price across the window. | Added |
+| SYS-9 | Highest wholesale price | Number | The peak day-ahead price reached in the window. | Added |
+| SYS-10 | Lowest wholesale price | Number | The floor day-ahead price in the window — below zero when generators paid to keep running. | Added |
+| SYS-11 | Negative price count | Number | How many hours cleared below £0. | Added |
+| SYS-12 | Max daily P90–P10 spread | Number | The widest single day between its top and bottom price deciles — the most tradable day in the window. | Added |
+| SYS-13 | Max daily peak demand | Number | The highest demand reached in the window. | Added |
+| SYS-14 | Max system stress | Number | The highest residual load (demand − wind − solar) — the biggest burden the rest of the fleet had to carry. | Added |
+| SYS-15 | Daily price volatility | Graph | A daily envelope of min, P10, average, P90 and max price, so intraday spread is visible day by day. | Added |
+| SYS-16 | Stress vs total demand | Graph | Daily peak demand against daily peak residual load — the gap between the two lines is what renewables covered. | Added |
+| SYS-17 | Stress & surplus frequency | Graph | Daily counts of three things side by side: top-decile stress periods, negative-price hours, and bottom-decile surplus periods. | Added |
+
+**Placement (from the design pass).** SYS-1 is a header chip beside the date range, not a tile.
+The other eight Numbers sit in two rows of four — low-carbon share, average price, highest
+price, lowest price, then negative price count, max P90–P10 spread, max peak demand, max system
+stress. The four Graphs run full width beneath them, stacked in this order: generation mix,
+daily price volatility, stress vs total demand, stress & surplus frequency.
+
+Two places the mockup differs from this sheet, decided in favour of the sheet: the page keeps
+the name **System overview** (it now covers prices, demand and stress, not just generation),
+and SYS-17 carries **three** series, not the two its legend showed.
 
 ## Fleet performance — real GB batteries  ·  *GB power system*
 
