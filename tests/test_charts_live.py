@@ -26,7 +26,10 @@ from dashboard.charts import (
     chart_generation_mix,
     chart_low_carbon_daily,
     chart_price_capture,
+    chart_price_volatility,
     chart_shape_overlay,
+    chart_stress_surplus_frequency,
+    chart_stress_vs_demand,
     chart_sim_vs_fleet_daily,
     chart_sim_vs_fleet_sites,
     chart_system_prices,
@@ -412,3 +415,73 @@ def test_chart_day_in_window_marks_current():
     fig = chart_day_in_window(daily, 90.0)
     assert isinstance(fig, go.Figure)
     assert fig.layout.shapes[0].x0 == 90.0
+
+
+def _system_window() -> pd.DataFrame:
+    """Five days of the System page's daily summary frame."""
+    return pd.DataFrame(
+        {
+            "date": ["2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04", "2026-08-05"],
+            "da_min": [-15.0, 10.0, 5.0, -40.0, 22.0],
+            "da_p10": [0.0, 20.0, 15.0, -5.0, 30.0],
+            "avg_da": [55.0, 62.0, 48.0, 40.0, 70.0],
+            "da_p90": [110.0, 95.0, 88.0, 105.0, 120.0],
+            "da_max": [180.0, 130.0, 99.0, 312.0, 150.0],
+            "peak_demand_gw": [31.2, 32.8, 30.4, 34.1, 33.0],
+            "peak_residual_gw": [24.0, 27.8, 21.5, 26.9, 25.1],
+        }
+    )
+
+
+def test_chart_price_volatility_bands_and_mean():
+    fig = chart_price_volatility(_system_window())
+    assert isinstance(fig, go.Figure)
+    # Two nested bands (two traces each: invisible upper edge + filled lower)
+    # plus the mean line.
+    assert len(fig.data) == 5
+    assert fig.data[-1].name == "Daily mean"
+    assert [t.name for t in fig.data if t.name] == ["Min–max", "P10–P90", "Daily mean"]
+
+
+def test_chart_price_volatility_survives_missing_band_columns():
+    df = _system_window().drop(columns=["da_min", "da_max"])
+    fig = chart_price_volatility(df)
+    assert isinstance(fig, go.Figure)
+    assert [t.name for t in fig.data if t.name] == ["P10–P90", "Daily mean"]
+
+
+def test_chart_stress_vs_demand_two_lines():
+    fig = chart_stress_vs_demand(_system_window())
+    assert isinstance(fig, go.Figure)
+    assert [t.name for t in fig.data] == ["Peak demand", "Peak residual load"]
+    # The gap between the lines is the point, so the residual line is filled.
+    assert fig.data[1].fill == "tonexty"
+
+
+def test_chart_stress_vs_demand_without_residual():
+    df = _system_window().drop(columns=["peak_residual_gw"])
+    fig = chart_stress_vs_demand(df)
+    assert len(fig.data) == 1
+
+
+def test_chart_stress_surplus_frequency_three_grouped_series():
+    df = pd.DataFrame(
+        {
+            "date": ["2026-08-01", "2026-08-02", "2026-08-03"],
+            "stress": [4, 0, 6],
+            "negative": [0, 3, 0],
+            "surplus": [2, 5, 1],
+        }
+    )
+    fig = chart_stress_surplus_frequency(df)
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 3
+    # Grouped, not stacked: the three states overlap, so a stack would imply a
+    # total that does not exist.
+    assert fig.layout.barmode == "group"
+
+
+def test_chart_stress_surplus_frequency_survives_empty():
+    fig = chart_stress_surplus_frequency(pd.DataFrame(columns=["date"]))
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 0

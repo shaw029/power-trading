@@ -107,28 +107,25 @@ moves when the date filter moves.
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | SYS-1 | Days shown | Number | How many days the active date filter covers. Sits as a small chip in the page header beside the date range — deliberately not a KPI tile, because it describes the filter rather than the grid. | Built |
-| SYS-2 | Average peak demand | Number | How high demand typically climbed. | Removed |
 | SYS-3 | Low-carbon share | Number | How much generation came from wind, solar, nuclear, hydro and biomass. | Built |
-| SYS-4 | Net interconnectors | Number | Whether GB was importing or exporting overall. | Removed |
 | SYS-5 | Generation mix over time | Graph | What powered GB day by day, aggregated into presentation groups. | Built |
-| SYS-6 | Low-carbon over time | Graph | Is the mix getting cleaner across the window? | Removed |
-| SYS-7 | Wholesale prices | Graph | Daily average price line. | Removed |
-| SYS-8 | Average wholesale price | Number | Mean day-ahead price across the window. | Added |
-| SYS-9 | Highest wholesale price | Number | The peak day-ahead price reached in the window. | Added |
-| SYS-10 | Lowest wholesale price | Number | The floor day-ahead price in the window — below zero when generators paid to keep running. | Added |
-| SYS-11 | Negative price count | Number | How many hours cleared below £0. | Added |
-| SYS-12 | Max daily P90–P10 spread | Number | The widest single day between its top and bottom price deciles — the most tradable day in the window. | Added |
-| SYS-13 | Max daily peak demand | Number | The highest demand reached in the window. | Added |
-| SYS-14 | Max system stress | Number | The highest residual load (demand − wind − solar) — the biggest burden the rest of the fleet had to carry. | Added |
-| SYS-15 | Daily price volatility | Graph | A daily envelope of min, P10, average, P90 and max price, so intraday spread is visible day by day. | Added |
-| SYS-16 | Stress vs total demand | Graph | Daily peak demand against daily peak residual load — the gap between the two lines is what renewables covered. | Added |
-| SYS-17 | Stress & surplus frequency | Graph | Daily counts of three things side by side: top-decile stress periods, negative-price hours, and bottom-decile surplus periods. | Added |
+| SYS-6 | Low-carbon over time | Graph | Is the mix getting cleaner across the window? | Built |
+| SYS-8 | Average wholesale price | Number | Mean day-ahead price across the window. | Built |
+| SYS-9 | Highest wholesale price | Number | The peak day-ahead price reached in the window. | Built |
+| SYS-10 | Lowest wholesale price | Number | The floor day-ahead price in the window — below zero when generators paid to keep running. | Built |
+| SYS-11 | Negative price count | Number | How many hours cleared below £0. | Built |
+| SYS-12 | Max daily P90–P10 spread | Number | The widest single day between its top and bottom price deciles — the most tradable day in the window. | Built |
+| SYS-13 | Max daily peak demand | Number | The highest demand reached in the window. | Built |
+| SYS-14 | Max system stress | Number | The highest residual load (demand − wind − solar) — the biggest burden the rest of the fleet had to carry. | Built |
+| SYS-15 | Daily price volatility | Graph | A daily envelope of min, P10, average, P90 and max price, so intraday spread is visible day by day. | Built |
+| SYS-16 | Stress vs total demand | Graph | Daily peak demand against daily peak residual load — the gap between the two lines is what renewables covered. | Built |
+| SYS-17 | Stress & surplus frequency | Graph | Daily counts of three things side by side: top-decile stress periods, negative-price hours, and bottom-decile surplus periods. | Built |
 
-**Placement (from the design pass).** SYS-1 is a header chip beside the date range, not a tile.
-The other eight Numbers sit in two rows of four — low-carbon share, average price, highest
-price, lowest price, then negative price count, max P90–P10 spread, max peak demand, max system
-stress. The four Graphs run full width beneath them, stacked in this order: generation mix,
-daily price volatility, stress vs total demand, stress & surplus frequency.
+**Placement.** SYS-1 is a badge in the page header beside the date range, not a tile. The eight
+Numbers sit in two rows of four — low-carbon share, average price, highest price, lowest price,
+then negative price count, max P90–P10 spread, max peak demand, max system stress. The five
+Graphs run full width beneath them in this order: generation mix, low-carbon over time, daily
+price volatility, stress vs total demand, stress & surplus frequency.
 
 Two places the mockup differs from this sheet, decided in favour of the sheet: the page keeps
 the name **System overview** (it now covers prices, demand and stress, not just generation),

@@ -148,6 +148,34 @@ def test_alignment_page_renders_system_tightness(app):
     assert "Tier-2 stress coverage" in labels
 
 
+def test_system_page_renders_price_and_stress_kpis(app):
+    from streamlit.testing.v1 import AppTest
+    from streamlit.testing.v1.app_test import calc_hash
+
+    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    at._page_hash = calc_hash("system")
+    at.run()
+
+    assert not at.exception
+    labels = [m.label for m in at.metric]
+    # Two rows of four: prices, then demand and stress.
+    assert labels == [
+        "Low-carbon share",
+        "Avg wholesale price",
+        "Highest wholesale price",
+        "Lowest wholesale price",
+        "Negative price count",
+        "Max daily P90–P10 spread",
+        "Max daily peak demand",
+        "Max system stress",
+    ]
+    # Days shown moved into the header badge, so it is no longer a KPI tile,
+    # and the two retired numbers are gone.
+    assert "Days shown" not in labels
+    assert "Avg peak demand" not in labels
+    assert "Net interconnectors" not in labels
+
+
 def test_filter_days_by_period_and_day_type():
     import dashboard.live_app as live_app
 

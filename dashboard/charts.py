@@ -1583,6 +1583,118 @@ def chart_generation_mix(groups: pd.DataFrame, demand: pd.Series | None = None) 
     return fig
 
 
+def chart_price_volatility(df: pd.DataFrame) -> go.Figure:
+    """Each day's day-ahead price spread, as a min–max band around the mean.
+
+    ``df`` columns: ``date``, ``da_min``, ``da_p10``, ``avg_da``, ``da_p90``,
+    ``da_max``. Two nested bands — full range in the faintest ink, the P10–P90
+    interdecile range darker inside it — with the daily mean as the only solid
+    line. A day whose bands are wide is a day worth trading; the mean alone
+    hides exactly that.
+    """
+    d = df.copy()
+    d["date"] = pd.to_datetime(d["date"])
+    fig = go.Figure()
+    for lo, hi, fill, label in (
+        ("da_min", "da_max", "rgba(42, 120, 214, 0.10)", "Min–max"),
+        ("da_p10", "da_p90", "rgba(42, 120, 214, 0.26)", "P10–P90"),
+    ):
+        if lo not in d.columns or hi not in d.columns:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=d["date"], y=d[hi], mode="lines", line=dict(width=0),
+                hoverinfo="skip", showlegend=False,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=d["date"], y=d[lo], mode="lines", line=dict(width=0),
+                fill="tonexty", fillcolor=fill, name=label,
+                hovertemplate=f"%{{x|%Y-%m-%d}}<br>{label} £%{{y:,.0f}}<extra></extra>",
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=d["date"], y=d["avg_da"], mode="lines", name="Daily mean",
+            line=dict(color=COLORS["da"], width=2),
+            hovertemplate="%{x|%Y-%m-%d}<br>Mean £%{y:,.0f}/MWh<extra></extra>",
+        )
+    )
+    fig.add_hline(y=0, line=dict(color=_MUTED, width=1, dash="dot"))
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
+                title="Daily price volatility — day-ahead £/MWh")
+    fig.update_layout(hovermode="x unified")
+    fig.update_yaxes(title_text="Day-ahead price (£/MWh)")
+    return fig
+
+
+def chart_stress_vs_demand(df: pd.DataFrame) -> go.Figure:
+    """Daily peak demand against daily peak residual load.
+
+    ``df`` columns: ``date``, ``peak_demand_gw``, ``peak_residual_gw``. The gap
+    between the two lines is what wind and solar covered at the moment the
+    system was working hardest — the residual line is the part the dispatchable
+    fleet actually had to serve.
+    """
+    d = df.copy()
+    d["date"] = pd.to_datetime(d["date"])
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=d["date"], y=d["peak_demand_gw"], mode="lines", name="Peak demand",
+            line=dict(color=COLORS["net"], width=2),
+            hovertemplate="%{x|%Y-%m-%d}<br>Peak demand %{y:,.1f} GW<extra></extra>",
+        )
+    )
+    if "peak_residual_gw" in d.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=d["date"], y=d["peak_residual_gw"], mode="lines",
+                name="Peak residual load", line=dict(color=COLORS["cost"], width=2),
+                fill="tonexty", fillcolor="rgba(27, 175, 122, 0.16)",
+                hovertemplate="%{x|%Y-%m-%d}<br>Peak residual %{y:,.1f} GW<extra></extra>",
+            )
+        )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
+                title="Stress vs total demand — shaded gap is the renewable contribution")
+    fig.update_layout(hovermode="x unified")
+    fig.update_yaxes(title_text="GW")
+    return fig
+
+
+def chart_stress_surplus_frequency(df: pd.DataFrame) -> go.Figure:
+    """How many half-hours each day fell into each system state.
+
+    ``df`` columns: ``date``, ``stress`` (top-decile residual load),
+    ``negative`` (day-ahead hours below £0) and ``surplus`` (bottom-decile
+    residual load). Grouped rather than stacked because the three can overlap —
+    a negative-price hour is often also a surplus period, and stacking would
+    imply a total that does not exist.
+    """
+    d = df.copy()
+    d["date"] = pd.to_datetime(d["date"])
+    fig = go.Figure()
+    for col, name, colour in (
+        ("stress", "Top-decile stress", COLORS["cost"]),
+        ("negative", "Negative price", COLORS["soc"]),
+        ("surplus", "Bottom-decile surplus", COLORS["discharge"]),
+    ):
+        if col not in d.columns:
+            continue
+        fig.add_trace(
+            go.Bar(
+                x=d["date"], y=d[col], name=name, marker_color=colour,
+                hovertemplate=f"%{{x|%Y-%m-%d}}<br>{name}: %{{y}} period(s)<extra></extra>",
+            )
+        )
+    apply_theme(fig, height=HEIGHT_SM,
+                title="Stress & surplus frequency — periods per day")
+    fig.update_layout(barmode="group", bargap=0.25, hovermode="x unified")
+    fig.update_yaxes(title_text="Periods per day")
+    return fig
+
+
 def chart_system_prices(
     prices: pd.DataFrame,
     title: str = "Wholesale prices — £/MWh",

@@ -47,6 +47,9 @@ from dashboard.charts import (  # noqa: E402
     chart_operation_explorer,
     chart_pnl_waterfall,
     chart_price_capture,
+    chart_price_volatility,
+    chart_stress_surplus_frequency,
+    chart_stress_vs_demand,
     chart_realized_shape,
     chart_alignment_day,
     chart_alignment_scatter,
@@ -1267,8 +1270,16 @@ def _system_day(date_iso: str) -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def _system_summary_day(date_iso: str) -> dict | None:
     """One compact daily row for the window views: energy (GWh) per generation
-    group, peak demand and mean prices. ``None`` if the day has no data, so the
-    range self-trims. Small and cached, so building a 60-day window is cheap."""
+    group, demand and stress peaks, and the day's price distribution. ``None``
+    if the day has no data, so the range self-trims. Small and cached, so
+    building a 60-day window is cheap.
+
+    Prices are day-ahead: it is the auction price the benchmark trades against,
+    and the one where negative clearing actually means something. Day-ahead is
+    hourly, so ``da_hours`` carries the count that makes a window-level mean
+    hour-weighted rather than a mean of daily means (DST days are 23 or 25
+    hours long, and would otherwise be over- or under-counted).
+    """
     system = _system_day(date_iso)
     if system.empty:
         return None
@@ -1279,13 +1290,56 @@ def _system_summary_day(date_iso: str) -> dict | None:
         row[group] = float(energy[group])
     demand = system["demand_actual"] if "demand_actual" in system.columns else None
     row["peak_demand_gw"] = float(demand.max()) / 1000.0 if demand is not None else None
+    # Peak residual load — the most the rest of the fleet had to carry that day.
+    residual = resilience.residual_load(system).dropna()
+    row["peak_residual_gw"] = float(residual.max()) / 1000.0 if not residual.empty else None
     try:
         prices, _ = _fetch_day(date_iso)
-        row["avg_da"] = float(prices["day_ahead_price"].mean())
+        da = prices["day_ahead_price"].dropna()
+        row["avg_da"] = float(da.mean())
         row["avg_mid"] = float(prices["mid_price"].mean())
+        row["da_hours"] = int(len(da))
+        row["da_min"] = float(da.min())
+        row["da_max"] = float(da.max())
+        row["da_p10"] = float(da.quantile(0.10))
+        row["da_p90"] = float(da.quantile(0.90))
+        row["da_negative_hours"] = int((da < 0).sum())
     except Exception:
         row["avg_da"] = row["avg_mid"] = None
+        row["da_hours"] = 0
+        row["da_min"] = row["da_max"] = row["da_p10"] = row["da_p90"] = None
+        row["da_negative_hours"] = 0
     return row
+
+
+def _stress_surplus_frequency(date_isos: tuple, sdf: pd.DataFrame) -> pd.DataFrame:
+    """Per-day counts of stress, negative-price and surplus periods.
+
+    Stress and surplus are window-relative deciles of residual load, so they
+    are classified once across the whole shown window (the same call the Day
+    and Alignment pages make) and then counted per day. Surplus here is the
+    *residual* bottom decile only — :func:`resilience.classify_periods` also
+    folds negative prices into its surplus flag, and that would double-count
+    against the negative-price series shown alongside it.
+    """
+    flags = _window_flags(date_isos)
+    if flags.empty:
+        return pd.DataFrame()
+    residual = flags["residual_mw"]
+    surplus_level = residual.quantile(resilience.SURPLUS_QUANTILE)
+    per_day = pd.DataFrame(
+        {
+            "stress": flags["stress"].astype(int),
+            "surplus": (residual <= surplus_level).astype(int),
+        }
+    )
+    counts = per_day.groupby(flags.index.date).sum()
+    counts.index = [d.isoformat() for d in counts.index]
+    out = pd.DataFrame({"date": sdf["date"]}).set_index("date")
+    out["stress"] = counts["stress"]
+    out["surplus"] = counts["surplus"]
+    out["negative"] = sdf.set_index("date")["da_negative_hours"]
+    return out.fillna(0).reset_index()
 
 
 def _page_system():
@@ -1301,8 +1355,8 @@ def _page_system():
     tags = ", ".join(day_types) if day_types else "all day types"
     _page_header(
         "System overview",
-        f"{start} → {end} · {tags} · GB generation mix, demand and prices from "
-        "the same free feeds the benchmark runs on.",
+        f"{start} → {end} · {tags} · how expensive and how stretched the GB system "
+        "was, from the same free feeds the benchmark runs on.",
     )
     if not days:
         st.info("No days match the current filters — widen the period or clear a day type.")
@@ -1317,49 +1371,99 @@ def _page_system():
     group_cols = [g for g in fetch_live.GENERATION_GROUP_ORDER if g in sdf.columns]
     gen_cols = [g for g in group_cols if g != "Interconnectors"]
 
+    # Days shown describes the *filter*, not the system, so it rides in the
+    # header as a badge rather than competing with the grid's own numbers.
+    st.badge(f"{len(sdf)} days shown", icon=":material/event:", color="grey")
+
     # Window KPIs are summed over the actual days shown, so the day-type filter
     # flows straight through (e.g. "low-carbon share on sunny days").
     total_gen = float(sdf[gen_cols].to_numpy().sum())
     low_carbon = float(
         sdf[[g for g in gen_cols if g in fetch_live.LOW_CARBON_GROUPS]].to_numpy().sum()
     )
-    net_int = float(sdf["Interconnectors"].sum()) if "Interconnectors" in sdf else 0.0
-    cols = st.columns(4)
-    cols[0].metric("Days shown", f"{len(sdf)}")
-    cols[1].metric(
-        "Avg peak demand",
-        f"{sdf['peak_demand_gw'].mean():.1f} GW" if sdf["peak_demand_gw"].notna().any() else "—",
-        help="Mean of each day's highest half-hourly demand (ITSDO).",
+    da_hours = float(sdf["da_hours"].sum()) if "da_hours" in sdf else 0.0
+    # Hour-weighted so DST days (23 or 25 hours) don't distort the mean.
+    avg_da = (
+        float((sdf["avg_da"] * sdf["da_hours"]).sum() / da_hours) if da_hours > 0 else None
     )
-    cols[2].metric(
-        "Low-carbon generation",
+    spread = (sdf["da_p90"] - sdf["da_p10"]) if "da_p90" in sdf else pd.Series(dtype=float)
+
+    row1 = st.columns(4)
+    row1[0].metric(
+        "Low-carbon share",
         f"{low_carbon / total_gen:.0%}" if total_gen > 0 else "—",
         help="Wind, solar, nuclear, hydro and biomass as a share of GB generation "
         "over the window (interconnector imports excluded).",
     )
-    cols[3].metric(
-        "Net interconnectors",
-        f"{net_int:+,.0f} GWh",
-        help="Total over the window. Positive = net imports into GB; negative = exports.",
+    row1[1].metric(
+        "Avg wholesale price",
+        f"£{avg_da:,.0f}/MWh" if avg_da is not None else "—",
+        help="Mean day-ahead price across the window, weighted by hours so that "
+        "clock-change days do not distort it.",
+    )
+    row1[2].metric(
+        "Highest wholesale price",
+        f"£{sdf['da_max'].max():,.0f}/MWh" if sdf["da_max"].notna().any() else "—",
+        help="The peak day-ahead price reached in the window.",
+    )
+    row1[3].metric(
+        "Lowest wholesale price",
+        f"£{sdf['da_min'].min():,.0f}/MWh" if sdf["da_min"].notna().any() else "—",
+        help="The floor day-ahead price in the window — below zero when generators "
+        "paid to keep running.",
+    )
+
+    row2 = st.columns(4)
+    row2[0].metric(
+        "Negative price count",
+        f"{int(sdf['da_negative_hours'].sum())}",
+        help="Day-ahead hours that cleared below £0. Day-ahead is an hourly "
+        "auction, so this counts hours rather than settlement periods.",
+    )
+    _max_spread_i = spread.idxmax() if spread.notna().any() else None
+    row2[1].metric(
+        "Max daily P90–P10 spread",
+        f"£{spread.max():,.0f}/MWh" if _max_spread_i is not None else "—",
+        sdf.loc[_max_spread_i, "date"] if _max_spread_i is not None else None,
+        delta_color="off",
+        help="The widest single day between its top and bottom price deciles — "
+        "the most tradable day in the window. Deciles ignore the one-off "
+        "spike that a simple high-minus-low would chase.",
+    )
+    row2[2].metric(
+        "Max daily peak demand",
+        f"{sdf['peak_demand_gw'].max():.1f} GW" if sdf["peak_demand_gw"].notna().any() else "—",
+        help="The highest half-hourly demand reached in the window (Elexon ITSDO).",
+    )
+    row2[3].metric(
+        "Max system stress",
+        f"{sdf['peak_residual_gw'].max():.1f} GW"
+        if "peak_residual_gw" in sdf and sdf["peak_residual_gw"].notna().any() else "—",
+        help="The highest residual load (demand − wind − solar) — the biggest "
+        "burden the dispatchable fleet had to carry.",
     )
 
     st.plotly_chart(chart_generation_daily(sdf, group_cols), width="stretch")
     low_carbon_cols = [g for g in gen_cols if g in fetch_live.LOW_CARBON_GROUPS]
     st.plotly_chart(chart_low_carbon_daily(sdf, low_carbon_cols), width="stretch")
-    price_daily = pd.DataFrame(
-        {"day_ahead_price": sdf["avg_da"], "mid_price": sdf["avg_mid"]},
-        index=pd.to_datetime(sdf["date"]),
-    )
-    st.plotly_chart(
-        chart_system_prices(
-            price_daily, title="Daily average wholesale price — £/MWh", hover_fmt="%Y-%m-%d"
-        ),
-        width="stretch",
-    )
+    st.plotly_chart(chart_price_volatility(sdf), width="stretch")
+    st.plotly_chart(chart_stress_vs_demand(sdf), width="stretch")
+
+    # Stress and surplus are window-relative deciles, so they are classified
+    # once across the shown days rather than per day — the same classifier the
+    # Day and Alignment pages use, so one word cannot mean two things.
+    freq = _stress_surplus_frequency(tuple(days), sdf)
+    if freq.empty:
+        st.info("Not enough system data in this window to classify stress and surplus.")
+    else:
+        st.plotly_chart(chart_stress_surplus_frequency(freq), width="stretch")
+
     st.caption(
         "Sources — generation mix: Elexon FUELHH (transmission-metered); solar: "
         "Sheffield Solar PV_Live (embedded); demand: Elexon ITSDO; day-ahead: "
-        "Nord Pool N2EX; MID: Elexon. All free, all public."
+        "Nord Pool N2EX. All free, all public. Stress is the top decile of "
+        "residual load across the window shown and surplus the bottom decile, "
+        "so both move when the date filter moves."
     )
 
     st.caption(
