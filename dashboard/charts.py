@@ -1620,14 +1620,21 @@ def chart_price_volatility(df: pd.DataFrame) -> go.Figure:
             go.Scatter(
                 x=d["date"], y=d[lo], mode="lines", line=dict(width=0),
                 fill="tonexty", fillcolor=fill, name=label,
-                hovertemplate=f"%{{x|%Y-%m-%d}}<br>{label} £%{{y:,.0f}}<extra></extra>",
+                # The trace is named for a range but only carries its lower
+                # edge, so the upper edge rides along as customdata — otherwise
+                # the tooltip reads "Min–max" beside a single number, which is
+                # the min.
+                customdata=d[hi],
+                hovertemplate=(
+                    f"{label} £%{{y:,.0f}} → £%{{customdata:,.0f}}<extra></extra>"
+                ),
             )
         )
     fig.add_trace(
         go.Scatter(
             x=d["date"], y=d["avg_da"], mode="lines", name="Daily mean",
             line=dict(color=COLORS["da"], width=2),
-            hovertemplate="%{x|%Y-%m-%d}<br>Mean £%{y:,.0f}/MWh<extra></extra>",
+            hovertemplate="Mean £%{y:,.0f}<extra></extra>",
         )
     )
     fig.add_hline(y=0, line=dict(color=_MUTED, width=1, dash="dot"))

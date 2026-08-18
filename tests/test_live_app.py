@@ -159,19 +159,24 @@ def test_system_page_renders_price_and_stress_kpis(app):
     assert not at.exception
     labels = [m.label for m in at.metric]
     # Two rows of four: prices, then demand and stress.
-    # Units belong in the label (rendered grey) so the value stays a bare,
+    # The unit sits on a second label line so the value stays a bare,
     # comparable number.
     assert labels == [
-        "Low-carbon share (%)",
-        "Avg wholesale price (£/MWh)",
-        "Highest wholesale price (£/MWh)",
-        "Lowest wholesale price (£/MWh)",
-        "Negative price count (hours)",
-        "Max daily P90–P10 spread (£/MWh)",
-        "Max daily peak demand (GW)",
-        "Max system stress (GW)",
+        "Low-carbon share",
+        "Avg wholesale price  \n£/MWh",
+        "Highest wholesale price  \n£/MWh",
+        "Lowest wholesale price  \n£/MWh",
+        "Negative price count  \nhours",
+        "Max daily P90–P10 spread  \n£/MWh",
+        "Max daily peak demand  \nGW",
+        "Max system stress  \nGW",
     ]
-    assert all("£" not in m.value and "GW" not in m.value for m in at.metric)
+    values = [m.value for m in at.metric]
+    assert all("£" not in v and "GW" not in v for v in values)
+    # Percent is the exception: it stays welded to the value, and its label
+    # carries no unit line.
+    assert values[0].endswith("%")
+    assert "\n" not in labels[0]
     # Days shown moved into the header badge, so it is no longer a KPI tile,
     # and the two retired numbers are gone.
     assert "Days shown" not in labels

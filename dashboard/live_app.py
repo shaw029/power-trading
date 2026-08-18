@@ -1330,6 +1330,22 @@ def _stress_frequency(date_isos: tuple, sdf: pd.DataFrame) -> pd.DataFrame:
     return out.fillna(0).reset_index()
 
 
+def _unit_label(name: str, unit: str) -> str:
+    """Metric label with its unit on a second line.
+
+    Streamlit renders metric labels in muted grey beneath the value, so a unit
+    on its own line reads as a caption rather than competing with the name.
+    Percentages are the deliberate exception and stay welded to the value
+    ("68%"): a percent sign is universally read at a glance, and giving it a
+    whole line would be noise.
+
+    The break is a Markdown hard break (two trailing spaces). Metric labels
+    take inline Markdown only, so if a Streamlit version ever stops honouring
+    it the label degrades to one line rather than breaking.
+    """
+    return f"{name}  \n{unit}"
+
+
 def _page_system():
     date_isos = _dates()
     start, end, day_types = _global_filters(date_isos)
@@ -1380,30 +1396,29 @@ def _page_system():
     )
     spread = (sdf["da_p90"] - sdf["da_p10"]) if "da_p90" in sdf else pd.Series(dtype=float)
 
-    # Units live in the label, not the value. Streamlit renders labels in muted
-    # grey beneath a large bold value, so this is the reporting convention —
-    # "Demand (GW)" over a bare number — and it lets the eye compare figures
-    # across tiles without stepping over a currency sign each time.
+    # Units live on a second label line, not in the value, so the eye can run
+    # down a row comparing magnitudes without stepping over a currency sign.
+    # Percentages are the exception — see _unit_label.
     row1 = st.columns(4)
     row1[0].metric(
-        "Low-carbon share (%)",
-        f"{low_carbon / total_gen * 100:.0f}" if total_gen > 0 else "—",
+        "Low-carbon share",
+        f"{low_carbon / total_gen:.0%}" if total_gen > 0 else "—",
         help="Wind, solar, nuclear, hydro and biomass as a share of GB generation "
         "over the window (interconnector imports excluded).",
     )
     row1[1].metric(
-        "Avg wholesale price (£/MWh)",
+        _unit_label("Avg wholesale price", "£/MWh"),
         f"{avg_da:,.0f}" if avg_da is not None else "—",
         help="Mean day-ahead price across the window, weighted by hours so that "
         "clock-change days do not distort it.",
     )
     row1[2].metric(
-        "Highest wholesale price (£/MWh)",
+        _unit_label("Highest wholesale price", "£/MWh"),
         f"{sdf['da_max'].max():,.0f}" if sdf["da_max"].notna().any() else "—",
         help="The peak day-ahead price reached in the window.",
     )
     row1[3].metric(
-        "Lowest wholesale price (£/MWh)",
+        _unit_label("Lowest wholesale price", "£/MWh"),
         f"{sdf['da_min'].min():,.0f}" if sdf["da_min"].notna().any() else "—",
         help="The floor day-ahead price in the window — below zero when generators "
         "paid to keep running.",
@@ -1411,14 +1426,14 @@ def _page_system():
 
     row2 = st.columns(4)
     row2[0].metric(
-        "Negative price count (hours)",
+        _unit_label("Negative price count", "hours"),
         f"{int(sdf['da_negative_hours'].sum())}",
         help="Day-ahead hours that cleared below £0. Day-ahead is an hourly "
         "auction, so this counts hours rather than settlement periods.",
     )
     _max_spread_i = spread.idxmax() if spread.notna().any() else None
     row2[1].metric(
-        "Max daily P90–P10 spread (£/MWh)",
+        _unit_label("Max daily P90–P10 spread", "£/MWh"),
         f"{spread.max():,.0f}" if _max_spread_i is not None else "—",
         sdf.loc[_max_spread_i, "date"] if _max_spread_i is not None else None,
         delta_color="off",
@@ -1427,12 +1442,12 @@ def _page_system():
         "spike that a simple high-minus-low would chase.",
     )
     row2[2].metric(
-        "Max daily peak demand (GW)",
+        _unit_label("Max daily peak demand", "GW"),
         f"{sdf['peak_demand_gw'].max():.1f}" if sdf["peak_demand_gw"].notna().any() else "—",
         help="The highest half-hourly demand reached in the window (Elexon ITSDO).",
     )
     row2[3].metric(
-        "Max system stress (GW)",
+        _unit_label("Max system stress", "GW"),
         f"{sdf['peak_residual_gw'].max():.1f}"
         if "peak_residual_gw" in sdf and sdf["peak_residual_gw"].notna().any() else "—",
         help="The highest residual load (demand − wind − solar) — the biggest "
