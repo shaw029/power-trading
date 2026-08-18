@@ -1094,6 +1094,7 @@ def chart_price_capture(
 # because it plots two signed series (discharge up, charge down).
 _FLEET_METRIC_SPECS = {
     "revenue": ("gbp_per_mw_day", "£{:,.0f}", "Estimated revenue (£/MW/day)", "estimated £/MW/day"),
+    "capture": ("capture_spread", "£{:,.1f}", "Capture spread (£/MWh)", "£/MWh discharged"),
     "cycles": ("cycles_per_day", "{:.2f}", "Cycles per day", "cycles/day"),
     "capacity": ("power_mw", "{:,.0f}", "Nameplate power (MW)", "nameplate MW"),
 }
@@ -1209,6 +1210,49 @@ def _chart_fleet_grouped(df: pd.DataFrame, key: str, label: str, metric: str):
     return fig
 
 
+def chart_fleet_spread(dist: pd.DataFrame, metric: str = "revenue") -> go.Figure:
+    """What a typical site did each day, and how far apart the sites were.
+
+    ``dist`` is :func:`fleet.performance.fleet_daily_distribution` — ``date``,
+    ``median``, ``p25`` and ``p75``. The fleet total answers "how did the fleet
+    do"; this answers "how did a site do", which is a different question when
+    one 500 MW battery can carry a day on its own. A widening band is
+    dispersion opening up between operators.
+    """
+    d = dist.copy()
+    d["date"] = pd.to_datetime(d["date"])
+    _col, fmt, axis, _fragment = _FLEET_METRIC_SPECS.get(
+        metric, ("", "{:,.2f}", "Value", "")
+    )
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=d["date"], y=d["p75"], mode="lines", line=dict(width=0),
+            hoverinfo="skip", showlegend=False,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=d["date"], y=d["p25"], mode="lines", line=dict(width=0),
+            fill="tonexty", fillcolor="rgba(42, 120, 214, 0.20)", name="P25–P75",
+            customdata=d["p75"],
+            hovertemplate="P25–P75 %{y:,.2f} → %{customdata:,.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=d["date"], y=d["median"], mode="lines", name="Median site",
+            line=dict(color=COLORS["da"], width=2),
+            hovertemplate="Median %{y:,.2f}<extra></extra>",
+        )
+    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
+                title="Typical site by day — median and interquartile range")
+    fig.update_layout(hovermode="x unified")
+    fig.update_yaxes(title_text=axis)
+    return fig
+
+
 def chart_fleet_by_optimiser(opt_df: pd.DataFrame, metric: str = "revenue"):
     """Fleet metric by optimiser (route-to-market party).
 
@@ -1247,9 +1291,14 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
         fig.update_yaxes(title_text="Energy (MWh; charge shown negative)")
         return fig
 
-    if metric in ("cycles", "capacity"):
+    if metric in ("cycles", "capacity", "capture"):
         col, title, axis = {
             "cycles": ("cycles", "Fleet cycles per day", "Cycles per day"),
+            "capture": (
+                "capture_spread",
+                "Fleet capture spread by day",
+                "Capture spread (£/MWh discharged)",
+            ),
             "capacity": (
                 "mw",
                 "Fleet nameplate reporting by day — coverage",

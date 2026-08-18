@@ -41,6 +41,7 @@ from dashboard.charts import (  # noqa: E402
     chart_fleet_by_region,
     chart_fleet_daily,
     chart_fleet_leaderboard,
+    chart_fleet_spread,
     chart_generation_daily,
     chart_low_carbon_daily,
     chart_generation_mix,
@@ -880,6 +881,26 @@ def _with_duration(fleet_df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+# The metric switch drives the numbers as well as the charts, so the label the
+# user picks, the unit it is measured in and how it is formatted all live in one
+# place. Keys are the chart modules' metric names.
+_FLEET_METRICS: dict[str, tuple[str, str, str]] = {
+    "Revenue": ("revenue", "£/MW/day", "{:,.0f}"),
+    "Capture spread": ("capture", "£/MWh", "{:,.1f}"),
+    "Cycles": ("cycles", "cycles/day", "{:,.2f}"),
+    "Volume": ("volume", "MWh", "{:,.0f}"),
+    "Capacity": ("capacity", "MW", "{:,.0f}"),
+}
+# Where each metric lives on the per-site summary frame.
+_FLEET_METRIC_COLUMNS = {
+    "revenue": "gbp_per_mw_day",
+    "capture": "capture_spread",
+    "cycles": "cycles_per_day",
+    "volume": "discharge_mwh",
+    "capacity": "power_mw",
+}
+
+
 def _fleet_filters(
     fleet_df: pd.DataFrame,
 ) -> tuple[list[str], list[str], list[str], list[str]]:
@@ -937,50 +958,60 @@ def _render_fleet(
         "ancillary revenue excluded, so ancillary-heavy sites read low. See Methodology."
     )
 
-    tracked_mw = float(site_df["power_mw"].sum())
-    fleet_gbp = float(site_df["total_gbp"].sum())
-    # Not every site settles every day in a filtered window, so the fleet
-    # average is weighted by each site's actual MW-days, not MW × window days.
-    mw_days = float((site_df["power_mw"] * site_df["days"]).sum())
-    cols = st.columns(4)
-    cols[0].metric(
-        "Fleet tracked",
-        f"{tracked_mw:,.0f} MW",
-        help="Total nameplate power of the sites currently shown.",
-    )
-    median_gbp = float(site_df["gbp_per_mw_day"].median())
-    cols[1].metric(
-        "Top vs median spread",
-        f"£{site_df['gbp_per_mw_day'].iloc[0] - median_gbp:,.0f}/MW/day",
-        f"median £{median_gbp:,.0f}",
-        delta_color="off",
-        help="Gap between the best site and the median site — how much optimiser "
-        "skill and location were worth in this window.",
-    )
-    cols[2].metric(
-        "Fleet avg",
-        f"£{fleet_gbp / mw_days:,.0f}/MW/day",
-        help="Weighted by each site's actual MW-days in the window, so sites with missing days don't drag the average.",
-    )
-    best = site_df.iloc[0]
-    cols[3].metric(
-        "Top site",
-        best["site"],
-        f"£{best['gbp_per_mw_day']:,.0f}/MW/day",
-        delta_color="off",
-        help="Best estimated £/MW/day in the shown window.",
-    )
-
     picked = st.segmented_control(
         "Metric",
-        ["Revenue", "Volume", "Cycles", "Capacity"],
+        list(_FLEET_METRICS),
         default="Revenue",
         key="fleet_metric",
-        help="Re-plots every chart below: estimated £/MW/day, charged/discharged "
-        "energy, cycles per day, or nameplate MW (the daily view doubles as "
-        "data coverage).",
+        help="Re-computes the numbers above and every chart below: estimated "
+        "£/MW/day, gross margin per MWh discharged, cycles per day, "
+        "charged/discharged energy, or nameplate MW (the daily view doubles "
+        "as data coverage).",
     )
-    metric = (picked or "Revenue").lower()
+    label = picked or "Revenue"
+    metric, unit, fmt = _FLEET_METRICS[label]
+    column = _FLEET_METRIC_COLUMNS[metric]
+
+    # The numbers describe whatever the switch is set to; anything else and the
+    # headline figures quietly contradict the charts underneath them.
+    values = pd.to_numeric(site_df[column], errors="coerce").dropna()
+    total_mw = float(site_df["power_mw"].sum())
+    total_mwh = float(site_df["capacity_mwh"].sum())
+
+    cols = st.columns(4)
+    cols[0].metric(
+        _unit_label("Active capacity", "MW"),
+        f"{total_mw:,.0f}",
+        f"{total_mwh:,.0f} MWh · {len(site_df)} sites",
+        delta_color="off",
+        help="Nameplate power, energy and site count currently passing the filters.",
+    )
+    _iqr = (values.quantile(0.75) - values.quantile(0.25)) if len(values) >= 4 else None
+    cols[1].metric(
+        _unit_label("Operator dispersion", unit),
+        fmt.format(_iqr) if _iqr is not None else "—",
+        help="Interquartile spread (P75 − P25) across the visible sites for the "
+        "selected metric — what skill and siting were worth, measured where "
+        "one outlier cannot move it. Needs at least four sites.",
+    )
+    cols[2].metric(
+        _unit_label("Fleet baseline", unit),
+        fmt.format(values.median()) if len(values) else "—",
+        help="The median visible site for the selected metric — the typical "
+        "real battery, not the average dragged around by an exceptional one.",
+    )
+    if len(values):
+        best = site_df.loc[values.idxmax()]
+        cols[3].metric(
+            "Top performer",
+            best["site"],
+            f"{best['optimiser']} · {fmt.format(values.max())} {unit}",
+            delta_color="off",
+            help="The best visible site for the selected metric, and the party "
+            "trading it.",
+        )
+    else:
+        cols[3].metric("Top performer", "—")
 
     st.plotly_chart(chart_fleet_leaderboard(site_df, metric), width="stretch")
     left, right = st.columns(2)
@@ -993,6 +1024,9 @@ def _render_fleet(
         width="stretch",
     )
     st.plotly_chart(chart_fleet_daily(fleet_perf.fleet_daily(fleet_df), metric), width="stretch")
+    spread = fleet_perf.fleet_daily_distribution(fleet_df, metric)
+    if not spread.empty:
+        st.plotly_chart(chart_fleet_spread(spread, metric), width="stretch")
 
     st.markdown("#### Site detail")
     flagged = int(site_df["likely_ancillary"].sum())
@@ -1004,8 +1038,8 @@ def _render_fleet(
         )
     table = site_df.assign(flag=site_df["likely_ancillary"].map({True: "⚠", False: ""}))[
         [
-            "site", "optimiser", "region", "power_mw", "duration", "days",
-            "gbp_per_mw_day", "total_gbp", "wholesale_gbp", "bm_gbp", "cycles_per_day",
+            "site", "optimiser", "region", "duration", "power_mw", "capacity_mwh",
+            "days", "gbp_per_mw_day", "total_gbp", "total_cycles", "capture_spread",
             "flag",
         ]
     ].rename(
@@ -1014,25 +1048,25 @@ def _render_fleet(
             "site": "Site",
             "optimiser": "Optimiser",
             "region": "Region",
-            "power_mw": "MW",
             "duration": "Duration",
+            "power_mw": "MW",
+            "capacity_mwh": "MWh",
             "days": "Days",
             "gbp_per_mw_day": "£/MW/day",
             "total_gbp": "Total £",
-            "wholesale_gbp": "Wholesale £",
-            "bm_gbp": "BM £",
-            "cycles_per_day": "Cycles/day",
+            "total_cycles": "Total cycles",
+            "capture_spread": "Capture £/MWh",
         }
     )
     st.dataframe(
         table.style.format(
             {
                 "MW": "{:,.0f}",
+                "MWh": "{:,.0f}",
                 "£/MW/day": "£{:,.0f}",
                 "Total £": "£{:,.0f}",
-                "Wholesale £": "£{:,.0f}",
-                "BM £": "£{:,.0f}",
-                "Cycles/day": "{:.2f}",
+                "Total cycles": "{:,.1f}",
+                "Capture £/MWh": "£{:,.1f}",
             }
         ),
         width="stretch",

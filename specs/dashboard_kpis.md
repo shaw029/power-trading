@@ -24,14 +24,14 @@ pages are brought into line when we next work on them.
 
 | Convention | Rule | Rolled out |
 |---|---|---|
-| **Units** | The unit sits on a second label line beneath the name — "Avg wholesale price" over "£/MWh" — and the value stays a bare number (`62`). Labels render in muted grey, so the unit reads as a caption and the eye can compare magnitudes down a row without stepping over a currency sign. | System overview only |
-| **Percentages** | The exception to the above: the sign stays welded to the value (`68%`) and the label carries no unit line. A percent sign is read at a glance; a whole line for it is noise. | System overview only |
+| **Units** | The unit sits on a second label line beneath the name — "Avg wholesale price" over "£/MWh" — and the value stays a bare number (`62`). Labels render in muted grey, so the unit reads as a caption and the eye can compare magnitudes down a row without stepping over a currency sign. | System overview · Fleet performance |
+| **Percentages** | The exception to the above: the sign stays welded to the value (`68%`) and the label carries no unit line. A percent sign is read at a glance; a whole line for it is noise. | System overview · Fleet performance |
 | **Tooltips** | A chart with unified hover already prints the date or time once in its header, so no series repeats it. Charts using closest-hover still carry it, because there is no header to carry it for them. | All charts |
 | **Ranges in tooltips** | A band named for a range shows both ends — "Min–max £-15 → £180", never one number beside a two-ended label. | All charts |
 
-**Pending:** the unit and percentage rules are live on System overview only. Rolling them across
-the other seven pages is a deliberate pass to make when those pages are next opened — not a
-scattered edit, so every page changes with its own review.
+**Pending:** the unit and percentage rules are live on System overview and Fleet performance —
+the two pages rebuilt so far. The remaining six get them as they are opened, a page at a time,
+so every change carries its own review rather than being scattered through unrelated work.
 
 ## How the pages are grouped
 
@@ -167,14 +167,15 @@ against wear — a site earning less per MWh than its wear costs is losing money
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | FLT-1 | Site / operator / region / duration | Filter | Narrow to specific physical batteries. | Built |
-| FLT-2 | Metric switch | Filter | Revenue (£/MW/day), capture spread (£/MWh), cycles, volume (MWh) or capacity (MW). Re-computes every number and chart below. | Changed |
-| FLT-3 | Active capacity | Number | Total MW, total MWh, and how many sites are visible. | Changed |
-| FLT-4 | Operator dispersion | Number | Interquartile spread (P75 − P25) across the visible sites for the active metric — what skill and siting were worth. | Changed |
-| FLT-5 | Fleet baseline | Number | Median across the visible sites for the active metric — the typical real battery, robust to one outlier. | Changed |
-| FLT-6 | Top performer | Number | The winning site and the operator behind it, for the active metric. | Changed |
+| FLT-2 | Metric switch | Filter | Revenue (£/MW/day), capture spread (£/MWh), cycles, volume (MWh) or capacity (MW). Re-computes every number and chart below. | Built |
+| FLT-3 | Active capacity | Number | Total MW, total MWh, and how many sites are visible. | Built |
+| FLT-4 | Operator dispersion | Number | Interquartile spread (P75 − P25) across the visible sites for the active metric — what skill and siting were worth. | Built |
+| FLT-5 | Fleet baseline | Number | Median across the visible sites for the active metric — the typical real battery, robust to one outlier. | Built |
+| FLT-6 | Top performer | Number | The winning site and the operator behind it, for the active metric. | Built |
 | FLT-7 | Site league table | Graph | Horizontal bars ranking every visible site by the active metric. | Built |
-| FLT-8 | Fleet over time | Graph | Daily trajectory across the window for the active metric, with the median and interquartile band behind it. | Changed |
-| FLT-9 | Site detail | Table | Site, operator, duration, capacity, total revenue, total cycles and capture spread. | Changed |
+| FLT-8 | Fleet over time | Graph | Whole-fleet daily trajectory for the active metric — what the fleet did. | Built |
+| FLT-12 | Typical site by day | Graph | The median site with an interquartile band behind it, for the active metric — what *a site* did, which differs from the fleet total when one large battery carries a day. | Built |
+| FLT-9 | Site detail | Table | Site, operator, duration, capacity, total revenue, total cycles and capture spread. | Built |
 | FLT-10 | By optimiser | Graph | The active metric aggregated by trading party — the cut a per-site ranking cannot show. | Built |
 | FLT-11 | By region | Graph | The active metric aggregated by GB region. | Built |
 

@@ -21,6 +21,7 @@ from dashboard.charts import (
     chart_day_in_window,
     chart_duration_comparison,
     chart_equity_curve,
+    chart_fleet_spread,
     chart_gap_by_daytype,
     chart_generation_daily,
     chart_generation_mix,
@@ -484,3 +485,31 @@ def test_chart_stress_frequency_survives_empty():
     fig = chart_stress_frequency(pd.DataFrame(columns=["date"]))
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 0
+
+
+def test_chart_fleet_spread_band_and_median():
+    dist = pd.DataFrame(
+        {
+            "date": ["2026-08-01", "2026-08-02", "2026-08-03"],
+            "median": [30.0, 42.0, 28.0],
+            "p25": [20.0, 31.0, 19.0],
+            "p75": [40.0, 55.0, 36.0],
+        }
+    )
+    fig = chart_fleet_spread(dist, "revenue")
+    assert isinstance(fig, go.Figure)
+    # Invisible upper edge + filled lower edge + the median line.
+    assert len(fig.data) == 3
+    assert [t.name for t in fig.data if t.name] == ["P25–P75", "Median site"]
+    # The band is named for a range, so its tooltip carries both ends.
+    band = fig.data[1]
+    assert list(band.customdata) == [40.0, 55.0, 36.0]
+    assert "customdata" in band.hovertemplate
+
+
+def test_chart_fleet_spread_unknown_metric_still_renders():
+    dist = pd.DataFrame(
+        {"date": ["2026-08-01"], "median": [1.0], "p25": [0.5], "p75": [1.5]}
+    )
+    fig = chart_fleet_spread(dist, "not-a-metric")
+    assert isinstance(fig, go.Figure)

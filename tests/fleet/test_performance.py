@@ -285,3 +285,78 @@ def test_site_limit_profile_empty_and_unknown_bmus():
         [_limit_record("T_NOTAFLEETUNIT-1", "18:00", "18:30", 50.0)]
     )
     assert unknown.empty
+
+
+def _two_site_daily() -> pd.DataFrame:
+    """Two sites over two days, with round numbers so ratios are exact."""
+    rows = []
+    for date, site, power, cap, disch, gbp in (
+        ("2026-08-01", "A", 100.0, 200.0, 100.0, 5000.0),
+        ("2026-08-01", "B", 50.0, 50.0, 25.0, 500.0),
+        ("2026-08-02", "A", 100.0, 200.0, 200.0, 6000.0),
+        ("2026-08-02", "B", 50.0, 50.0, 50.0, 2000.0),
+    ):
+        rows.append(
+            {
+                "date": date, "site": site, "optimiser": f"Opt{site}",
+                "region": "R", "duration": "2h", "power_mw": power,
+                "capacity_mwh": cap, "discharge_mwh": disch, "charge_mwh": disch,
+                "wholesale_gbp": gbp, "bm_gbp": 0.0, "total_gbp": gbp,
+                "gbp_per_mw": gbp / power,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def test_capture_spread_is_revenue_over_throughput():
+    site = performance.summarise_by_site(_two_site_daily()).set_index("site")
+    # A: £11,000 over 300 MWh discharged.
+    assert site.loc["A", "capture_spread"] == pytest.approx(11000.0 / 300.0)
+    # B: £2,500 over 75 MWh.
+    assert site.loc["B", "capture_spread"] == pytest.approx(2500.0 / 75.0)
+    # Total cycles is throughput over nameplate energy, not a daily rate.
+    assert site.loc["A", "total_cycles"] == pytest.approx(300.0 / 200.0)
+
+
+def test_capture_spread_is_nan_when_nothing_was_discharged():
+    daily = _two_site_daily()
+    daily.loc[daily["site"] == "B", "discharge_mwh"] = 0.0
+    site = performance.summarise_by_site(daily).set_index("site")
+    # No throughput means no spread to report — never an infinity, which would
+    # poison any median taken across sites.
+    assert pd.isna(site.loc["B", "capture_spread"])
+    assert pd.notna(site.loc["A", "capture_spread"])
+
+
+def test_fleet_daily_distribution_spreads_across_sites():
+    dist = performance.fleet_daily_distribution(_two_site_daily(), "revenue")
+    assert list(dist.columns) == ["date", "median", "p25", "p75"]
+    assert len(dist) == 2
+    # Day one: A made £50/MW, B £10/MW.
+    day1 = dist.iloc[0]
+    assert day1["median"] == pytest.approx(30.0)
+    assert day1["p25"] == pytest.approx(20.0)
+    assert day1["p75"] == pytest.approx(40.0)
+
+
+def test_fleet_daily_distribution_empty_input():
+    empty = performance.fleet_daily_distribution(
+        _two_site_daily().iloc[0:0], "revenue"
+    )
+    assert list(empty.columns) == ["date", "median", "p25", "p75"]
+    assert empty.empty
+
+
+def test_site_day_metric_derives_ratio_metrics():
+    daily = _two_site_daily()
+    cycles = performance.site_day_metric(daily, "cycles")
+    assert cycles.iloc[0] == pytest.approx(100.0 / 200.0)
+    capture = performance.site_day_metric(daily, "capture")
+    assert capture.iloc[0] == pytest.approx(5000.0 / 100.0)
+    assert performance.site_day_metric(daily, "capacity").iloc[0] == pytest.approx(100.0)
+
+
+def test_fleet_daily_carries_capture_spread():
+    daily = performance.fleet_daily(_two_site_daily())
+    # Day one across both sites: £5,500 over 125 MWh.
+    assert daily.iloc[0]["capture_spread"] == pytest.approx(5500.0 / 125.0)

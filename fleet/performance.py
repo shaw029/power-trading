@@ -31,6 +31,22 @@ _MID_FREQ = "30min"
 ANCILLARY_CYCLES_THRESHOLD = 0.3
 
 
+def _capture_spread(total_gbp, discharge_mwh):
+    """Gross margin per MWh discharged: revenue over throughput.
+
+    Normalises for power and duration at once, so a 500 MW four-hour site and
+    a 34 MW one-hour site compare honestly — unlike £/MW/day, which rewards
+    duration, or £ per cycle, which rewards size. It shares units with the
+    degradation-cost lever, so a site earning less per MWh than its wear costs
+    is visibly losing money by trading.
+
+    A site that never discharged has no spread to report, so zero throughput
+    gives NaN rather than an infinity that would poison a median.
+    """
+    throughput = pd.to_numeric(discharge_mwh, errors="coerce")
+    return pd.to_numeric(total_gbp, errors="coerce") / throughput.where(throughput > 0)
+
+
 def duration_label(power_mw: float, capacity_mwh: float) -> str:
     """Battery hours bucket, e.g. ``"2h"``.
 
@@ -288,6 +304,8 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
     grouped["cycles_per_day"] = grouped["discharge_mwh"] / (
         grouped["capacity_mwh"] * grouped["days"]
     )
+    grouped["total_cycles"] = grouped["discharge_mwh"] / grouped["capacity_mwh"]
+    grouped["capture_spread"] = _capture_spread(grouped["total_gbp"], grouped["discharge_mwh"])
     grouped["likely_ancillary"] = grouped["cycles_per_day"] < ANCILLARY_CYCLES_THRESHOLD
     return grouped.sort_values("gbp_per_mw_day", ascending=False).reset_index(drop=True)
 
@@ -307,6 +325,9 @@ def _summarise_by(daily: pd.DataFrame, key: str) -> pd.DataFrame:
         mwh_days=("capacity_mwh", "sum"),
         discharge_mwh=("discharge_mwh", "sum"),
         charge_mwh=("charge_mwh", "sum"),
+    )
+    grouped["capture_spread"] = _capture_spread(
+        grouped["total_gbp"], grouped["discharge_mwh"]
     )
     site_mw = daily.drop_duplicates("site").groupby(key)["power_mw"].sum()
     grouped["power_mw"] = grouped[key].map(site_mw)
@@ -343,4 +364,47 @@ def fleet_daily(daily: pd.DataFrame) -> pd.DataFrame:
     )
     grouped["gbp_per_mw"] = grouped["total_gbp"] / grouped["mw"]
     grouped["cycles"] = grouped["discharge_mwh"] / grouped["mwh"]
+    grouped["capture_spread"] = _capture_spread(
+        grouped["total_gbp"], grouped["discharge_mwh"]
+    )
     return grouped
+
+
+def site_day_metric(daily: pd.DataFrame, metric: str) -> pd.Series:
+    """One site-day's value of ``metric``, for distributions across sites.
+
+    The per-site-day frame carries totals, so the ratio metrics are derived
+    here rather than stored five times over.
+    """
+    if metric == "capture":
+        return _capture_spread(daily["total_gbp"], daily["discharge_mwh"])
+    if metric == "cycles":
+        return daily["discharge_mwh"] / daily["capacity_mwh"]
+    column = {
+        "revenue": "gbp_per_mw",
+        "volume": "discharge_mwh",
+        "capacity": "power_mw",
+    }[metric]
+    return pd.to_numeric(daily[column], errors="coerce")
+
+
+def fleet_daily_distribution(daily: pd.DataFrame, metric: str = "revenue") -> pd.DataFrame:
+    """Median and interquartile range *across sites*, per day.
+
+    The fleet total says what the fleet did; this says what a typical site did
+    and how far apart the sites were, which is the difference between one big
+    battery carrying a day and every battery having a good one.
+    """
+    values = site_day_metric(daily, metric)
+    frame = pd.DataFrame({"date": daily["date"], "value": values}).dropna()
+    if frame.empty:
+        return pd.DataFrame(columns=["date", "median", "p25", "p75"])
+    grouped = frame.groupby("date")["value"]
+    return pd.DataFrame(
+        {
+            "date": sorted(frame["date"].unique()),
+            "median": grouped.median().to_numpy(),
+            "p25": grouped.quantile(0.25).to_numpy(),
+            "p75": grouped.quantile(0.75).to_numpy(),
+        }
+    )

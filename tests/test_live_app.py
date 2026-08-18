@@ -184,6 +184,36 @@ def test_system_page_renders_price_and_stress_kpis(app):
     assert "Net interconnectors" not in labels
 
 
+def test_fleet_page_kpis_follow_the_metric_switch(app):
+    from streamlit.testing.v1 import AppTest
+    from streamlit.testing.v1.app_test import calc_hash
+
+    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    at._page_hash = calc_hash("fleet")
+    at.run()
+
+    assert not at.exception
+    labels = [m.label for m in at.metric]
+    assert labels == [
+        "Active capacity  \nMW",
+        "Operator dispersion  \n£/MW/day",
+        "Fleet baseline  \n£/MW/day",
+        "Top performer",
+    ]
+    # One mocked site, so an interquartile spread has nothing to measure and
+    # says so rather than inventing a number.
+    assert at.metric[1].value == "—"
+    assert at.metric[3].value == "Pillswood"
+
+    # Switching the metric re-labels and re-computes the numbers, not just the
+    # charts — the whole point of this page's rebuild.
+    at.segmented_control[0].set_value("Capture spread").run()
+    assert not at.exception
+    relabelled = [m.label for m in at.metric]
+    assert relabelled[1] == "Operator dispersion  \n£/MWh"
+    assert relabelled[2] == "Fleet baseline  \n£/MWh"
+
+
 def test_filter_days_by_period_and_day_type():
     import dashboard.live_app as live_app
 
