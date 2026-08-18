@@ -512,10 +512,23 @@ def test_chart_fleet_spread_band_and_median():
 
 def test_chart_fleet_spread_unknown_metric_still_renders():
     dist = pd.DataFrame(
-        {"date": ["2026-08-01"], "median": [1.0], "p25": [0.5], "p75": [1.5]}
+        {"date": ["2026-08-01"], "median": [1.0], "p25": [0.5], "p75": [1.5],
+         "min": [0.1], "max": [2.0]}
     )
     fig = chart_fleet_spread(dist, "not-a-metric")
     assert isinstance(fig, go.Figure)
+
+
+def test_chart_fleet_spread_refuses_a_frame_missing_a_bound():
+    import pytest
+
+    # Skipping the band quietly is how a chart ends up titled "full range"
+    # while drawing none — which is exactly what shipped.
+    dist = pd.DataFrame(
+        {"date": ["2026-08-01"], "median": [1.0], "p25": [0.5], "p75": [1.5]}
+    )
+    with pytest.raises(KeyError, match="min"):
+        chart_fleet_spread(dist, "revenue")
 
 
 def test_leaderboard_flips_negative_capture_spread_to_red():

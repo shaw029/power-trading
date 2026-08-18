@@ -1240,8 +1240,13 @@ def chart_fleet_spread(dist: pd.DataFrame, metric: str = "revenue") -> go.Figure
         ("min", "max", "rgba(42, 120, 214, 0.16)", "rgba(42, 120, 214, 0.55)", "Min–max"),
         ("p25", "p75", "rgba(42, 120, 214, 0.30)", "rgba(0, 0, 0, 0)", "P25–P75"),
     ):
+        # No silent skip: a missing bound means the caller handed over a frame
+        # without it, and dropping the band quietly is how a chart ends up
+        # titled "full range" while showing none.
         if lo not in d.columns or hi not in d.columns:
-            continue
+            raise KeyError(
+                f"chart_fleet_spread needs '{lo}' and '{hi}'; got {list(d.columns)}"
+            )
         # The outer band gets a visible edge: at a fill alpha low enough to sit
         # under the inner band, the extremes are otherwise invisible.
         fig.add_trace(
