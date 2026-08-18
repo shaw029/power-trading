@@ -110,8 +110,7 @@ The landing page. Everything about a single delivery day.
 | HIS-4 | Best day | Number | The high-water mark per MW, with the date beneath it. | Built |
 | HIS-5 | Daily attribution | Graph | Each day's earnings split into where the money came from. | Built |
 | HIS-6 | Price capture | Graph | Charging and discharging by hour of day across the whole window, against the average day-ahead price — when the battery trades, not just how much. | Built |
-| HIS-7 | Explorer window | Filter | Day range for the explorer below, defaulting to the last 7 days. Drawing the full history at once made the page sluggish, so only the chosen slice is rendered. | Built |
-| HIS-8 | Dispatch explorer | Graph | Hour by hour across the chosen days: prices, what the battery traded, and its state of charge on one timeline. | Built |
+| HIS-8 | Dispatch explorer | Graph | Hour by hour across the shown days: prices, what the battery traded, and its state of charge on one timeline. Uses the sidebar period — it had its own day slider, which was a second filter competing with the first. | Built |
 
 ## System overview — the GB grid itself  ·  *GB power system*
 

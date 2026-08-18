@@ -643,22 +643,12 @@ def _page_history():
     dispatch = _range_dispatch(shown, duration)
     st.plotly_chart(chart_price_capture(dispatch, duration_h=RESOLUTION_H), width="stretch")
 
-    # Dispatch explorer over a user-chosen window. Rendering the full history
-    # at once made the page sluggish, so only the selected slice — defaulting
-    # to the last 7 days — is drawn.
+    # Dispatch explorer over the window the sidebar already selected. It used
+    # to carry its own day slider, which was a second filter competing with
+    # the first — narrowing the period is what the sidebar is for.
     st.markdown("#### Dispatch explorer")
-    st.caption("Hour-by-hour prices, trades and state of charge over the selected days.")
-    dates = [d["date"] for d in shown]
-    if len(dates) > 1:
-        start_iso, end_iso = st.select_slider(
-            "Explorer window (days)",
-            options=dates,
-            value=(dates[max(0, len(dates) - 7)], dates[-1]),
-        )
-    else:
-        start_iso = end_iso = dates[0]
-    window = [d for d in shown if start_iso <= d["date"] <= end_iso]
-    win_dispatch = _range_dispatch(window, duration)
+    st.caption("Hour-by-hour prices, trades and state of charge across the shown days.")
+    win_dispatch = _range_dispatch(shown, duration)
     st.plotly_chart(
         chart_operation_explorer(
             _prices_hourly(win_dispatch),
