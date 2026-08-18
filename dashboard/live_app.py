@@ -1392,42 +1392,46 @@ def _page_system():
     )
     spread = (sdf["da_p90"] - sdf["da_p10"]) if "da_p90" in sdf else pd.Series(dtype=float)
 
+    # Units live in the label, not the value. Streamlit renders labels in muted
+    # grey beneath a large bold value, so this is the reporting convention —
+    # "Demand (GW)" over a bare number — and it lets the eye compare figures
+    # across tiles without stepping over a currency sign each time.
     row1 = st.columns(4)
     row1[0].metric(
-        "Low-carbon share",
-        f"{low_carbon / total_gen:.0%}" if total_gen > 0 else "—",
+        "Low-carbon share (%)",
+        f"{low_carbon / total_gen * 100:.0f}" if total_gen > 0 else "—",
         help="Wind, solar, nuclear, hydro and biomass as a share of GB generation "
         "over the window (interconnector imports excluded).",
     )
     row1[1].metric(
-        "Avg wholesale price",
-        f"£{avg_da:,.0f}/MWh" if avg_da is not None else "—",
+        "Avg wholesale price (£/MWh)",
+        f"{avg_da:,.0f}" if avg_da is not None else "—",
         help="Mean day-ahead price across the window, weighted by hours so that "
         "clock-change days do not distort it.",
     )
     row1[2].metric(
-        "Highest wholesale price",
-        f"£{sdf['da_max'].max():,.0f}/MWh" if sdf["da_max"].notna().any() else "—",
+        "Highest wholesale price (£/MWh)",
+        f"{sdf['da_max'].max():,.0f}" if sdf["da_max"].notna().any() else "—",
         help="The peak day-ahead price reached in the window.",
     )
     row1[3].metric(
-        "Lowest wholesale price",
-        f"£{sdf['da_min'].min():,.0f}/MWh" if sdf["da_min"].notna().any() else "—",
+        "Lowest wholesale price (£/MWh)",
+        f"{sdf['da_min'].min():,.0f}" if sdf["da_min"].notna().any() else "—",
         help="The floor day-ahead price in the window — below zero when generators "
         "paid to keep running.",
     )
 
     row2 = st.columns(4)
     row2[0].metric(
-        "Negative price count",
+        "Negative price count (hours)",
         f"{int(sdf['da_negative_hours'].sum())}",
         help="Day-ahead hours that cleared below £0. Day-ahead is an hourly "
         "auction, so this counts hours rather than settlement periods.",
     )
     _max_spread_i = spread.idxmax() if spread.notna().any() else None
     row2[1].metric(
-        "Max daily P90–P10 spread",
-        f"£{spread.max():,.0f}/MWh" if _max_spread_i is not None else "—",
+        "Max daily P90–P10 spread (£/MWh)",
+        f"{spread.max():,.0f}" if _max_spread_i is not None else "—",
         sdf.loc[_max_spread_i, "date"] if _max_spread_i is not None else None,
         delta_color="off",
         help="The widest single day between its top and bottom price deciles — "
@@ -1435,22 +1439,24 @@ def _page_system():
         "spike that a simple high-minus-low would chase.",
     )
     row2[2].metric(
-        "Max daily peak demand",
-        f"{sdf['peak_demand_gw'].max():.1f} GW" if sdf["peak_demand_gw"].notna().any() else "—",
+        "Max daily peak demand (GW)",
+        f"{sdf['peak_demand_gw'].max():.1f}" if sdf["peak_demand_gw"].notna().any() else "—",
         help="The highest half-hourly demand reached in the window (Elexon ITSDO).",
     )
     row2[3].metric(
-        "Max system stress",
-        f"{sdf['peak_residual_gw'].max():.1f} GW"
+        "Max system stress (GW)",
+        f"{sdf['peak_residual_gw'].max():.1f}"
         if "peak_residual_gw" in sdf and sdf["peak_residual_gw"].notna().any() else "—",
         help="The highest residual load (demand − wind − solar) — the biggest "
         "burden the dispatchable fleet had to carry.",
     )
 
+    # Price volatility leads: the numbers above it are mostly prices, so the
+    # chart that explains them belongs directly beneath them.
+    st.plotly_chart(chart_price_volatility(sdf), width="stretch")
     st.plotly_chart(chart_generation_daily(sdf, group_cols), width="stretch")
     low_carbon_cols = [g for g in gen_cols if g in fetch_live.LOW_CARBON_GROUPS]
     st.plotly_chart(chart_low_carbon_daily(sdf, low_carbon_cols), width="stretch")
-    st.plotly_chart(chart_price_volatility(sdf), width="stretch")
     st.plotly_chart(chart_stress_vs_demand(sdf), width="stretch")
 
     # Stress and surplus are window-relative deciles, so they are classified

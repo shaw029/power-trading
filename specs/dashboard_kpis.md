@@ -124,8 +124,14 @@ moves when the date filter moves.
 **Placement.** SYS-1 is a badge in the page header beside the date range, not a tile. The eight
 Numbers sit in two rows of four — low-carbon share, average price, highest price, lowest price,
 then negative price count, max P90–P10 spread, max peak demand, max system stress. The five
-Graphs run full width beneath them in this order: generation mix, low-carbon over time, daily
-price volatility, stress vs total demand, stress & surplus frequency.
+Graphs run full width beneath them in this order: daily price volatility (directly under the
+numbers, since most of them are prices), generation mix, low-carbon over time, stress vs total
+demand, stress & surplus frequency.
+
+**Units sit in the label, not the value** — "Avg wholesale price (£/MWh)" over a bare `62`.
+Streamlit renders labels in muted grey under a large bold value, so this is the reporting
+convention, and it lets the eye compare figures across tiles without stepping over a currency
+sign each time. New Number rows should follow it.
 
 Two places the mockup differs from this sheet, decided in favour of the sheet: the page keeps
 the name **System overview** (it now covers prices, demand and stress, not just generation),

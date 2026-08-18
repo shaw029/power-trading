@@ -1527,17 +1527,26 @@ def chart_daytype_ratio(df: pd.DataFrame) -> go.Figure:
 # System overview
 # --------------------------------------------------------------------------- #
 # Each generation group keeps a fixed hue (colour follows the fuel, never its
-# rank in the stack). Seven CVD-validated categorical hues plus the overflow
-# grey for "Other"; order matches fetch_live.GENERATION_GROUP_ORDER.
+# rank in the stack); order matches fetch_live.GENERATION_GROUP_ORDER. The hues
+# are the conventional energy-sector ones — blue for wind, yellow for solar,
+# purple for nuclear, an earthy rust for thermal gas, green for biomass, deep
+# marine for hydro, a synthetic lilac for traded interconnector power, and grey
+# for the residual.
+#
+# Two adjacent pairs sit closer than the usual separation thresholds:
+# Gas/Biomass are a red-green pair that deuteranopes struggle to split, and
+# Interconnectors/Other are close even in normal vision. Both stacks therefore
+# draw a hairline in the surface colour between bands, which is the secondary
+# encoding that keeps them readable — do not remove it.
 GENERATION_COLORS = {
-    "Wind": "#2a78d6",
-    "Solar": "#eda100",
-    "Nuclear": "#4a3aa7",
-    "Gas": "#e34948",
-    "Biomass": "#008300",
-    "Hydro & storage": "#1baf7a",
-    "Interconnectors": "#e87ba4",
-    "Other": _OVERFLOW,
+    "Wind": "#4A90E2",
+    "Solar": "#F2C94C",
+    "Nuclear": "#9B51E0",
+    "Gas": "#D06A4C",
+    "Biomass": "#66BB6A",
+    "Hydro & storage": "#2F80ED",
+    "Interconnectors": "#A29BFE",
+    "Other": "#B2BEC3",
 }
 
 
@@ -1749,7 +1758,9 @@ def chart_generation_daily(daily: pd.DataFrame, group_cols: list[str]) -> go.Fig
                 y=daily[name],
                 name=name,
                 marker_color=GENERATION_COLORS.get(name, _OVERFLOW),
-                marker_line=dict(width=0),
+                # Hairline in the surface colour, matching the half-hourly mix:
+                # it separates adjacent bands whose hues are close.
+                marker_line=dict(width=1, color="rgba(255,255,255,0.85)"),
                 hovertemplate=name + "<br>%{x|%Y-%m-%d}<br>%{y:,.0f} GWh<extra></extra>",
             )
         )
