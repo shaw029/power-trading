@@ -94,6 +94,7 @@ The landing page. Everything about a single delivery day.
 | DAY-11 | Where the money came from | Graph | Revenue broken into its parts. | Built |
 | DAY-12 | This day vs the window | Graph | Was this a good day or a dull one? | Built |
 | DAY-13 | Generation mix | Graph | What was powering GB that day (in a fold-out panel). | Built |
+| DAY-16 | Realised shape | Graph | Mean dispatch and execution prices by hour of day, in a fold-out panel — what the battery physically did after intraday, as opposed to what it planned. | Built |
 | DAY-14 | Half-hourly detail | Table | The underlying numbers, plus a CSV download. | Built |
 | DAY-15 | Real batteries this day | Table | What actual GB sites earned. | Built |
 
@@ -103,12 +104,14 @@ The landing page. Everything about a single delivery day.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| HIS-1 | Average daily PnL | Number | Typical earnings per MW per day — the number every other page compares against. | Built |
-| HIS-2 | Total PnL | Number | Everything made across the window. | Built |
-| HIS-3 | Positive days | Number | How often it made money at all. | Built |
-| HIS-4 | Best day | Number | The high-water mark, and when. | Built |
-| HIS-5 | Daily earnings | Graph | Day by day, split by where the money came from. | Built |
-| HIS-6 | When it trades | Graph | Charging and discharging by hour, against the average price. | Built |
+| HIS-1 | Avg net PnL | Number | Typical earnings per MW per day — the unit every other page and every fleet estimate reports in. | Built |
+| HIS-2 | Total net PnL | Number | Everything the 50 MW battery made across the window, in absolute pounds. | Built |
+| HIS-3 | Positive days | Number | How many days closed in profit, out of how many. | Built |
+| HIS-4 | Best day | Number | The high-water mark per MW, with the date beneath it. | Built |
+| HIS-5 | Daily attribution | Graph | Each day's earnings split into where the money came from. | Built |
+| HIS-6 | Price capture | Graph | Charging and discharging by hour of day across the whole window, against the average day-ahead price — when the battery trades, not just how much. | Built |
+| HIS-7 | Explorer window | Filter | Day range for the explorer below, defaulting to the last 7 days. Drawing the full history at once made the page sluggish, so only the chosen slice is rendered. | Built |
+| HIS-8 | Dispatch explorer | Graph | Hour by hour across the chosen days: prices, what the battery traded, and its state of charge on one timeline. | Built |
 
 ## System overview — the GB grid itself  ·  *GB power system*
 
@@ -205,6 +208,8 @@ against wear — a site earning less per MWh than its wear costs is losing money
 | SVF-6 | Day by day | Graph | Simulation against fleet over time. | Built |
 | SVF-7 | Trading shape | Graph | Do real batteries trade at the same hours? | Built |
 | SVF-8 | Gap by day type | Graph | On which kinds of day does reality fall furthest short? | Built |
+| SVF-9 | Per-site vs the ceiling | Graph | Each site's £/MW/day split into the wholesale leg and the balancing leg, against the simulation ceiling drawn as a reference line. Only the wholesale leg is comparable — the sim does not play the balancing market. | Built |
+| SVF-10 | Work rate vs earnings | Graph | Every site plotted by cycles per day against £/MW/day, with the benchmark starred — does trading harder actually pay? | Built |
 
 ## Alignment gap — does profit serve the grid?  ·  *Research*
 
