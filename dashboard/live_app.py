@@ -1346,6 +1346,10 @@ def _page_system():
     date_isos = _dates()
     start, end, day_types = _global_filters(date_isos)
     st.sidebar.caption("The benchmark levers do not affect this page.")
+    # Every other page warms the day cache behind a progress bar before doing
+    # anything slow. This page fetches just as much — day labels, then a daily
+    # summary per day — so without it the first load is a blank screen.
+    _warm_fetch(date_isos)
     labels = _day_labels(date_isos)
     days = [
         d
