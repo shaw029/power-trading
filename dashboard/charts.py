@@ -1228,21 +1228,25 @@ def chart_fleet_spread(dist: pd.DataFrame, metric: str = "revenue") -> go.Figure
     # Two nested bands: the full range faintest, the interquartile range darker
     # inside it. The gap between them is the tail — one site having an
     # exceptional day, which the quartiles deliberately refuse to show.
-    for lo, hi, fill, label in (
-        ("min", "max", "rgba(42, 120, 214, 0.09)", "Min–max"),
-        ("p25", "p75", "rgba(42, 120, 214, 0.22)", "P25–P75"),
+    for lo, hi, fill, edge, label in (
+        ("min", "max", "rgba(42, 120, 214, 0.16)", "rgba(42, 120, 214, 0.55)", "Min–max"),
+        ("p25", "p75", "rgba(42, 120, 214, 0.30)", "rgba(0, 0, 0, 0)", "P25–P75"),
     ):
         if lo not in d.columns or hi not in d.columns:
             continue
+        # The outer band gets a visible edge: at a fill alpha low enough to sit
+        # under the inner band, the extremes are otherwise invisible.
         fig.add_trace(
             go.Scatter(
-                x=d["date"], y=d[hi], mode="lines", line=dict(width=0),
+                x=d["date"], y=d[hi], mode="lines",
+                line=dict(width=1, color=edge, dash="dot"),
                 hoverinfo="skip", showlegend=False,
             )
         )
         fig.add_trace(
             go.Scatter(
-                x=d["date"], y=d[lo], mode="lines", line=dict(width=0),
+                x=d["date"], y=d[lo], mode="lines",
+                line=dict(width=1, color=edge, dash="dot"),
                 fill="tonexty", fillcolor=fill, name=label,
                 customdata=d[hi],
                 hovertemplate=(
@@ -1665,8 +1669,8 @@ def chart_price_volatility(df: pd.DataFrame) -> go.Figure:
     d["date"] = pd.to_datetime(d["date"])
     fig = go.Figure()
     for lo, hi, fill, label in (
-        ("da_min", "da_max", "rgba(42, 120, 214, 0.10)", "Min–max"),
-        ("da_p10", "da_p90", "rgba(42, 120, 214, 0.26)", "P10–P90"),
+        ("da_min", "da_max", "rgba(42, 120, 214, 0.16)", "Min–max"),
+        ("da_p10", "da_p90", "rgba(42, 120, 214, 0.30)", "P10–P90"),
     ):
         if lo not in d.columns or hi not in d.columns:
             continue
