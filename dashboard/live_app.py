@@ -164,11 +164,23 @@ def _build_asset(cfg, duration, degradation, soc_min, soc_max) -> dict:
     }
 
 
-def _warm_fetch(date_isos: tuple) -> None:
-    """Pre-fetch every day once with a visible progress bar, so the first load
-    is not a single opaque spinner. Later runs skip straight through: the
-    session flag avoids re-rendering the bar and every per-day fetch is a
-    cache hit anyway."""
+def _warm_fetch(date_isos: tuple, system_isos: tuple | None = None) -> None:
+    """Pre-fetch the days we actually need, with a visible progress bar.
+
+    ``date_isos`` are the days needing *prices*. The benchmark settle carries
+    state of charge from one day to the next, so it needs the whole history
+    whatever the period filter says — shortening it would change the numbers,
+    not just the view.
+
+    ``system_isos`` are the days needing the generation/demand snapshot, which
+    is display-only and therefore just the days on screen. Defaults to
+    ``date_isos`` for callers that show everything they fetch.
+
+    Per-day results are cached, so a filter change re-runs this as cache hits;
+    the session flag only suppresses the bar.
+    """
+    system_isos = date_isos if system_isos is None else system_isos
+    system_set = set(system_isos)
     if st.session_state.get("_prices_warmed"):
         return
     n = len(date_isos)
@@ -178,10 +190,11 @@ def _warm_fetch(date_isos: tuple) -> None:
             _fetch_day(iso)
         except Exception:
             pass  # _settle_range skips unfetchable days
-        try:
-            _system_day(iso)  # warms the briefing/alignment system snapshots
-        except Exception:
-            pass
+        if iso in system_set:
+            try:
+                _system_day(iso)  # warms the briefing/alignment system snapshots
+            except Exception:
+                pass
         bar.progress((i + 1) / n, text=f"Fetching GB market data · {iso} ({i + 1}/{n})")
     bar.empty()
     st.session_state["_prices_warmed"] = True
@@ -336,7 +349,7 @@ def _benchmark_view():
     start, end, day_types = _global_filters(date_isos)
     duration, cycle_target, degradation, soc_min, soc_max, commit = _benchmark_parameters()
 
-    _warm_fetch(date_isos)
+    _warm_fetch(date_isos, system_isos=tuple(d for d in date_isos if start <= d <= end))
     days = _settle_range(date_isos, duration, cycle_target, degradation, soc_min, soc_max, commit)
     shown = _filter_days(days, start, end, day_types)
 
@@ -1284,15 +1297,19 @@ def _page_fleet():
         "Real GB fleet",
         f"{start} → {end} · {tags} · estimated performance of real grid-scale batteries",
     )
-    fleet_df = _fleet_range(date_isos)
+    # Nothing on this page carries from one day to the next, so only the
+    # filtered window is fetched — per-BMU streams are the heaviest feed in
+    # the app and fetching 60 days to show 7 was most of the wait.
+    window = tuple(d for d in date_isos if start <= d <= end)
+    fleet_df = _fleet_range(window)
     if fleet_df.empty:
         st.warning(
             "No fleet data could be fetched — Elexon per-unit data may be "
             "temporarily unavailable."
         )
         return
-    _warm_fetch(date_isos)
-    _render_fleet(fleet_df, _day_labels(date_isos), start, end, day_types)
+    _warm_fetch(window)
+    _render_fleet(fleet_df, _day_labels(window), start, end, day_types)
 
 
 @st.cache_data(show_spinner=False)
@@ -1387,7 +1404,6 @@ def _page_system():
     # Every other page warms the day cache behind a progress bar before doing
     # anything slow. This page fetches just as much — day labels, then a daily
     # summary per day — so without it the first load is a blank screen.
-    _warm_fetch(date_isos)
     labels = _day_labels(date_isos)
     days = [
         d
@@ -1404,6 +1420,7 @@ def _page_system():
         st.info("No days match the current filters — widen the period or clear a day type.")
         return
 
+    _warm_fetch(tuple(days))
     summaries = [s for s in (_system_summary_day(d) for d in days) if s is not None]
     if not summaries:
         st.warning("No system data could be fetched for the window — the Elexon or "
