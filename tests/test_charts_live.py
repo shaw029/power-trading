@@ -21,6 +21,7 @@ from dashboard.charts import (
     chart_day_in_window,
     chart_duration_comparison,
     chart_equity_curve,
+    chart_fleet_leaderboard,
     chart_fleet_spread,
     chart_gap_by_daytype,
     chart_generation_daily,
@@ -515,3 +516,26 @@ def test_chart_fleet_spread_unknown_metric_still_renders():
     )
     fig = chart_fleet_spread(dist, "not-a-metric")
     assert isinstance(fig, go.Figure)
+
+
+def test_leaderboard_flips_negative_capture_spread_to_red():
+    from dashboard.charts import COLORS
+
+    df = pd.DataFrame(
+        {
+            "site": ["A", "B", "C"], "optimiser": ["X", "Y", "Z"],
+            "capture_spread": [95.0, -156.0, 40.0],
+            "gbp_per_mw_day": [200.0, -50.0, 80.0],
+            "cycles_per_day": [1.2, 0.4, 0.9],
+            "power_mw": [100.0, 50.0, 99.0],
+            "discharge_mwh": [500.0, 100.0, 300.0],
+            "charge_mwh": [500.0, 100.0, 300.0],
+            "days": [5, 5, 5], "total_gbp": [1000.0, -500.0, 800.0],
+        }
+    )
+    # Capture spread goes negative when a site pays more to charge than it
+    # earns discharging — the same failure revenue signals, so the same red.
+    colours = list(chart_fleet_leaderboard(df, "capture").data[0].marker.color)
+    assert colours.count(COLORS["cost"]) == 1
+    # Cycles cannot be negative, so nothing flips.
+    assert COLORS["cost"] not in list(chart_fleet_leaderboard(df, "cycles").data[0].marker.color)

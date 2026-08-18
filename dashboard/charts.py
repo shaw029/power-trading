@@ -1143,7 +1143,11 @@ def chart_fleet_leaderboard(site_df: pd.DataFrame, metric: str = "revenue"):
     col, fmt, axis, fragment = _FLEET_METRIC_SPECS[metric]
     df = site_df.sort_values(col)
     labels = [f"{s}  ·  {o}" for s, o in zip(df["site"], df["optimiser"])]
-    negative_flips = metric == "revenue"
+    # Revenue and capture spread are the two metrics that can go negative —
+    # a site can pay more to charge than it earns discharging — and a
+    # negative there means something has gone wrong, so it flips to red.
+    # Cycles, volume and capacity cannot be negative.
+    negative_flips = metric in ("revenue", "capture")
     colors = [
         COLORS["cost"] if (negative_flips and v < 0) else COLORS["da"] for v in df[col]
     ]
@@ -1182,7 +1186,11 @@ def _chart_fleet_grouped(df: pd.DataFrame, key: str, label: str, metric: str):
 
     col, fmt, axis, fragment = _FLEET_METRIC_SPECS[metric]
     df = df.sort_values(col, ascending=False)
-    negative_flips = metric == "revenue"
+    # Revenue and capture spread are the two metrics that can go negative —
+    # a site can pay more to charge than it earns discharging — and a
+    # negative there means something has gone wrong, so it flips to red.
+    # Cycles, volume and capacity cannot be negative.
+    negative_flips = metric in ("revenue", "capture")
     colors = [
         COLORS["cost"] if (negative_flips and v < 0) else COLORS["da"] for v in df[col]
     ]
