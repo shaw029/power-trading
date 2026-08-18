@@ -888,7 +888,7 @@ _FLEET_METRICS: dict[str, tuple[str, str, str]] = {
     "Revenue": ("revenue", "£/MW/day", "{:,.0f}"),
     "Capture spread": ("capture", "£/MWh", "{:,.1f}"),
     "Cycles": ("cycles", "cycles/day", "{:,.2f}"),
-    "Volume": ("volume", "MWh", "{:,.0f}"),
+    "Volume": ("volume", "MWh/day", "{:,.0f}"),
     "Capacity": ("capacity", "MW", "{:,.0f}"),
 }
 # Where each metric lives on the per-site summary frame.
@@ -896,7 +896,7 @@ _FLEET_METRIC_COLUMNS = {
     "revenue": "gbp_per_mw_day",
     "capture": "capture_spread",
     "cycles": "cycles_per_day",
-    "volume": "discharge_mwh",
+    "volume": "discharge_mwh_per_day",
     "capacity": "power_mw",
 }
 

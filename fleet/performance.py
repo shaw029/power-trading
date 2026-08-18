@@ -305,6 +305,9 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
         grouped["capacity_mwh"] * grouped["days"]
     )
     grouped["total_cycles"] = grouped["discharge_mwh"] / grouped["capacity_mwh"]
+    # Throughput is a total, so it grows with the window. The per-day rate is
+    # what compares across windows — and what the leaderboard already plots.
+    grouped["discharge_mwh_per_day"] = grouped["discharge_mwh"] / grouped["days"]
     grouped["capture_spread"] = _capture_spread(grouped["total_gbp"], grouped["discharge_mwh"])
     grouped["likely_ancillary"] = grouped["cycles_per_day"] < ANCILLARY_CYCLES_THRESHOLD
     return grouped.sort_values("gbp_per_mw_day", ascending=False).reset_index(drop=True)
@@ -389,7 +392,7 @@ def site_day_metric(daily: pd.DataFrame, metric: str) -> pd.Series:
 
 
 def fleet_daily_distribution(daily: pd.DataFrame, metric: str = "revenue") -> pd.DataFrame:
-    """Median and interquartile range *across sites*, per day.
+    """Median, interquartile range and full range *across sites*, per day.
 
     The fleet total says what the fleet did; this says what a typical site did
     and how far apart the sites were, which is the difference between one big
@@ -398,7 +401,7 @@ def fleet_daily_distribution(daily: pd.DataFrame, metric: str = "revenue") -> pd
     values = site_day_metric(daily, metric)
     frame = pd.DataFrame({"date": daily["date"], "value": values}).dropna()
     if frame.empty:
-        return pd.DataFrame(columns=["date", "median", "p25", "p75"])
+        return pd.DataFrame(columns=["date", "median", "p25", "p75", "min", "max"])
     grouped = frame.groupby("date")["value"]
     return pd.DataFrame(
         {
@@ -406,5 +409,7 @@ def fleet_daily_distribution(daily: pd.DataFrame, metric: str = "revenue") -> pd
             "median": grouped.median().to_numpy(),
             "p25": grouped.quantile(0.25).to_numpy(),
             "p75": grouped.quantile(0.75).to_numpy(),
+            "min": grouped.min().to_numpy(),
+            "max": grouped.max().to_numpy(),
         }
     )

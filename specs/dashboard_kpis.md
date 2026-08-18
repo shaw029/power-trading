@@ -166,18 +166,21 @@ are revenue-only whatever the switch says — that is the main change on this pa
 through the battery, normalised for power and duration at once, so a 500 MW site and a 34 MW
 one compare honestly. It shares units with the degradation-cost lever, which makes it readable
 against wear — a site earning less per MWh than its wear costs is losing money by trading.
+It is deliberately **not** divided by days: £/MWh is already a rate, so a per-day version would
+read 60× smaller over a 60-day window than over one day for identical trading, and would stop
+being comparable to the degradation lever.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | FLT-1 | Site / operator / region / duration | Filter | Narrow to specific physical batteries. | Built |
-| FLT-2 | Metric switch | Filter | Revenue (£/MW/day), capture spread (£/MWh), cycles, volume (MWh) or capacity (MW). Re-computes every number and chart below. | Built |
+| FLT-2 | Metric switch | Filter | Revenue (£/MW/day), capture spread (£/MWh), cycles per day, volume (MWh/day) or capacity (MW). Every metric is a rate, so nothing grows just because the date filter widened. Re-computes every number and chart below. | Built |
 | FLT-3 | Active capacity | Number | Total MW, total MWh, and how many sites are visible. | Built |
 | FLT-4 | Operator dispersion | Number | Interquartile spread (P75 − P25) across the visible sites for the active metric — what skill and siting were worth. | Built |
 | FLT-5 | Fleet baseline | Number | Median across the visible sites for the active metric — the typical real battery, robust to one outlier. | Built |
 | FLT-6 | Top performer | Number | The winning site and the operator behind it, for the active metric. | Built |
 | FLT-7 | Site league table | Graph | Horizontal bars ranking every visible site by the active metric. | Built |
 | FLT-8 | Fleet over time | Graph | Whole-fleet daily trajectory for the active metric — what the fleet did. | Built |
-| FLT-12 | Typical site by day | Graph | The median site with an interquartile band behind it, for the active metric — what *a site* did, which differs from the fleet total when one large battery carries a day. | Built |
+| FLT-12 | Typical site by day | Graph | The median site with an interquartile band and the full min–max range behind it, for the active metric — what *a site* did, which differs from the fleet total when one large battery carries a day. The gap between the two bands is the tail the quartiles deliberately hide. | Built |
 | FLT-9 | Site detail | Table | Site, operator, duration, capacity, total revenue, total cycles and capture spread. | Built |
 | FLT-10 | By optimiser | Graph | The active metric aggregated by trading party — the cut a per-site ranking cannot show. | Built |
 | FLT-11 | By region | Graph | The active metric aggregated by GB region. | Built |

@@ -494,15 +494,17 @@ def test_chart_fleet_spread_band_and_median():
             "median": [30.0, 42.0, 28.0],
             "p25": [20.0, 31.0, 19.0],
             "p75": [40.0, 55.0, 36.0],
+            "min": [5.0, 12.0, 8.0],
+            "max": [90.0, 120.0, 70.0],
         }
     )
     fig = chart_fleet_spread(dist, "revenue")
     assert isinstance(fig, go.Figure)
-    # Invisible upper edge + filled lower edge + the median line.
-    assert len(fig.data) == 3
-    assert [t.name for t in fig.data if t.name] == ["P25–P75", "Median site"]
-    # The band is named for a range, so its tooltip carries both ends.
-    band = fig.data[1]
+    # Two nested bands (upper edge + filled lower edge each) plus the median.
+    assert len(fig.data) == 5
+    assert [t.name for t in fig.data if t.name] == ["Min–max", "P25–P75", "Median site"]
+    # Each band is named for a range, so its tooltip carries both ends.
+    band = fig.data[3]
     assert list(band.customdata) == [40.0, 55.0, 36.0]
     assert "customdata" in band.hovertemplate
 

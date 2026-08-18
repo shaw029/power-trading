@@ -330,20 +330,23 @@ def test_capture_spread_is_nan_when_nothing_was_discharged():
 
 def test_fleet_daily_distribution_spreads_across_sites():
     dist = performance.fleet_daily_distribution(_two_site_daily(), "revenue")
-    assert list(dist.columns) == ["date", "median", "p25", "p75"]
+    assert list(dist.columns) == ["date", "median", "p25", "p75", "min", "max"]
     assert len(dist) == 2
     # Day one: A made £50/MW, B £10/MW.
     day1 = dist.iloc[0]
     assert day1["median"] == pytest.approx(30.0)
     assert day1["p25"] == pytest.approx(20.0)
     assert day1["p75"] == pytest.approx(40.0)
+    # The outer band is the real spread, not the quartiles.
+    assert day1["min"] == pytest.approx(10.0)
+    assert day1["max"] == pytest.approx(50.0)
 
 
 def test_fleet_daily_distribution_empty_input():
     empty = performance.fleet_daily_distribution(
         _two_site_daily().iloc[0:0], "revenue"
     )
-    assert list(empty.columns) == ["date", "median", "p25", "p75"]
+    assert list(empty.columns) == ["date", "median", "p25", "p75", "min", "max"]
     assert empty.empty
 
 
@@ -360,3 +363,10 @@ def test_fleet_daily_carries_capture_spread():
     daily = performance.fleet_daily(_two_site_daily())
     # Day one across both sites: £5,500 over 125 MWh.
     assert daily.iloc[0]["capture_spread"] == pytest.approx(5500.0 / 125.0)
+
+
+def test_volume_is_reported_per_day_not_as_a_window_total():
+    site = performance.summarise_by_site(_two_site_daily()).set_index("site")
+    # A discharged 300 MWh over two days.
+    assert site.loc["A", "discharge_mwh"] == pytest.approx(300.0)
+    assert site.loc["A", "discharge_mwh_per_day"] == pytest.approx(150.0)

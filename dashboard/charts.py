@@ -1214,7 +1214,7 @@ def chart_fleet_spread(dist: pd.DataFrame, metric: str = "revenue") -> go.Figure
     """What a typical site did each day, and how far apart the sites were.
 
     ``dist`` is :func:`fleet.performance.fleet_daily_distribution` — ``date``,
-    ``median``, ``p25`` and ``p75``. The fleet total answers "how did the fleet
+    ``median``, ``p25``, ``p75``, ``min`` and ``max``. The fleet total answers "how did the fleet
     do"; this answers "how did a site do", which is a different question when
     one 500 MW battery can carry a day on its own. A widening band is
     dispersion opening up between operators.
@@ -1225,20 +1225,31 @@ def chart_fleet_spread(dist: pd.DataFrame, metric: str = "revenue") -> go.Figure
         metric, ("", "{:,.2f}", "Value", "")
     )
     fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=d["date"], y=d["p75"], mode="lines", line=dict(width=0),
-            hoverinfo="skip", showlegend=False,
+    # Two nested bands: the full range faintest, the interquartile range darker
+    # inside it. The gap between them is the tail — one site having an
+    # exceptional day, which the quartiles deliberately refuse to show.
+    for lo, hi, fill, label in (
+        ("min", "max", "rgba(42, 120, 214, 0.09)", "Min–max"),
+        ("p25", "p75", "rgba(42, 120, 214, 0.22)", "P25–P75"),
+    ):
+        if lo not in d.columns or hi not in d.columns:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=d["date"], y=d[hi], mode="lines", line=dict(width=0),
+                hoverinfo="skip", showlegend=False,
+            )
         )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=d["date"], y=d["p25"], mode="lines", line=dict(width=0),
-            fill="tonexty", fillcolor="rgba(42, 120, 214, 0.20)", name="P25–P75",
-            customdata=d["p75"],
-            hovertemplate="P25–P75 %{y:,.2f} → %{customdata:,.2f}<extra></extra>",
+        fig.add_trace(
+            go.Scatter(
+                x=d["date"], y=d[lo], mode="lines", line=dict(width=0),
+                fill="tonexty", fillcolor=fill, name=label,
+                customdata=d[hi],
+                hovertemplate=(
+                    f"{label} %{{y:,.2f}} → %{{customdata:,.2f}}<extra></extra>"
+                ),
+            )
         )
-    )
     fig.add_trace(
         go.Scatter(
             x=d["date"], y=d["median"], mode="lines", name="Median site",
@@ -1247,7 +1258,7 @@ def chart_fleet_spread(dist: pd.DataFrame, metric: str = "revenue") -> go.Figure
         )
     )
     apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
-                title="Typical site by day — median and interquartile range")
+                title="Typical site by day — median, interquartile and full range")
     fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text=axis)
     return fig
