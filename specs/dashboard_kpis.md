@@ -16,6 +16,22 @@ the dashboard matches.
 Types are **Number**, **Graph**, **Table** and **Filter** — that's the distinction design
 cares about.
 
+## Design conventions
+
+Decisions that apply to the whole dashboard, not one page. New rows follow them; existing
+pages are brought into line when we next work on them.
+
+| Convention | Rule | Rolled out |
+|---|---|---|
+| **Units** | The unit sits on a second label line beneath the name — "Avg wholesale price" over "£/MWh" — and the value stays a bare number (`62`). Labels render in muted grey, so the unit reads as a caption and the eye can compare magnitudes down a row without stepping over a currency sign. | System overview only |
+| **Percentages** | The exception to the above: the sign stays welded to the value (`68%`) and the label carries no unit line. A percent sign is read at a glance; a whole line for it is noise. | System overview only |
+| **Tooltips** | A chart with unified hover already prints the date or time once in its header, so no series repeats it. Charts using closest-hover still carry it, because there is no header to carry it for them. | All charts |
+| **Ranges in tooltips** | A band named for a range shows both ends — "Min–max £-15 → £180", never one number beside a two-ended label. | All charts |
+
+**Pending:** the unit and percentage rules are live on System overview only. Rolling them across
+the other seven pages is a deliberate pass to make when those pages are next opened — not a
+scattered edit, so every page changes with its own review.
+
 ## How the pages are grouped
 
 The sidebar nav has four groups, and the grouping means something: it separates what is
@@ -127,12 +143,6 @@ then negative price count, max P90–P10 spread, max peak demand, max system str
 Graphs run full width beneath them in this order: daily price volatility (directly under the
 numbers, since most of them are prices), generation mix, low-carbon over time, stress vs total
 demand, stress & surplus frequency.
-
-**Units sit on a second label line, not in the value** — "Avg wholesale price" with "£/MWh"
-beneath it, over a bare `62`. Labels render in muted grey, so the unit reads as a caption and
-the eye can run down a row comparing magnitudes without stepping over a currency sign.
-**Percentages are the exception** and stay welded to the value (`68%`), because a percent sign
-is read at a glance and a whole line for it would be noise. New Number rows should follow this.
 
 Two places the mockup differs from this sheet, decided in favour of the sheet: the page keeps
 the name **System overview** (it now covers prices, demand and stress, not just generation),

@@ -704,7 +704,7 @@ def chart_daily_attribution(results_df: pd.DataFrame):
                 y=y,
                 name=name,
                 marker_color=color,
-                hovertemplate="%{x|%d %b}<br>" + name + " £%{y:,.0f}<extra></extra>",
+                hovertemplate="" + name + " £%{y:,.0f}<extra></extra>",
             )
         )
     fig.add_trace(
@@ -715,7 +715,7 @@ def chart_daily_attribution(results_df: pd.DataFrame):
             mode="lines+markers",
             line=dict(color=COLORS["net"], width=2),
             marker=dict(size=5),
-            hovertemplate="%{x|%d %b}<br>Net £%{y:,.0f}<extra></extra>",
+            hovertemplate="Net £%{y:,.0f}<extra></extra>",
         )
     )
     apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Daily PnL attribution")
@@ -936,7 +936,7 @@ def chart_equity_curve(
                 mode="lines",
                 name=label,
                 line=dict(color=palette[label], width=2),
-                hovertemplate=(label + "<br>%{x|%d %b}<br>Cumulative £%{y:,.0f}<extra></extra>"),
+                hovertemplate=(label + "<br>Cumulative £%{y:,.0f}<extra></extra>"),
             )
         )
     apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Equity curve — cumulative PnL by duration")
@@ -1261,7 +1261,7 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
                 x=dates,
                 y=daily_df[col],
                 marker_color=COLORS["da"],
-                hovertemplate="%{x|%Y-%m-%d}<br>%{y:,.2f}<extra></extra>",
+                hovertemplate="%{y:,.2f}<extra></extra>",
             )
         )
         apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
@@ -1276,7 +1276,7 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
             y=daily_df["wholesale_gbp"],
             name="Wholesale proxy (PN × MID)",
             marker_color=COLORS["da"],
-            hovertemplate="%{x|%Y-%m-%d}<br>Wholesale £%{y:,.0f}<extra></extra>",
+            hovertemplate="Wholesale £%{y:,.0f}<extra></extra>",
         )
     )
     fig.add_trace(
@@ -1285,7 +1285,7 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
             y=daily_df["bm_gbp"],
             name="Balancing Mechanism",
             marker_color=COLORS["bm"],
-            hovertemplate="%{x|%Y-%m-%d}<br>BM £%{y:,.0f}<extra></extra>",
+            hovertemplate="BM £%{y:,.0f}<extra></extra>",
         )
     )
     fig.add_trace(
@@ -1295,7 +1295,7 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
             name="Net total",
             mode="lines",
             line=dict(color=COLORS["net"], width=2),
-            hovertemplate="%{x|%Y-%m-%d}<br>Net £%{y:,.0f}<extra></extra>",
+            hovertemplate="Net £%{y:,.0f}<extra></extra>",
         )
     )
     apply_theme(
@@ -1381,7 +1381,7 @@ def chart_sim_vs_fleet_daily(df: pd.DataFrame) -> go.Figure:
             name="Fleet wholesale avg",
             mode="lines",
             line=dict(color=COLORS["da"], width=2),
-            hovertemplate="%{x|%Y-%m-%d}<br>Fleet £%{y:,.0f}/MW<extra></extra>",
+            hovertemplate="Fleet £%{y:,.0f}/MW<extra></extra>",
         )
     )
     fig.add_trace(
@@ -1393,7 +1393,7 @@ def chart_sim_vs_fleet_daily(df: pd.DataFrame) -> go.Figure:
             line=dict(color=COLORS["net"], width=2, dash="dash"),
             fill="tonexty",
             fillcolor="rgba(137, 135, 129, 0.15)",
-            hovertemplate="%{x|%Y-%m-%d}<br>Sim £%{y:,.0f}/MW<extra></extra>",
+            hovertemplate="Sim £%{y:,.0f}/MW<extra></extra>",
         )
     )
     apply_theme(
@@ -1572,7 +1572,7 @@ def chart_generation_mix(groups: pd.DataFrame, demand: pd.Series | None = None) 
                 line=dict(width=1, color="rgba(255,255,255,0.85)"),
                 stackgroup="gen",
                 fillcolor=color,
-                hovertemplate=name + "<br>%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+                hovertemplate=name + ": %{y:,.0f} MW<extra></extra>",
             )
         )
     if demand is not None and not demand.empty:
@@ -1583,7 +1583,7 @@ def chart_generation_mix(groups: pd.DataFrame, demand: pd.Series | None = None) 
                 name="Demand (outturn)",
                 mode="lines",
                 line=dict(color=COLORS["net"], width=2, dash="dot"),
-                hovertemplate="Demand<br>%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+                hovertemplate="Demand<br>%{y:,.0f} MW<extra></extra>",
             )
         )
     apply_theme(fig, height=HEIGHT_LG, title="Generation mix — half-hourly (MW)")
@@ -1660,7 +1660,7 @@ def chart_stress_vs_demand(df: pd.DataFrame) -> go.Figure:
         go.Scatter(
             x=d["date"], y=d["peak_demand_gw"], mode="lines", name="Peak demand",
             line=dict(color=COLORS["net"], width=2),
-            hovertemplate="%{x|%Y-%m-%d}<br>Peak demand %{y:,.1f} GW<extra></extra>",
+            hovertemplate="Peak demand %{y:,.1f} GW<extra></extra>",
         )
     )
     if "peak_residual_gw" in d.columns:
@@ -1669,7 +1669,7 @@ def chart_stress_vs_demand(df: pd.DataFrame) -> go.Figure:
                 x=d["date"], y=d["peak_residual_gw"], mode="lines",
                 name="Peak residual load", line=dict(color=COLORS["cost"], width=2),
                 fill="tonexty", fillcolor="rgba(27, 175, 122, 0.16)",
-                hovertemplate="%{x|%Y-%m-%d}<br>Peak residual %{y:,.1f} GW<extra></extra>",
+                hovertemplate="Peak residual %{y:,.1f} GW<extra></extra>",
             )
         )
     apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
@@ -1699,7 +1699,7 @@ def chart_stress_frequency(df: pd.DataFrame) -> go.Figure:
         fig.add_trace(
             go.Bar(
                 x=d["date"], y=d[col], name=name, marker_color=colour,
-                hovertemplate=f"%{{x|%Y-%m-%d}}<br>{name}: %{{y}} period(s)<extra></extra>",
+                hovertemplate=f"{name}: %{{y}} period(s)<extra></extra>",
             )
         )
     apply_theme(fig, height=HEIGHT_SM,
@@ -1736,7 +1736,7 @@ def chart_system_prices(
                 name=name,
                 mode="lines",
                 line=dict(color=color, width=2),
-                hovertemplate=name + "<br>%{x|" + hover_fmt + "}<br>£%{y:,.1f}/MWh<extra></extra>",
+                hovertemplate=name + "<br>£%{y:,.1f}/MWh<extra></extra>",
             )
         )
     fig.add_hline(y=0.0, line=dict(color=_AXIS, width=1))
@@ -1766,7 +1766,7 @@ def chart_generation_daily(daily: pd.DataFrame, group_cols: list[str]) -> go.Fig
                 # Hairline in the surface colour, matching the half-hourly mix:
                 # it separates adjacent bands whose hues are close.
                 marker_line=dict(width=1, color="rgba(255,255,255,0.85)"),
-                hovertemplate=name + "<br>%{x|%Y-%m-%d}<br>%{y:,.0f} GWh<extra></extra>",
+                hovertemplate=name + ": %{y:,.0f} GWh<extra></extra>",
             )
         )
     apply_theme(fig, height=HEIGHT_LG, title="Daily generation by source (GWh)")
@@ -1850,7 +1850,7 @@ def chart_alignment_day(day_flags: pd.DataFrame, dispatch_mw: pd.Series) -> go.F
             name="Residual load",
             mode="lines",
             line=dict(color=COLORS["net"], width=2),
-            hovertemplate="%{x|%H:%M}<br>Residual %{y:,.1f} GW<extra></extra>",
+            hovertemplate="Residual %{y:,.1f} GW<extra></extra>",
         ),
         row=1, col=1,
     )
@@ -1860,7 +1860,7 @@ def chart_alignment_day(day_flags: pd.DataFrame, dispatch_mw: pd.Series) -> go.F
             y=dispatch_mw.values,
             name="Benchmark dispatch",
             marker_color=_dispatch_bar_colors(dispatch_mw.values),
-            hovertemplate="%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+            hovertemplate="%{y:,.0f} MW<extra></extra>",
         ),
         row=2, col=1,
     )
@@ -1916,7 +1916,7 @@ def chart_system_tightness(
                 name="De-rated margin",
                 mode="lines",
                 line=dict(color=COLORS["net"], width=2),
-                hovertemplate="%{x|%b %d %H:%M}<br>DRM %{y:,.0f} MW<extra></extra>",
+                hovertemplate="DRM %{y:,.0f} MW<extra></extra>",
             ),
             row=1, col=1,
         )
@@ -1932,7 +1932,7 @@ def chart_system_tightness(
                                 line=dict(width=1, color="white")),
                     customdata=lolp_hot["lolp"].values,
                     hovertemplate=(
-                        "%{x|%b %d %H:%M}<br>LoLP %{customdata:.1%} · "
+                        "LoLP %{customdata:.1%} · "
                         "DRM %{y:,.0f} MW<extra></extra>"
                     ),
                 ),
@@ -1953,7 +1953,7 @@ def chart_system_tightness(
                 y=dispatch_mw.values,
                 name="Benchmark dispatch",
                 marker_color=_dispatch_bar_colors(dispatch_mw.values),
-                hovertemplate="%{x|%b %d %H:%M}<br>%{y:,.0f} MW<extra></extra>",
+                hovertemplate="%{y:,.0f} MW<extra></extra>",
             ),
             row=2, col=1,
         )
@@ -2100,7 +2100,7 @@ def chart_day_composite(
                 go.Scatter(
                     x=prices.index, y=prices[col], name=name, mode="lines",
                     line=dict(color=color, width=2),
-                    hovertemplate=name + "<br>%{x|%H:%M}<br>£%{y:,.1f}/MWh<extra></extra>",
+                    hovertemplate=name + "<br>£%{y:,.1f}/MWh<extra></extra>",
                 ),
                 row=1, col=1,
             )
@@ -2108,7 +2108,7 @@ def chart_day_composite(
         go.Scatter(
             x=da_mw.index, y=da_mw.values, name="DA commitment",
             mode="lines", line=dict(color=COLORS["ghost"], width=2, shape="hvh"),
-            hovertemplate="DA commitment<br>%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+            hovertemplate="DA commitment<br>%{y:,.0f} MW<extra></extra>",
         ),
         row=2, col=1,
     )
@@ -2116,7 +2116,7 @@ def chart_day_composite(
         go.Bar(
             x=dispatch_mw.index, y=dispatch_mw.values, name="Dispatch",
             marker_color=_dispatch_bar_colors(dispatch_mw.values),
-            hovertemplate="Dispatch<br>%{x|%H:%M}<br>%{y:,.0f} MW<extra></extra>",
+            hovertemplate="Dispatch<br>%{y:,.0f} MW<extra></extra>",
         ),
         row=2, col=1,
     )
@@ -2124,7 +2124,7 @@ def chart_day_composite(
         go.Scatter(
             x=soc_pct.index, y=soc_pct.values, name="SOC",
             mode="lines", line=dict(color=COLORS["soc"], width=2),
-            hovertemplate="SOC<br>%{x|%H:%M}<br>%{y:.0%}<extra></extra>",
+            hovertemplate="SOC<br>%{y:.0%}<extra></extra>",
         ),
         row=3, col=1,
     )
@@ -2136,7 +2136,7 @@ def chart_day_composite(
                 x=day_flags.index, y=day_flags["residual_mw"] / 1000.0,
                 name="Residual load", mode="lines",
                 line=dict(color=COLORS["net"], width=2),
-                hovertemplate="Residual<br>%{x|%H:%M}<br>%{y:,.1f} GW<extra></extra>",
+                hovertemplate="Residual<br>%{y:,.1f} GW<extra></extra>",
             ),
             row=4, col=1,
         )
