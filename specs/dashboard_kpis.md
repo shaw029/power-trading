@@ -7,6 +7,7 @@ What the live dashboard shows, page by page, in plain terms.
 - **Built** — on the dashboard now.
 - **Added** — you want it; it doesn't exist yet.
 - **Removed** — on the dashboard now, but it should come off.
+- **Changed** — on the dashboard now, but this row describes something different from what is there.
 
 To plan, edit this file: add a row marked *Added*, mark an existing row *Removed*, reword one
 to change what it says, or move one between pages. That edit is the instruction — hand the file
@@ -154,17 +155,28 @@ Estimated from public data. Sites earning mainly from grid services look worse t
 are, so they're flagged rather than quietly mixed in.
 *Data: real sites' declared output, market prices, balancing payments.*
 
+**The numbers follow the metric switch.** Choosing a metric in FLT-2 re-computes the four
+Numbers as well as every chart, so the page describes one thing at a time. Today those Numbers
+are revenue-only whatever the switch says — that is the main change on this page.
+
+**Capture spread** is total revenue ÷ total discharged MWh: gross margin on every MWh pushed
+through the battery, normalised for power and duration at once, so a 500 MW site and a 34 MW
+one compare honestly. It shares units with the degradation-cost lever, which makes it readable
+against wear — a site earning less per MWh than its wear costs is losing money by trading.
+
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| FLT-1 | Site / operator / region / duration | Filter | Narrow to the batteries you care about. | Built |
-| FLT-2 | Metric switch | Filter | View by revenue, volume, cycles or size. | Built |
-| FLT-3 | Fleet tracked | Number | How much battery capacity is on screen. | Built |
-| FLT-4 | Best vs typical site | Number | What operator skill and location were worth. | Built |
-| FLT-5 | Fleet average | Number | Typical real-world earnings per MW per day. | Built |
-| FLT-6 | Top site | Number | Who won the window. | Built |
-| FLT-7 | Site league table | Graph | Ranked by the chosen metric. | Built |
-| FLT-8 | Fleet over time | Graph | How the fleet did day by day. | Built |
-| FLT-9 | Site detail | Table | Every site's numbers. | Built |
+| FLT-1 | Site / operator / region / duration | Filter | Narrow to specific physical batteries. | Built |
+| FLT-2 | Metric switch | Filter | Revenue (£/MW/day), capture spread (£/MWh), cycles, volume (MWh) or capacity (MW). Re-computes every number and chart below. | Changed |
+| FLT-3 | Active capacity | Number | Total MW, total MWh, and how many sites are visible. | Changed |
+| FLT-4 | Operator dispersion | Number | Interquartile spread (P75 − P25) across the visible sites for the active metric — what skill and siting were worth. | Changed |
+| FLT-5 | Fleet baseline | Number | Median across the visible sites for the active metric — the typical real battery, robust to one outlier. | Changed |
+| FLT-6 | Top performer | Number | The winning site and the operator behind it, for the active metric. | Changed |
+| FLT-7 | Site league table | Graph | Horizontal bars ranking every visible site by the active metric. | Built |
+| FLT-8 | Fleet over time | Graph | Daily trajectory across the window for the active metric, with the median and interquartile band behind it. | Changed |
+| FLT-9 | Site detail | Table | Site, operator, duration, capacity, total revenue, total cycles and capture spread. | Changed |
+| FLT-10 | By optimiser | Graph | The active metric aggregated by trading party — the cut a per-site ranking cannot show. | Built |
+| FLT-11 | By region | Graph | The active metric aggregated by GB region. | Built |
 
 ## Day types — what kind of day pays  ·  *Research*
 
