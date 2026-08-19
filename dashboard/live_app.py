@@ -36,8 +36,6 @@ from dashboard.charts import (  # noqa: E402
     chart_daytype_matrix,
     chart_daytype_profiles,
     chart_daytype_ratio,
-    chart_day_composite,
-    chart_day_in_window,
     chart_fleet_by_optimiser,
     chart_fleet_by_region,
     chart_fleet_daily,
@@ -58,10 +56,8 @@ from dashboard.charts import (  # noqa: E402
     chart_gap_by_daytype,
     chart_system_tightness,
     chart_shape_overlay,
-    chart_system_prices,
     chart_sim_vs_fleet_daily,
     chart_sim_vs_fleet_sites,
-    chart_soc_tracker,
 )
 from fleet import fetch_fleet  # noqa: E402
 from fleet import performance as fleet_perf  # noqa: E402
@@ -639,100 +635,31 @@ def _page_day():
     prices_hourly = _prices_hourly(dispatch)
     da_sched = _da_sched_frame(dispatch)
 
-    # Centerpiece: the day's dispatch against system state. Falls back to the
-    # realised dispatch shape when system data is unavailable.
-    log = dur_result.dispatch_log
-    day_dispatch = pd.Series(
-        [e["final_mw"] for e in log],
-        index=pd.date_range(picked, periods=len(log), freq="1h", tz="UTC"),
-    )
-    # --- Composite: the whole day on one shared timeline --------------------
-    try:
-        _day_prices_df, _ = _fetch_day(picked)
-    except Exception:
-        _day_prices_df = pd.DataFrame()
-    _da_series = pd.Series(
-        [e["da_mw"] for e in log],
-        index=pd.date_range(picked, periods=len(log), freq="1h", tz="UTC"),
-    )
-    _soc_series = pd.Series(
-        [e["soc_after"] for e in log],
-        index=pd.date_range(picked, periods=len(log), freq="1h", tz="UTC"),
-    )
+    # Full width: the hour-of-day chart carries two axes, a four-item legend and
+    # 24 ticks, all of which crowd in a half-width column.
     st.plotly_chart(
-        chart_day_composite(
-            _day_prices_df,
-            day_dispatch,
-            _da_series,
-            _soc_series,
-            day_flags,
-            params["soc_min"],
-            params["soc_max"],
-        ),
-        width="stretch",
+        chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch"
     )
 
-    if not day_flags.empty:
-        st.plotly_chart(chart_alignment_day(day_flags, day_dispatch), width="stretch")
-    else:
-        st.plotly_chart(
-            chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch"
-        )
-
-    try:
-        day_prices, _ = _fetch_day(picked)
-        st.plotly_chart(chart_system_prices(day_prices), width="stretch")
-    except Exception:
-        pass
-
-    left, right = st.columns(2)
-    left.plotly_chart(
-        chart_soc_tracker(
-            dispatch,
-            min_soc_pct=params["soc_min"],
-            max_soc_pct=params["soc_max"],
-            initial_soc_pct=DEFAULT_START_SOC,
-        ),
-        width="stretch",
-    )
-    right.plotly_chart(
+    st.plotly_chart(
         chart_pnl_waterfall(pd.DataFrame([_pnl_row(record["date"], dur_result)])),
         width="stretch",
     )
 
-    _window_daily = pd.Series(
-        [d["result"].durations[duration].net_pnl / REFERENCE_POWER_MW for d in shown]
-    )
-    st.plotly_chart(
-        chart_day_in_window(
-            _window_daily, dur_result.net_pnl / REFERENCE_POWER_MW
-        ),
-        width="stretch",
-    )
+    system = _system_day(picked)
+    if system.empty:
+        st.info("No system data available for this day.")
+    else:
+        groups = fetch_live.group_generation(system)
+        demand = system["demand_actual"] if "demand_actual" in system.columns else None
+        st.plotly_chart(chart_generation_mix(groups, demand), width="stretch")
 
-    with st.expander("Battery detail"):
-        st.plotly_chart(
-            chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch"
-        )
-
-    with st.expander("System detail"):
-        system = _system_day(picked)
+    with st.expander("Half-hourly system detail"):
         if system.empty:
             st.info("No system data available for this day.")
         else:
-            groups = fetch_live.group_generation(system)
-            demand = (
-                system["demand_actual"] if "demand_actual" in system.columns else None
-            )
-            st.plotly_chart(chart_generation_mix(groups, demand), width="stretch")
             raw = system.copy()
             raw.index = raw.index.strftime("%Y-%m-%d %H:%M")
-            st.download_button(
-                "Download CSV",
-                system.to_csv().encode(),
-                file_name=f"system_{picked}.csv",
-                mime="text/csv",
-            )
             st.dataframe(raw, width="stretch")
 
     with st.expander("Fleet this day"):

@@ -100,16 +100,10 @@ grid did, and what the real fleet did — and ungrouped they read as one undiffe
 | DAY-24 | Operator dispersion | Number | Interquartile spread across the real batteries today — what operator skill and siting were worth, measured where one exceptional site cannot move it. Mirrors FLT-4. | Built |
 | DAY-25 | Fleet median cycles | Number | How hard the typical real battery worked, with the simulation's own cycles beside it. | Added |
 | DAY-26 | Top real site | Number | The best-earning real battery today and the party trading it. | Added |
-| DAY-7 | The day on one timeline | Graph | Four panels sharing one clock: prices, dispatch against the locked day-ahead commitment, state of charge inside its band, and residual load with stress and surplus shaded. | Built |
-| DAY-8 | Dispatch vs grid stress | Graph | Did it discharge when the system was tight? Falls back to the realised-shape view on a day with no system data. | Built |
-| DAY-9 | Prices | Graph | Day-ahead against intraday. | Built |
-| DAY-10 | State of charge | Graph | How full it was through the day, inside its permitted band. | Built |
+| DAY-16 | Realised shape | Graph | Dispatch and execution prices by hour — what the battery physically did after intraday, as opposed to what it planned. The ghost step line is the locked day-ahead commitment, so the gap to the bars is the reshaping. | Changed |
 | DAY-11 | Where the money came from | Graph | The day's PnL split into day-ahead revenue, intraday improvement, execution costs and degradation. | Built |
-| DAY-12 | This day vs the window | Graph | Was this a good day or a dull one? | Built |
-| DAY-16 | Realised shape | Graph | In the **Battery detail** panel: mean dispatch and execution prices by hour — what the battery physically did after intraday, as opposed to what it planned. | Built |
-| DAY-13 | Generation mix | Graph | In the **System detail** panel: what powered GB that day, with demand overlaid. | Built |
-| DAY-14 | Half-hourly detail | Table | In the **System detail** panel: the underlying half-hourly numbers. | Built |
-| DAY-19 | System CSV | Download | That same half-hourly table, as a file. | Built |
+| DAY-13 | Generation mix | Graph | What powered GB that day, with demand overlaid. | Changed |
+| DAY-14 | Half-hourly detail | Table | In the **Half-hourly system detail** panel: the underlying half-hourly numbers. | Changed |
 | DAY-15 | Real batteries this day | Table | In the **Fleet this day** panel: what actual GB sites earned, best first. | Built |
 
 Dropped: **Capture** (net PnL as a share of the day-ahead optimum) and **DA benchmark**. Both
