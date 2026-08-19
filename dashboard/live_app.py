@@ -2269,14 +2269,14 @@ def main():
                 _page_day,
                 title="Daily summary",
                 icon=":material/bolt:",
-                url_path="latest",
+                url_path="daily",
                 default=True,
             ),
             st.Page(
                 _page_history,
                 title="Optimiser performance",
                 icon=":material/monitoring:",
-                url_path="history",
+                url_path="optimiser",
             ),
         ],
         "GB power system": [

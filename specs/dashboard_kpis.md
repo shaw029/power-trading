@@ -74,7 +74,7 @@ pages that show real-world data, since they aren't affected.
 
 ---
 
-## Daily summary — one day in full  ·  *Benchmark*
+## Daily summary — one day in full  ·  *Benchmark*  ·  URL `/daily`
 
 The landing page. Everything about a single delivery day. Its twelve numbers sit in three
 labelled groups, because they answer three different questions — what the model did, what the
@@ -121,7 +121,7 @@ closed by default: **Battery detail**, **System detail**, **Fleet this day**.
 
 ## Baseline optimiser performance — the whole window  ·  *Benchmark*
 
-Sidebar label: **Optimiser performance**.
+Sidebar label: **Optimiser performance**  ·  URL `/optimiser`.
 
 *Data: the simulation across every day shown.*
 
