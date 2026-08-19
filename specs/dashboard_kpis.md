@@ -204,7 +204,7 @@ being comparable to the degradation lever.
 | FLT-5 | Fleet baseline | Number | Median across the visible sites for the active metric — the typical real battery, robust to one outlier. | Built |
 | FLT-6 | Top performer | Number | The winning site and the operator behind it, for the active metric. | Built |
 | FLT-7 | Site league table | Graph | Horizontal bars ranking every visible site by the active metric. | Built |
-| FLT-8 | Fleet over time | Graph | Whole-fleet daily trajectory for the active metric — what the fleet did. | Built |
+| FLT-8 | Fleet over time | Graph | Whole-fleet daily trajectory for the active metric. On Volume it also splits each direction by market: solid is what the unit notified, hatched is what the balancing mechanism instructed on top — signed, since an accepted bid removes discharge. Together they show whether a day's throughput was traded or dispatched. | Built |
 | FLT-12 | Typical site by day | Graph | The median site with an interquartile band and the full min–max range behind it, for the active metric — what *a site* did, which differs from the fleet total when one large battery carries a day. The gap between the two bands is the tail the quartiles deliberately hide. | Built |
 | FLT-9 | Site detail | Table | Site, operator, duration, capacity, total revenue, total cycles and capture spread. | Built |
 | FLT-10 | By optimiser | Graph | The active metric aggregated by trading party — the cut a per-site ranking cannot show. | Built |

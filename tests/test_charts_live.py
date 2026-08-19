@@ -24,6 +24,7 @@ from dashboard.charts import (
     chart_duration_comparison,
     chart_equity_curve,
     chart_fleet_leaderboard,
+    chart_fleet_daily,
     chart_fleet_spread,
     chart_gap_by_daytype,
     chart_generation_daily,
@@ -624,3 +625,38 @@ def test_explorer_viewport_never_overshoots_a_short_window():
     fig = chart_operation_explorer(*_explorer_frames(2), 0.1, 0.9)
     lo, hi = (pd.Timestamp(v) for v in fig.layout.xaxis.range)
     assert (hi - lo) <= pd.Timedelta(days=2)
+
+
+def test_fleet_volume_splits_notified_from_balancing():
+    daily = pd.DataFrame(
+        {
+            "date": ["2026-08-01", "2026-08-02"],
+            "discharge_mwh": [900.0, 700.0], "charge_mwh": [1000.0, 800.0],
+            "discharge_mwh_pn": [1200.0, 650.0], "charge_mwh_pn": [950.0, 820.0],
+        }
+    )
+    fig = chart_fleet_daily(daily, "volume")
+    series = {t.name: list(t.y) for t in fig.data}
+    assert set(series) == {
+        "Discharged — notified", "Discharged — balancing",
+        "Charged — notified", "Charged — balancing",
+    }
+    # An accepted bid removes discharge, so the balancing segment is signed and
+    # the two stack to what was physically delivered.
+    assert series["Discharged — notified"][0] == 1200.0
+    assert series["Discharged — balancing"][0] == -300.0
+    assert sum(v[0] for v in (series["Discharged — notified"],
+                              series["Discharged — balancing"])) == 900.0
+    # Charge is drawn negative; its two segments sum to -1000.
+    assert sum(v[0] for v in (series["Charged — notified"],
+                              series["Charged — balancing"])) == -1000.0
+    assert fig.layout.barmode == "relative"
+
+
+def test_fleet_volume_without_the_split_columns():
+    daily = pd.DataFrame(
+        {"date": ["2026-08-01"], "discharge_mwh": [900.0], "charge_mwh": [1000.0]}
+    )
+    fig = chart_fleet_daily(daily, "volume")
+    # Falls back to the plain discharge/charge pair rather than erroring.
+    assert len(fig.data) == 2

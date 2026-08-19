@@ -1368,11 +1368,41 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
 
     if metric == "volume":
         fig = go.Figure()
-        _volume_pair(fig, dates, daily_df["discharge_mwh"], daily_df["charge_mwh"])
-        apply_theme(
-            fig, height=DEFAULT_CHART_HEIGHT, title="Fleet energy by day — discharge vs charge"
-        )
-        fig.update_layout(hovermode="x unified")
+        has_split = {"discharge_mwh_pn", "charge_mwh_pn"} <= set(daily_df.columns)
+        if not has_split:
+            _volume_pair(fig, dates, daily_df["discharge_mwh"], daily_df["charge_mwh"])
+            title = "Fleet energy by day — discharge vs charge"
+        else:
+            # Split each direction by which market moved the energy. Notified
+            # volume is what the unit planned to trade; the balancing segment
+            # is what the system operator instructed on top, and it is signed —
+            # an accepted bid *removes* discharge, so the segment goes the other
+            # way. Stacked, the two sum to what was physically delivered, which
+            # is the honest answer to "was this genuine trading or dispatch?".
+            for col, pn_col, name, colour, sign in (
+                ("discharge_mwh", "discharge_mwh_pn", "Discharged", COLORS["discharge"], 1.0),
+                ("charge_mwh", "charge_mwh_pn", "Charged", COLORS["charge"], -1.0),
+            ):
+                notified = daily_df[pn_col] * sign
+                instructed = (daily_df[col] - daily_df[pn_col]) * sign
+                fig.add_trace(
+                    go.Bar(
+                        x=dates, y=notified, name=f"{name} — notified",
+                        marker_color=colour,
+                        hovertemplate=f"{name} notified: %{{y:,.0f}} MWh<extra></extra>",
+                    )
+                )
+                fig.add_trace(
+                    go.Bar(
+                        x=dates, y=instructed, name=f"{name} — balancing",
+                        marker_color=colour, marker_pattern_shape="/",
+                        marker_line=dict(width=0),
+                        hovertemplate=f"{name} balancing: %{{y:,.0f}} MWh<extra></extra>",
+                    )
+                )
+            title = "Fleet energy by day — notified vs balancing-instructed"
+        apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
+        fig.update_layout(barmode="relative", hovermode="x unified")
         fig.update_yaxes(title_text="Energy (MWh; charge shown negative)")
         return fig
 

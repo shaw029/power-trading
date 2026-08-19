@@ -145,14 +145,20 @@ def day_site_metrics(
         bm_offer = float(offer.reindex(ids).sum())
         if site_pn.empty and bm_bid == 0.0 and bm_offer == 0.0:
             continue
+        # Notified volume is always computed; delivered volume replaces it when
+        # acceptances are available. Keeping both lets the dashboard show how
+        # much of a day's throughput the unit planned and how much the system
+        # operator instructed — the difference between trading and being
+        # dispatched.
+        energy = site_pn["energy_mwh"] if not site_pn.empty else pd.Series(dtype=float)
+        discharge_pn = float(energy[energy > 0].sum())
+        charge_pn = float(-energy[energy < 0].sum())
         if physical is not None:
             mine = physical[physical["site"] == site.site]["mw"]
             discharge = float(mine[mine > 0].sum()) * _SLOT_HOURS
             charge = float(-mine[mine < 0].sum()) * _SLOT_HOURS
         else:
-            energy = site_pn["energy_mwh"] if not site_pn.empty else pd.Series(dtype=float)
-            discharge = float(energy[energy > 0].sum())
-            charge = float(-energy[energy < 0].sum())
+            discharge, charge = discharge_pn, charge_pn
         wholesale = float(site_pn["wholesale_gbp"].sum()) if not site_pn.empty else 0.0
         total = wholesale + bm_bid + bm_offer
         rows.append(
@@ -166,6 +172,8 @@ def day_site_metrics(
                 "capacity_mwh": site.capacity_mwh,
                 "discharge_mwh": discharge,
                 "charge_mwh": charge,
+                "discharge_mwh_pn": discharge_pn,
+                "charge_mwh_pn": charge_pn,
                 "wholesale_gbp": wholesale,
                 "bm_gbp": bm_bid + bm_offer,
                 "total_gbp": total,
@@ -459,15 +467,22 @@ def fleet_daily(daily: pd.DataFrame) -> pd.DataFrame:
     so ``cycles`` (fleet discharge over fleet nameplate) stays honest when a
     site's data is missing.
     """
-    grouped = daily.groupby("date", as_index=False).agg(
-        wholesale_gbp=("wholesale_gbp", "sum"),
-        bm_gbp=("bm_gbp", "sum"),
-        total_gbp=("total_gbp", "sum"),
-        discharge_mwh=("discharge_mwh", "sum"),
-        charge_mwh=("charge_mwh", "sum"),
-        mw=("power_mw", "sum"),
-        mwh=("capacity_mwh", "sum"),
-    )
+    aggregates = {
+        "wholesale_gbp": ("wholesale_gbp", "sum"),
+        "bm_gbp": ("bm_gbp", "sum"),
+        "total_gbp": ("total_gbp", "sum"),
+        "discharge_mwh": ("discharge_mwh", "sum"),
+        "charge_mwh": ("charge_mwh", "sum"),
+        "mw": ("power_mw", "sum"),
+        "mwh": ("capacity_mwh", "sum"),
+    }
+    # Notified volumes are optional: a frame built before they existed, or from
+    # a source without acceptances, still aggregates — the market split is then
+    # simply unavailable rather than fatal.
+    for column in ("discharge_mwh_pn", "charge_mwh_pn"):
+        if column in daily.columns:
+            aggregates[column] = (column, "sum")
+    grouped = daily.groupby("date", as_index=False).agg(**aggregates)
     grouped["gbp_per_mw"] = grouped["total_gbp"] / grouped["mw"]
     grouped["cycles"] = grouped["discharge_mwh"] / grouped["mwh"]
     grouped["capture_spread"] = _capture_spread(

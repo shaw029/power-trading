@@ -463,3 +463,22 @@ def test_day_site_metrics_measures_throughput_on_delivery_not_the_plan():
     assert plan.iloc[0]["wholesale_gbp"] == pytest.approx(
         delivered.iloc[0]["wholesale_gbp"]
     )
+
+
+def test_fleet_daily_without_notified_volumes():
+    """A frame from before acceptances existed must still aggregate."""
+    daily = _two_site_daily()  # carries no *_pn columns
+    out = performance.fleet_daily(daily)
+    assert "discharge_mwh" in out.columns
+    assert "discharge_mwh_pn" not in out.columns
+
+
+def test_day_site_metrics_reports_notified_alongside_delivered():
+    pn = [_pn_record("E_PILLB-1", 18, 0, 10.0)]
+    boalf = [_boalf("E_PILLB-1", "18:00", "18:30", 50.0)]
+    row = performance.day_site_metrics(
+        _DATE, pn, {"bid": [], "offer": []}, _mid(100.0), boalf
+    ).iloc[0]
+    # Delivered is the accepted level; notified is what the unit had planned.
+    assert row["discharge_mwh"] == pytest.approx(25.0)
+    assert row["discharge_mwh_pn"] == pytest.approx(5.0)
