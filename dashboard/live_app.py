@@ -333,8 +333,16 @@ def _pnl_row(date_iso, dur_result) -> dict:
         "degradation_cost": dur_result.degradation_cost,
         "net_pnl": dur_result.net_pnl,
         "discharge_mwh": discharge_mwh,
+        # Gross of wear and slippage, matching the fleet page — its estimate is
+        # revenue before costs too, so a net-of-cost figure here would not be
+        # the same measure. It also keeps the degradation line on the chart
+        # meaningful: subtracting wear from the margin and then comparing that
+        # margin to wear counts it twice.
         "capture_spread": (
-            dur_result.net_pnl / discharge_mwh if discharge_mwh > 0 else float("nan")
+            (dur_result.benchmark_da_revenue + dur_result.intraday_da_improvement)
+            / discharge_mwh
+            if discharge_mwh > 0
+            else float("nan")
         ),
     }
 
@@ -641,9 +649,11 @@ def _page_history():
     cols[2].metric(
         _unit_label("Avg capture spread", "£/MWh"),
         f"{spread.mean():,.1f}" if len(spread) else "—",
-        help="Margin on every MWh discharged, averaged over the shown days. The "
-        "same measure the fleet page reports, so the simulated battery and "
-        "the real ones compare on margin rather than only on £/MW/day.",
+        help="Gross trading margin on every MWh physically discharged, averaged "
+        "over the shown days — revenue before wear and slippage, matching the "
+        "fleet estimate so the simulated battery and the real ones compare on "
+        "the same footing. Energy that was traded and reversed without moving "
+        "(a day-ahead position closed intraday) earns no MWh here.",
     )
     worst_i = int(net.idxmin())
     cols[3].metric(

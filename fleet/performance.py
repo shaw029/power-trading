@@ -31,6 +31,16 @@ _MID_FREQ = "30min"
 ANCILLARY_CYCLES_THRESHOLD = 0.3
 
 
+# Revenue is net of charging while throughput counts only discharge, so the
+# ratio is only meaningful once the two roughly balance — which happens over a
+# week, not within a day. Daily figures are pooled over this many days before
+# dividing.
+CAPTURE_WINDOW_DAYS = 7
+# And below this much throughput there is no trading to take a margin on: the
+# revenue is balancing-market money the discharge figure never counted.
+CAPTURE_MIN_CYCLES = 0.05
+
+
 def _capture_spread(total_gbp, discharge_mwh):
     """Gross margin per MWh discharged: revenue over throughput.
 
@@ -391,6 +401,34 @@ def site_day_metric(daily: pd.DataFrame, metric: str) -> pd.Series:
     return pd.to_numeric(daily[column], errors="coerce")
 
 
+def _rolling_capture(daily: pd.DataFrame) -> pd.DataFrame:
+    """Per-site capture spread pooled over a trailing week.
+
+    A single day divides revenue that is net of charging by discharge alone,
+    so a battery filling up for tomorrow shows a wildly negative margin and one
+    emptying out shows a wild positive. Pooling a week of both sides before
+    dividing lets them balance. Sites whose weekly throughput is still
+    negligible are dropped rather than reported as enormous ratios.
+    """
+    rows = []
+    for site, group in daily.sort_values("date").groupby("site"):
+        window = min(CAPTURE_WINDOW_DAYS, len(group))
+        revenue = group["total_gbp"].rolling(window, min_periods=window).sum()
+        throughput = group["discharge_mwh"].rolling(window, min_periods=window).sum()
+        floor = group["capacity_mwh"] * CAPTURE_MIN_CYCLES * window
+        rows.append(
+            pd.DataFrame(
+                {
+                    "date": group["date"],
+                    "value": revenue / throughput.where(throughput >= floor),
+                }
+            )
+        )
+    if not rows:
+        return pd.DataFrame(columns=["date", "value"])
+    return pd.concat(rows).dropna()
+
+
 def fleet_daily_distribution(daily: pd.DataFrame, metric: str = "revenue") -> pd.DataFrame:
     """Median, interquartile range and full range *across sites*, per day.
 
@@ -398,8 +436,11 @@ def fleet_daily_distribution(daily: pd.DataFrame, metric: str = "revenue") -> pd
     and how far apart the sites were, which is the difference between one big
     battery carrying a day and every battery having a good one.
     """
-    values = site_day_metric(daily, metric)
-    frame = pd.DataFrame({"date": daily["date"], "value": values}).dropna()
+    if metric == "capture":
+        frame = _rolling_capture(daily)
+    else:
+        values = site_day_metric(daily, metric)
+        frame = pd.DataFrame({"date": daily["date"], "value": values}).dropna()
     if frame.empty:
         return pd.DataFrame(columns=["date", "median", "p25", "p75", "min", "max"])
     grouped = frame.groupby("date")["value"]

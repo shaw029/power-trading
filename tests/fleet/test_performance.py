@@ -370,3 +370,52 @@ def test_volume_is_reported_per_day_not_as_a_window_total():
     # A discharged 300 MWh over two days.
     assert site.loc["A", "discharge_mwh"] == pytest.approx(300.0)
     assert site.loc["A", "discharge_mwh_per_day"] == pytest.approx(150.0)
+
+
+def test_capture_spread_pools_a_week_before_dividing():
+    """A day of pure charging must not report a wild negative margin."""
+    rows = []
+    for i in range(10):
+        # Alternating: charge-heavy day, then discharge-heavy day.
+        charging = i % 2 == 0
+        rows.append(
+            {
+                "date": f"2026-08-{i + 1:02d}", "site": "A", "optimiser": "X",
+                "region": "R", "duration": "2h", "power_mw": 100.0,
+                "capacity_mwh": 200.0,
+                "discharge_mwh": 5.0 if charging else 195.0,
+                "charge_mwh": 195.0 if charging else 5.0,
+                "wholesale_gbp": -8000.0 if charging else 12000.0,
+                "bm_gbp": 0.0,
+                "total_gbp": -8000.0 if charging else 12000.0,
+                "gbp_per_mw": -80.0 if charging else 120.0,
+            }
+        )
+    daily = pd.DataFrame(rows)
+
+    # Day by day the ratio is nonsense: -£8,000 over 5 MWh is -£1,600/MWh.
+    naive = daily["total_gbp"] / daily["discharge_mwh"]
+    assert naive.min() < -1000
+
+    dist = performance.fleet_daily_distribution(daily, "capture")
+    # Pooled over a week, charge and discharge balance and the margin is sane.
+    assert not dist.empty
+    assert dist["median"].abs().max() < 200
+
+
+def test_capture_spread_drops_negligible_throughput():
+    rows = [
+        {
+            "date": f"2026-08-{i + 1:02d}", "site": "A", "optimiser": "X",
+            "region": "R", "duration": "2h", "power_mw": 100.0,
+            "capacity_mwh": 200.0,
+            "discharge_mwh": 0.1,          # far below the cycle floor
+            "charge_mwh": 0.1,
+            "wholesale_gbp": 0.0, "bm_gbp": 5000.0, "total_gbp": 5000.0,
+            "gbp_per_mw": 50.0,
+        }
+        for i in range(10)
+    ]
+    # Balancing-market money over almost no throughput would read as thousands
+    # of pounds per MWh; it is reported as nothing instead.
+    assert performance.fleet_daily_distribution(pd.DataFrame(rows), "capture").empty
