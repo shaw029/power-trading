@@ -728,7 +728,7 @@ def _page_history():
 
     rows = [_pnl_row(d["date"], d["result"].durations[duration]) for d in shown]
     results_df = pd.DataFrame(rows)
-    _page_header("Optimiser performance", caption)
+    _page_header("Baseline optimiser performance", caption)
 
     net = results_df["net_pnl"]
     best_i = int(net.idxmax())
@@ -2282,7 +2282,7 @@ def main():
             ),
             st.Page(
                 _page_history,
-                title="Baseline optimiser performance",
+                title="Optimiser performance",
                 icon=":material/monitoring:",
                 url_path="history",
             ),

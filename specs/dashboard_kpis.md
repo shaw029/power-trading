@@ -40,7 +40,7 @@ simulated from what actually happened, and keeps analysis that mixes the two in 
 
 | Group | Pages | What the group is |
 |---|---|---|
-| **Benchmark** | Daily summary · Baseline optimiser performance | The simulated battery. Numbers here come from a model, not the market. |
+| **Benchmark** | Daily summary · Optimiser performance | The simulated battery. Numbers here come from a model, not the market. |
 | **GB power system** | System overview · Fleet performance | Observed reality. Nothing simulated, so the battery settings are hidden. |
 | **Research** | Day types · Benchmark vs fleet · Alignment gap | Analysis that uses both sides. |
 | **About** | Methodology | What every number means, and what it isn't. |
@@ -119,9 +119,9 @@ reality instead.
 Rows are in screen order. The three panels at the foot of the page are fold-out expanders,
 closed by default: **Battery detail**, **System detail**, **Fleet this day**.
 
-## Optimiser performance — the whole window  ·  *Benchmark*
+## Baseline optimiser performance — the whole window  ·  *Benchmark*
 
-Sidebar label: **Baseline optimiser performance**.
+Sidebar label: **Optimiser performance**.
 
 *Data: the simulation across every day shown.*
 
