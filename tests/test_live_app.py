@@ -137,7 +137,16 @@ def test_app_boots_on_latest_day_page(app):
     # The default page is the benchmark's Latest day view: the sidebar carries
     # the parameter form and the page shows the four-KPI row.
     assert "Cycle target (cycles/day)" in [s.label for s in at.slider]
-    assert len(at.metric) >= 4  # Net PnL · DA benchmark · Cycles · Capture
+    labels = [m.label for m in at.metric]
+    # Twelve numbers in three groups: what the model did, what the grid did,
+    # what the real fleet did.
+    assert len(labels) == 12
+    assert labels[0].startswith("Net PnL")
+    assert labels[1].startswith("Intraday improvement")
+    assert labels[4].startswith("DA high−low spread")
+    assert labels[8].startswith("Fleet median PnL")
+    # Capture (share of the DA optimum) and DA benchmark came off the page.
+    assert not any(la == "Capture" or la.startswith("DA benchmark") for la in labels)
 
 
 def test_alignment_page_renders_system_tightness(app):

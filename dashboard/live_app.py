@@ -424,7 +424,7 @@ def _page_day():
     params, shown, caption = view
     duration = params["duration"]
 
-    _page_header("Day", caption)
+    _page_header("Daily summary", caption)
 
     dates = [d["date"] for d in shown]
     # The picker persists across pages/filters; a filter change that strands
@@ -447,54 +447,157 @@ def _page_day():
     window_mean = sum(
         d["result"].durations[duration].net_pnl for d in shown
     ) / len(shown)
+    row = _pnl_row(record["date"], dur_result)
     _da_prices_day = [e["da_price_actual"] for e in dur_result.dispatch_log]
     _da_spread = (max(_da_prices_day) - min(_da_prices_day)) if _da_prices_day else 0.0
-    cols = st.columns(5)
-    cols[0].metric(
-        "Net PnL",
-        f"£{dur_result.net_pnl / REFERENCE_POWER_MW:,.0f}/MW",
-        delta=f"{(dur_result.net_pnl - window_mean) / REFERENCE_POWER_MW:+,.0f} vs window avg",
+
+    # Grid context for this day. Stress comes from the window-wide classifier,
+    # so "stressed" means stressed relative to the period on screen.
+    flags = _window_flags(tuple(dates))
+    day_date = dt.date.fromisoformat(picked)
+    day_flags = flags[flags.index.date == day_date] if not flags.empty else flags
+    day_system = _system_day(picked)
+
+    # Three groups, because the twelve numbers answer three different
+    # questions: what the model did, what the grid did, and what the real
+    # fleet did. Ungrouped they read as one undifferentiated wall.
+    st.markdown("**Baseline optimiser** · *how the simulation performed today*")
+    opt = st.columns(4)
+    opt[0].metric(
+        _unit_label("Net PnL", "£/MW"),
+        f"{dur_result.net_pnl / REFERENCE_POWER_MW:,.0f}",
+        f"{(dur_result.net_pnl - window_mean) / REFERENCE_POWER_MW:+,.0f} vs window avg",
         help="Day-ahead revenue + intraday improvement − execution and degradation "
         f"costs, per MW of the {REFERENCE_POWER_MW:.0f} MW asset "
         f"(£{dur_result.net_pnl:,.0f} absolute).",
     )
-    cols[4].metric(
-        "DA spread",
-        f"£{_da_spread:,.0f}/MWh",
-        help="Peak-to-trough of the day's cleared DA prices — the day's raw "
-        "arbitrage opportunity, before any strategy.",
-    )
-    cols[1].metric(
-        "DA benchmark",
-        f"£{dur_result.benchmark_da_revenue / REFERENCE_POWER_MW:,.0f}/MW",
-        help="What the frozen day-ahead schedule alone would have earned, before "
-        f"any intraday re-optimisation (£{dur_result.benchmark_da_revenue:,.0f} absolute).",
+    opt[1].metric(
+        _unit_label("Intraday improvement", "£/MW"),
+        f"{dur_result.intraday_da_improvement / REFERENCE_POWER_MW:,.0f}",
+        f"{dur_result.intraday_da_improvement / dur_result.net_pnl:.0%} of net PnL"
+        if dur_result.net_pnl else None,
+        delta_color="off",
+        help="What re-optimising against the realised intraday price added on top "
+        "of the frozen day-ahead schedule. The engine has perfect foresight of "
+        "that price, so read it as an upper bound, not a target.",
     )
     _da_committed = sum(mw for mw in dur_result.da_schedule if mw > 0)
     _da_budget = (
         params["cycle_target"] * REFERENCE_POWER_MW * _duration_hours(duration)
         * params["commit"]
     )
-    cols[2].metric(
+    opt[2].metric(
         "Cycles",
         f"{dur_result.cycles:.2f}",
+        f"target ≤ {params['cycle_target']:.1f}",
+        delta_color="off",
         help=(
-            "Physical cycles this day: discharged MWh ÷ nameplate MWh "
-            f"(target ≤ {params['cycle_target']:.1f}). The locked DA leg "
-            f"separately committed {_da_committed:,.0f} MWh of its "
-            f"{_da_budget:,.0f} MWh allocation "
+            "Physical cycles this day: discharged MWh ÷ nameplate MWh. The "
+            f"locked day-ahead leg separately committed {_da_committed:,.0f} MWh "
+            f"of its {_da_budget:,.0f} MWh allocation "
             f"({params['commit']:.0%} of the cycle budget)."
         ),
     )
-    cols[3].metric(
-        "Capture",
-        f"{dur_result.capture:.0%}",
-        help=(
-            "Net PnL as a share of the perfect-foresight day-ahead optimum — "
-            "1.00 means every pound available was captured; 0.00 means the "
-            "day had no meaningful spread."
-        ),
+    opt[3].metric(
+        _unit_label("Capture spread", "£/MWh"),
+        f"{row['capture_spread']:,.1f}" if pd.notna(row["capture_spread"]) else "—",
+        help="Gross trading margin on every MWh physically discharged today, "
+        "before wear and slippage. Shares units with the degradation lever "
+        f"(£{params['degradation']:,.1f}/MWh), so a day below that earned less "
+        "per MWh than cycling cost it.",
     )
+
+    st.markdown("**GB system** · *the physical grid today*")
+    sysc = st.columns(4)
+    sysc[0].metric(
+        _unit_label("DA high−low spread", "£/MWh"),
+        f"{_da_spread:,.0f}",
+        help="Peak-to-trough of the day's cleared day-ahead prices — the raw "
+        "arbitrage opportunity, before any strategy.",
+    )
+    sysc[1].metric(
+        _unit_label("Peak & floor price", "£/MWh"),
+        f"{max(_da_prices_day):,.0f} / {min(_da_prices_day):,.0f}"
+        if _da_prices_day else "—",
+        help="The dearest and cheapest hours the day-ahead auction cleared today. "
+        "A negative floor means generators paid to keep running.",
+    )
+    if not day_flags.empty:
+        _stress_hh = int(day_flags["stress"].sum())
+        sysc[2].metric(
+            _unit_label("Peak residual load", "GW"),
+            f"{float(day_flags['residual_mw'].max()) / 1000.0:,.1f}",
+            f"{_stress_hh} stress half-hour(s)" if _stress_hh else "no stress periods",
+            delta_color="off",
+            help="The tightest the grid got today: demand minus wind and solar, "
+            "the most the rest of the fleet had to carry. Stress is the top "
+            "decile of residual load across the window shown.",
+        )
+    else:
+        sysc[2].metric(_unit_label("Peak residual load", "GW"), "—")
+    if not day_system.empty:
+        _groups = fetch_live.group_generation(day_system)
+        _gen = [g for g in _groups.columns if g != "Interconnectors"]
+        _total = float(_groups[_gen].to_numpy().sum())
+        _renew = float(
+            _groups[[g for g in _gen if g in fetch_live.RENEWABLE_GROUPS]].to_numpy().sum()
+        )
+        sysc[3].metric(
+            "Renewable share",
+            f"{_renew / _total:.0%}" if _total > 0 else "—",
+            help="Wind, solar, hydro and biomass as a share of GB generation "
+            "today. Grounds the price volatility beside it — the cheap hours "
+            "are usually the windy ones.",
+        )
+    else:
+        sysc[3].metric("Renewable share", "—")
+
+    st.markdown("**Real GB fleet** · *how reality compared with the model today*")
+    fleet_day = _fleet_day(picked)
+    flt = st.columns(4)
+    if fleet_day.empty:
+        flt[0].metric(_unit_label("Fleet median PnL", "£/MW"), "—")
+        flt[1].metric(_unit_label("Sim vs fleet gap", "£/MW"), "—")
+        flt[2].metric("Fleet median cycles", "—")
+        flt[3].metric("Top real site", "—")
+    else:
+        fleet_day = fleet_day.assign(
+            cycles=fleet_day["discharge_mwh"] / fleet_day["capacity_mwh"]
+        )
+        median_gbp = float(fleet_day["gbp_per_mw"].median())
+        sim_gbp = dur_result.net_pnl / REFERENCE_POWER_MW
+        best = fleet_day.loc[fleet_day["gbp_per_mw"].idxmax()]
+        flt[0].metric(
+            _unit_label("Fleet median PnL", "£/MW"),
+            f"{median_gbp:,.0f}",
+            f"{len(fleet_day)} sites reporting",
+            delta_color="off",
+            help="What the typical real GB battery earned today, from public data "
+            "(delivered output × MID + balancing cashflows). Ancillary income "
+            "is invisible here, so sites trading it read low.",
+        )
+        flt[1].metric(
+            _unit_label("Sim vs fleet gap", "£/MW"),
+            f"{sim_gbp - median_gbp:+,.0f}",
+            help="How far the perfect-foresight simulation sits above the typical "
+            "real battery today. It is a ceiling, not a competitor: no live "
+            "trader sees the intraday price in advance.",
+        )
+        flt[2].metric(
+            "Fleet median cycles",
+            f"{float(fleet_day['cycles'].median()):.2f}",
+            f"sim {dur_result.cycles:.2f}",
+            delta_color="off",
+            help="How hard the typical real battery worked today, with the "
+            "simulation's own cycles beside it.",
+        )
+        flt[3].metric(
+            "Top real site",
+            best["site"],
+            f"{best['optimiser']} · £{best['gbp_per_mw']:,.0f}/MW",
+            delta_color="off",
+            help="The best-earning real battery today and the party trading it.",
+        )
 
     dispatch = _dispatch_frame(record["date"], dur_result)
     prices_hourly = _prices_hourly(dispatch)
@@ -502,19 +605,12 @@ def _page_day():
 
     # Centerpiece: the day's dispatch against system state. Falls back to the
     # realised dispatch shape when system data is unavailable.
-    flags = _window_flags(tuple(dates))
-    day_date = dt.date.fromisoformat(picked)
-    day_flags = flags[flags.index.date == day_date] if not flags.empty else flags
     log = dur_result.dispatch_log
     day_dispatch = pd.Series(
         [e["final_mw"] for e in log],
         index=pd.date_range(picked, periods=len(log), freq="1h", tz="UTC"),
     )
     # --- Composite: the whole day on one shared timeline --------------------
-    if not day_flags.empty:
-        _stress_hh = int(day_flags["stress"].sum())
-        if _stress_hh:
-            st.caption(f"{_stress_hh} stress half-hour(s) on this day.")
     try:
         _day_prices_df, _ = _fetch_day(picked)
     except Exception:
@@ -2179,7 +2275,7 @@ def main():
         "Benchmark": [
             st.Page(
                 _page_day,
-                title="Day",
+                title="Daily summary",
                 icon=":material/bolt:",
                 url_path="latest",
                 default=True,

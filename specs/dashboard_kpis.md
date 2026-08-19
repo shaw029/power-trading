@@ -40,12 +40,12 @@ simulated from what actually happened, and keeps analysis that mixes the two in 
 
 | Group | Pages | What the group is |
 |---|---|---|
-| **Benchmark** | Day · Baseline optimiser performance | The simulated battery. Numbers here come from a model, not the market. |
+| **Benchmark** | Daily summary · Baseline optimiser performance | The simulated battery. Numbers here come from a model, not the market. |
 | **GB power system** | System overview · Fleet performance | Observed reality. Nothing simulated, so the battery settings are hidden. |
 | **Research** | Day types · Benchmark vs fleet · Alignment gap | Analysis that uses both sides. |
 | **About** | Methodology | What every number means, and what it isn't. |
 
-Day is the default landing page and the only place a single day is chosen; the research pages
+Daily summary is the default landing page and the only place a single day is chosen; the research pages
 pick their own example days and say so.
 
 ---
@@ -74,21 +74,32 @@ pages that show real-world data, since they aren't affected.
 
 ---
 
-## Day — one day in full  ·  *Benchmark*
+## Daily summary — one day in full  ·  *Benchmark*
 
-The landing page. Everything about a single delivery day.
+The landing page. Everything about a single delivery day. Its twelve numbers sit in three
+labelled groups, because they answer three different questions — what the model did, what the
+grid did, and what the real fleet did — and ungrouped they read as one undifferentiated wall.
 *Data: day-ahead and intraday prices, generation, demand, the real fleet.*
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | DAY-1 | Day picker | Filter | Which day you're looking at. Defaults to the most recent settled day and persists across pages; a filter change that strands the choice snaps it back to the latest. | Built |
-| DAY-17 | Day-type tags | Note | The classifier's tags for this day (`windy`, `volatile`, and so on), shown as chips under the header. Absent on a day with no clear character. | Built |
-| DAY-2 | Net PnL | Number | What the battery made that day, per MW, against a typical day in the window. | Built |
-| DAY-3 | DA benchmark | Number | What it would have made on the day-ahead plan alone, before any intraday trading. | Built |
-| DAY-4 | Cycles | Number | How hard it worked — one cycle is one full discharge. The help also reports how much of the cycle budget the locked day-ahead leg committed. | Built |
-| DAY-5 | Capture | Number | How much of the day's available money it actually caught. | Built |
-| DAY-6 | DA spread | Number | Cheapest to dearest hour — the raw opportunity before any strategy. | Built |
-| DAY-18 | Stress half-hours | Note | How many half-hours that day were top-decile stress, when any were. | Built |
+| DAY-17 | Day-type tags | Note | The classifier's tags for this day (`windy`, `volatile`, and so on), as chips under the picker. Absent on a day with no clear character. | Built |
+| — | **Baseline optimiser** | — | *How the simulation performed today.* | — |
+| DAY-2 | Net PnL | Number | What the battery made today, per MW, against a typical day in the window. | Built |
+| DAY-3 | Intraday improvement | Number | What re-optimising against the realised intraday price added on top of the day-ahead schedule, and its share of net PnL. Perfect foresight, so an upper bound. | Changed |
+| DAY-4 | Cycles | Number | How hard it worked today, with the cycle target beside it. | Built |
+| DAY-20 | Capture spread | Number | Gross margin per MWh discharged today. Same measure as the optimiser and fleet pages, and shares units with the degradation lever, so a day below it earned less per MWh than wear cost. | Added |
+| — | **GB system** | — | *The physical grid today.* | — |
+| DAY-6 | DA high−low spread | Number | Cheapest to dearest hour today — the raw opportunity before any strategy. | Built |
+| DAY-21 | Peak & floor price | Number | The dearest and cheapest hours the auction cleared. A negative floor means generators paid to keep running. | Added |
+| DAY-18 | Peak residual load | Number | The tightest the grid got today (demand − wind − solar), and how many half-hours were top-decile stress. | Changed |
+| DAY-22 | Renewable share | Number | Wind, solar, hydro and biomass as a share of GB generation today — grounds the price volatility beside it. | Added |
+| — | **Real GB fleet** | — | *How reality compared with the model today.* | — |
+| DAY-23 | Fleet median PnL | Number | What the typical real battery earned today, with how many sites reported. | Added |
+| DAY-24 | Sim vs fleet gap | Number | How far the perfect-foresight model sits above the typical real battery today — a ceiling, not a competitor. | Added |
+| DAY-25 | Fleet median cycles | Number | How hard the typical real battery worked, with the simulation's own cycles beside it. | Added |
+| DAY-26 | Top real site | Number | The best-earning real battery today and the party trading it. | Added |
 | DAY-7 | The day on one timeline | Graph | Four panels sharing one clock: prices, dispatch against the locked day-ahead commitment, state of charge inside its band, and residual load with stress and surplus shaded. | Built |
 | DAY-8 | Dispatch vs grid stress | Graph | Did it discharge when the system was tight? Falls back to the realised-shape view on a day with no system data. | Built |
 | DAY-9 | Prices | Graph | Day-ahead against intraday. | Built |
@@ -100,6 +111,10 @@ The landing page. Everything about a single delivery day.
 | DAY-14 | Half-hourly detail | Table | In the **System detail** panel: the underlying half-hourly numbers. | Built |
 | DAY-19 | System CSV | Download | That same half-hourly table, as a file. | Built |
 | DAY-15 | Real batteries this day | Table | In the **Fleet this day** panel: what actual GB sites earned, best first. | Built |
+
+Dropped: **Capture** (net PnL as a share of the day-ahead optimum) and **DA benchmark**. Both
+described the model against itself; the fleet group now answers the same question against
+reality instead.
 
 Rows are in screen order. The three panels at the foot of the page are fold-out expanders,
 closed by default: **Battery detail**, **System detail**, **Fleet this day**.
@@ -135,7 +150,7 @@ moves when the date filter moves.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| SYS-1 | Days shown | Number | How many days the active date filter covers. Sits as a small chip in the page header beside the date range — deliberately not a KPI tile, because it describes the filter rather than the grid. | Built |
+| SYS-1 | Days shown | Note | How many days the active date filter covers. Sits as a small chip in the page header beside the date range — deliberately not a KPI tile, because it describes the filter rather than the grid. | Built |
 | SYS-3 | Renewable share | Number | How much generation came from wind, solar, hydro and biomass. Nuclear is clean but runs flat, so leaving it out keeps the number moving with the weather. | Built |
 | SYS-5 | Generation mix over time | Graph | What powered GB day by day, aggregated into presentation groups. | Built |
 | SYS-6 | Renewable share over time | Graph | How much of GB ran on wind, solar, hydro and biomass, day by day — the variability a battery trades against. | Built |
@@ -250,3 +265,18 @@ The research page, and the busiest one: eight Numbers in two rows.
 ## Methodology  ·  *About*
 
 Plain-English explanation of every number above, plus a glossary. Nothing computed.
+
+## Keeping it current
+
+Edit a row when you decide something; the build updates it when something ships. If it drifts
+slightly it is still useful — this is a thinking document, not a build artifact.
+
+It should not drift *silently*, though, so one command checks it:
+
+```bash
+python scripts/audit_kpi_sheet.py
+```
+
+It compares Numbers, Graphs, Tables and Downloads page by page. Filters and Notes are left out
+on purpose: one Filter row often covers several widgets (the fleet's four site multiselects are
+one control to a reader), and a Note has no single call to match.
