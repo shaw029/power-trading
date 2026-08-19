@@ -211,7 +211,10 @@ _NAMED_FUEL_GROUPS: dict[str, tuple[str, ...]] = {
     "Nuclear": ("gen_NUCLEAR",),
     "Gas": ("gen_CCGT", "gen_OCGT"),
     "Biomass": ("gen_BIOMASS",),
-    "Hydro & storage": ("gen_NPSHYD", "gen_PS"),
+    # Run-of-river only. Pumped storage is not a generation source — it is
+    # a net consumer over any window — so it falls through to "Other"
+    # rather than sitting in a band the renewable share counts.
+    "Hydro": ("gen_NPSHYD",),
 }
 # Fixed display/stack order; each group keeps its colour across the app.
 GENERATION_GROUP_ORDER: tuple[str, ...] = (
@@ -220,20 +223,19 @@ GENERATION_GROUP_ORDER: tuple[str, ...] = (
     "Nuclear",
     "Gas",
     "Biomass",
-    "Hydro & storage",
+    "Hydro",
     "Interconnectors",
     "Other",
 )
 # Groups counted as low-carbon for the System page headline share.
 LOW_CARBON_GROUPS: frozenset[str] = frozenset(
-    {"Wind", "Solar", "Nuclear", "Hydro & storage", "Biomass"}
+    {"Wind", "Solar", "Nuclear", "Hydro", "Biomass"}
 )
 # Renewable is low-carbon without nuclear: same clean electricity, different
 # question — one asks about carbon, the other about a fuel that replenishes.
-# "Hydro & storage" carries pumped storage as well as run-of-river, and stored
-# energy is only as renewable as whatever charged it; GB pumped-storage output
-# is small beside wind and solar, so it is counted here and the caveat stated
-# rather than splitting a band the whole app colours as one.
+# Pumped storage is deliberately absent from both: it is storage, only as clean
+# as whatever charged it, and net negative over any window. Grid batteries are
+# absent too, but not by choice — FUELHH has no battery fuel type at all.
 RENEWABLE_GROUPS: frozenset[str] = LOW_CARBON_GROUPS - {"Nuclear"}
 
 

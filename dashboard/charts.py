@@ -1678,7 +1678,7 @@ GENERATION_COLORS = {
     "Nuclear": "#9B51E0",
     "Gas": "#D06A4C",
     "Biomass": "#66BB6A",
-    "Hydro & storage": "#2F80ED",
+    "Hydro": "#2F80ED",
     "Interconnectors": "#A29BFE",
     "Other": "#B2BEC3",
 }

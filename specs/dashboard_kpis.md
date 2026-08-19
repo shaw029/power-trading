@@ -150,7 +150,7 @@ moves when the date filter moves.
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | SYS-1 | Days shown | Note | How many days the active date filter covers. Sits as a small chip in the page header beside the date range — deliberately not a KPI tile, because it describes the filter rather than the grid. | Built |
-| SYS-3 | Renewable share | Number | How much generation came from wind, solar, hydro and biomass. Nuclear is clean but runs flat, so leaving it out keeps the number moving with the weather. | Built |
+| SYS-3 | Renewable share | Number | Wind, solar, run-of-river hydro and biomass as a share of GB generation. Nuclear is clean but runs flat, so leaving it out keeps the number moving with the weather; pumped storage is excluded as storage, not a source. | Built |
 | SYS-5 | Generation mix over time | Graph | What powered GB day by day, aggregated into presentation groups. | Built |
 | SYS-6 | Renewable share over time | Graph | How much of GB ran on wind, solar, hydro and biomass, day by day — the variability a battery trades against. | Built |
 | SYS-8 | Average wholesale price | Number | Mean day-ahead price across the window. | Built |
