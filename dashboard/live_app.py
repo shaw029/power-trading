@@ -5,7 +5,7 @@ MID / generation / demand — both public, no API key), settles the reference
 battery with user-chosen parameters, and renders a sidebar-navigated app
 grouped by epistemic status: the Benchmark (Day briefing / History), the
 observed GB power system (System overview / Fleet performance), the Research
-analyses (Day types / Benchmark vs fleet / Alignment gap) and the
+analyses (Market regimes / Benchmark vs fleet / Alignment gap) and the
 methodology. Because the engine re-runs on each parameter change, the
 dashboard is interactive rather than precomputed; it is meant to run on
 Streamlit Cloud.
@@ -411,7 +411,7 @@ def _benchmark_view():
         st.info("No settled days match the current filters — widen the period or day types.")
         return None
 
-    tags = ", ".join(day_types) if day_types else "all day types"
+    tags = ", ".join(day_types) if day_types else "all regimes"
     caption = (
         f"{shown[0]['date']} → {shown[-1]['date']} · {len(shown)} day(s) · {tags} · "
         f"{duration} × {REFERENCE_POWER_MW:.0f} MW simulated battery"
@@ -776,7 +776,7 @@ def _page_day_types():
     params, shown, caption = view
     duration = params["duration"]
 
-    _page_header("Day types", caption)
+    _page_header("Market regimes", caption)
     st.caption(
         "Every settled day carries a flat set of tags from two independent "
         "families: **fundamentals** — the physics of what the weather and demand "
@@ -939,7 +939,7 @@ def _global_filters(date_isos: tuple) -> tuple[str, str, list[str]]:
     settles the full window so its SOC chain stays intact.
 
     The period offers quick presets (last 7/14/30/60 days) plus a calendar
-    range picker under "Custom". Day types are multi-select pills; nothing
+    range picker under "Custom". Regimes are multi-select pills; nothing
     selected means every day.
     """
     first = dt.date.fromisoformat(date_isos[0])
@@ -985,15 +985,14 @@ def _global_filters(date_isos: tuple) -> tuple[str, str, list[str]]:
             + ["untagged"]
         )
         day_types = st.multiselect(
-            "Day types",
+            "Market regimes",
             tag_options,
             key="flt_day_types",
-            format_func=lambda tag: tag.replace("_", " "),
-            placeholder="All day types",
+            placeholder="All regimes",
             help=(
-                "Day character from the classifier (drivers first, then price "
-                "character) — none selected means all days. 'untagged' covers "
-                "days with no clear character or no classification data."
+                "Regime tags from the classifier (fundamentals first, then "
+                "price traits) — none selected means all days. 'untagged' "
+                "covers days with no clear character or no classification data."
             ),
         )
 
@@ -1431,7 +1430,7 @@ def _page_fleet():
     date_isos = _dates()
     start, end, day_types = _global_filters(date_isos)
     st.sidebar.caption("The benchmark levers do not affect this page.")
-    tags = ", ".join(day_types) if day_types else "all day types"
+    tags = ", ".join(day_types) if day_types else "all regimes"
     _page_header(
         "Real GB fleet performance",
         f"{start} → {end} · {tags} · estimated performance of real grid-scale batteries",
@@ -1551,7 +1550,7 @@ def _page_system():
         for d in date_isos
         if start <= d <= end and _matches_day_types(labels.get(d), day_types)
     ]
-    tags = ", ".join(day_types) if day_types else "all day types"
+    tags = ", ".join(day_types) if day_types else "all regimes"
     _page_header(
         "GB system overview",
         f"{start} → {end} · {tags} · how expensive and how stretched the GB system "
@@ -2301,9 +2300,9 @@ def main():
         "Research": [
             st.Page(
                 _page_day_types,
-                title="Day types",
+                title="Market regimes",
                 icon=":material/partly_cloudy_day:",
-                url_path="day-types",
+                url_path="regimes",
             ),
             st.Page(
                 _page_sim_vs_fleet,

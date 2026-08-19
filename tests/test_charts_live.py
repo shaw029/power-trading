@@ -46,7 +46,7 @@ from dashboard.charts import (
 
 
 def _membership() -> pd.DataFrame:
-    """Per-(day, tag) membership rows as assembled by the Day types page."""
+    """Per-(day, tag) membership rows as assembled by the Market regimes page."""
     return pd.DataFrame(
         {
             "date": ["2025-01-01", "2025-01-01", "2025-01-02", "2025-01-03"],

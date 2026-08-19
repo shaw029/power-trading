@@ -42,7 +42,7 @@ simulated from what actually happened, and keeps analysis that mixes the two in 
 |---|---|---|
 | **Benchmark** | Daily summary · Optimiser performance | The simulated battery. Numbers here come from a model, not the market. |
 | **GB power system** | System overview · Fleet performance | Observed reality. Nothing simulated, so the battery settings are hidden. |
-| **Research** | Day types · Benchmark vs fleet · Alignment gap | Analysis that uses both sides. |
+| **Research** | Market regimes · Benchmark vs fleet · Alignment gap | Analysis that uses both sides. |
 | **About** | Methodology | What every number means, and what it isn't. |
 
 Daily summary is the default landing page and the only place a single day is chosen; the research pages
@@ -57,7 +57,7 @@ These set which days every page is about.
 | ID | Shows | Type | What it does | Status |
 |---|---|---|---|---|
 | GLB-1 | Period | Filter | Last 7 / 14 / 30 / 60 days, or a custom range. Defaults to 30 days. | Built |
-| GLB-2 | Day types | Filter | Show only `wind-led` days, `volatile` days, `weekend`s, and so on — the flat tag vocabulary from the Day types page. Nothing selected means all days. | Built |
+| GLB-2 | Market regimes | Filter | Show only `wind-led` days, `volatile` days, `weekend`s, and so on — the flat tag vocabulary from the Market regimes page. Nothing selected means all days. | Built |
 
 ## Battery settings — sidebar, on the simulated pages only
 
@@ -204,7 +204,7 @@ being comparable to the degradation lever.
 | FLT-10 | By optimiser | Graph | The active metric aggregated by trading party — the cut a per-site ranking cannot show. | Built |
 | FLT-11 | By region | Graph | The active metric aggregated by GB region. | Built |
 
-## Day types — what kind of day pays  ·  *Research*
+## Market regimes — what kind of day pays  ·  *Research*  ·  URL `/regimes`
 
 *Data: day tags from the classifier, plus simulated earnings.*
 

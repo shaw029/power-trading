@@ -1856,7 +1856,7 @@ def chart_daytype_ratio(df: pd.DataFrame) -> go.Figure:
     """Fleet-wholesale ÷ sim-ceiling ratio per day-type tag.
 
     Shows where reality gets closest to perfect foresight; same family colours
-    as the Day types page. ``df`` columns: ``tag``, ``family``, ``ratio``,
+    as the Market regimes page. ``df`` columns: ``tag``, ``family``, ``ratio``,
     ``days``.
     """
     order = _daytype_order(df, "ratio")
@@ -2414,7 +2414,7 @@ def chart_gap_by_daytype(df: pd.DataFrame) -> go.Figure:
     """Profit cost of full alignment per day-type tag (£/MW/day).
 
     ``df`` columns: ``tag``, ``family``, ``gap`` (£/MW/day), ``days``. Same
-    family colours and ordering conventions as the Day types page.
+    family colours and ordering conventions as the Market regimes page.
     """
     order = _daytype_order(df.rename(columns={"gap": "capture"}), "capture")
     d = df.set_index("tag").loc[order].reset_index()

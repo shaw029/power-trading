@@ -168,12 +168,12 @@ def test_alignment_page_renders_system_tightness(app):
     assert "Tier-2 stress coverage" in labels
 
 
-def test_day_types_page_renders_the_two_family_charts(app):
+def test_regimes_page_renders_the_two_family_charts(app):
     from streamlit.testing.v1 import AppTest
     from streamlit.testing.v1.app_test import calc_hash
 
     at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
-    at._page_hash = calc_hash("day-types")
+    at._page_hash = calc_hash("regimes")
     at.run()
 
     assert not at.exception
