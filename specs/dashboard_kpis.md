@@ -105,7 +105,8 @@ The landing page. Everything about a single delivery day.
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | HIS-1 | Avg net PnL | Number | Typical earnings per MW per day — the unit every other page and every fleet estimate reports in. | Built |
-| HIS-4 | Best day | Number | The high-water mark per MW, with the date beneath it. | Built |
+| HIS-4 | Best / worst day | Number | The best and worst single day per MW with their dates — the spread shows how much of the average rests on a few days. | Built |
+| HIS-11 | Avg intraday improvement | Number | What re-optimising against the realised intraday price added on top of the frozen day-ahead schedule, and its share of net PnL. Currently around an eighth of earnings — and the engine has perfect foresight, so it is the least replicable part of the headline. | Built |
 | HIS-5 | Daily attribution | Graph | Each day's earnings split into where the money came from. | Built |
 | HIS-6 | Price capture | Graph | Charging and discharging by hour of day, averaged per day, against the average day-ahead price — when the battery trades, not just how much. Per day rather than window totals, which would say more about the date filter than the battery. | Built |
 | HIS-9 | Avg capture spread | Number | Margin on every MWh discharged, averaged over the window — the same measure the fleet page reports, so simulated and real batteries compare on margin. | Built |

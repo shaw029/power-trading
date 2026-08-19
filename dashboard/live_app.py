@@ -620,7 +620,8 @@ def _page_history():
     net = results_df["net_pnl"]
     best_i = int(net.idxmax())
     spread = pd.to_numeric(results_df["capture_spread"], errors="coerce").dropna()
-    cols = st.columns(3)
+    uplift = results_df["intraday_da_improvement"]
+    cols = st.columns(4)
     cols[0].metric(
         _unit_label("Avg net PnL", "£/MW/day"),
         f"{net.mean() / REFERENCE_POWER_MW:,.0f}",
@@ -628,19 +629,31 @@ def _page_history():
         "page (and the fleet estimates) reports revenue in.",
     )
     cols[1].metric(
+        _unit_label("Avg intraday improvement", "£/MW/day"),
+        f"{uplift.mean() / REFERENCE_POWER_MW:,.0f}",
+        f"{uplift.sum() / net.sum():.0%} of net PnL" if net.sum() else None,
+        delta_color="off",
+        help="What re-optimising against the realised intraday price added on top "
+        "of the frozen day-ahead schedule, per MW per day. The delta is its "
+        "share of net PnL. Read it as an upper bound: the intraday engine has "
+        "perfect foresight of the MID curve, which no live trader has.",
+    )
+    cols[2].metric(
         _unit_label("Avg capture spread", "£/MWh"),
         f"{spread.mean():,.1f}" if len(spread) else "—",
         help="Margin on every MWh discharged, averaged over the shown days. The "
         "same measure the fleet page reports, so the simulated battery and "
         "the real ones compare on margin rather than only on £/MW/day.",
     )
-    cols[2].metric(
-        _unit_label("Best day", "£/MW"),
-        f"{net.max() / REFERENCE_POWER_MW:,.0f}",
-        delta=results_df.loc[best_i, "date"],
+    worst_i = int(net.idxmin())
+    cols[3].metric(
+        _unit_label("Best / worst day", "£/MW"),
+        f"{net.max() / REFERENCE_POWER_MW:,.0f} / {net.min() / REFERENCE_POWER_MW:,.0f}",
+        f"{results_df.loc[best_i, 'date']} · {results_df.loc[worst_i, 'date']}",
         delta_color="off",
-        help=f"Highest single-day net PnL in the shown window "
-        f"(£{net.max():,.0f} absolute).",
+        help="Best and worst single-day net PnL per MW in the shown window, with "
+        "their dates in the same order. The spread between them is how much "
+        "of the average depends on a handful of days.",
     )
 
     st.plotly_chart(chart_daily_attribution(results_df), width="stretch")
