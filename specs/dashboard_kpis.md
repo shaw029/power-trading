@@ -40,7 +40,7 @@ simulated from what actually happened, and keeps analysis that mixes the two in 
 
 | Group | Pages | What the group is |
 |---|---|---|
-| **Benchmark** | Day · History | The simulated battery. Numbers here come from a model, not the market. |
+| **Benchmark** | Day · Baseline optimiser performance | The simulated battery. Numbers here come from a model, not the market. |
 | **GB power system** | System overview · Fleet performance | Observed reality. Nothing simulated, so the battery settings are hidden. |
 | **Research** | Day types · Benchmark vs fleet · Alignment gap | Analysis that uses both sides. |
 | **About** | Methodology | What every number means, and what it isn't. |
@@ -98,7 +98,9 @@ The landing page. Everything about a single delivery day.
 | DAY-14 | Half-hourly detail | Table | The underlying numbers, plus a CSV download. | Built |
 | DAY-15 | Real batteries this day | Table | What actual GB sites earned. | Built |
 
-## History — the whole window  ·  *Benchmark*
+## Optimiser performance — the whole window  ·  *Benchmark*
+
+Sidebar label: **Baseline optimiser performance**.
 
 *Data: the simulation across every day shown.*
 
