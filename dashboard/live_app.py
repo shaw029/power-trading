@@ -474,7 +474,14 @@ def _page_day():
     ) / len(shown)
     row = _pnl_row(record["date"], dur_result)
     _da_prices_day = [e["da_price_actual"] for e in dur_result.dispatch_log]
-    _da_spread = (max(_da_prices_day) - min(_da_prices_day)) if _da_prices_day else 0.0
+    # P90−P10 rather than high−low: one freak print sets the peak-to-trough, and
+    # a battery cannot trade a single half-hour anyway. The deciles describe the
+    # spread a full charge/discharge block could actually reach. The outright
+    # extremes stay visible in the peak & floor tile beside it.
+    _da_px = pd.Series(_da_prices_day, dtype=float)
+    _da_spread = (
+        float(_da_px.quantile(0.90) - _da_px.quantile(0.10)) if len(_da_px) else 0.0
+    )
 
     # Grid context for this day. Stress comes from the window-wide classifier,
     # so "stressed" means stressed relative to the period on screen.
@@ -533,10 +540,11 @@ def _page_day():
     st.markdown("**GB system**")
     sysc = st.columns(4)
     sysc[0].metric(
-        _unit_label("DA high−low spread", "£/MWh"),
+        _unit_label("DA P90−P10 spread", "£/MWh"),
         f"{_da_spread:,.0f}",
-        help="Peak-to-trough of the day's cleared day-ahead prices — the raw "
-        "arbitrage opportunity, before any strategy.",
+        help="The day's dearest decile of day-ahead prices minus its cheapest — "
+        "the arbitrage opportunity a battery could actually work, with single "
+        "freak half-hours excluded.",
     )
     sysc[1].metric(
         _unit_label("Peak & floor price", "£/MWh"),

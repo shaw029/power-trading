@@ -143,7 +143,7 @@ def test_app_boots_on_latest_day_page(app):
     assert len(labels) == 12
     assert labels[0].startswith("Net PnL")
     assert labels[1].startswith("Intraday improvement")
-    assert labels[4].startswith("DA high−low spread")
+    assert labels[4].startswith("DA P90−P10 spread")
     assert labels[8].startswith("Fleet median PnL")
     # Capture (share of the DA optimum) and DA benchmark came off the page.
     assert not any(la == "Capture" or la.startswith("DA benchmark") for la in labels)

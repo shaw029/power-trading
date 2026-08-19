@@ -91,7 +91,7 @@ grid did, and what the real fleet did — and ungrouped they read as one undiffe
 | DAY-4 | Cycles | Number | How hard it worked today, with the cycle target beside it. | Built |
 | DAY-20 | Capture spread | Number | Gross margin per MWh discharged today. Same measure as the optimiser and fleet pages, and shares units with the degradation lever, so a day below it earned less per MWh than wear cost. | Added |
 | — | **GB system** | — | — | — |
-| DAY-6 | DA high−low spread | Number | Cheapest to dearest hour today — the raw opportunity before any strategy. | Built |
+| DAY-6 | DA P90−P10 spread | Number | Cheapest to dearest decile today — the opportunity a battery could actually work. | Changed |
 | DAY-21 | Peak & floor price | Number | The dearest and cheapest hours the auction cleared. A negative floor means generators paid to keep running. | Added |
 | DAY-18 | Peak residual load | Number | The tightest the grid got today (demand − wind − solar), and how many half-hours were top-decile stress. | Changed |
 | DAY-22 | Renewable share | Number | Wind, solar, hydro and biomass as a share of GB generation today — grounds the price volatility beside it. | Added |
