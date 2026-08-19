@@ -60,6 +60,10 @@ HEIGHT_SM = 320
 DEFAULT_CHART_HEIGHT = 380
 HEIGHT_LG = 460
 
+# Days the operation explorer opens on. Its rangeslider still spans everything
+# selected; this is only the starting viewport.
+EXPLORER_VIEW_DAYS = 5
+
 
 def apply_theme(fig: go.Figure, height: int = DEFAULT_CHART_HEIGHT, title: str | None = None):
     """Stamp the shared look onto a figure: transparent surfaces so charts sit
@@ -610,9 +614,13 @@ def chart_operation_explorer(
         col=1,
     )
 
-    # Open on the first simulated day; drag the date strip at the top to scroll
+    # Open on the first EXPLORER_VIEW_DAYS days; drag the date strip at the top
+    # to scroll. A single day was too tight to read a pattern out of — the
+    # slider exists to pan, not to be the only way to see more than one day.
     window_start = times.iloc[0].normalize()
-    window_end = window_start + pd.Timedelta(hours=24)
+    window_end = min(
+        window_start + pd.Timedelta(days=EXPLORER_VIEW_DAYS), times.iloc[-1]
+    )
     fig.update_xaxes(range=[window_start.isoformat(), window_end.isoformat()])
     # rangemode "auto" lets the slider miniature autorange onto the date text,
     # which the strip itself keeps out of view via its [5, 6] y-range

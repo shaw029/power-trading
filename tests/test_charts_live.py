@@ -19,6 +19,7 @@ from dashboard.charts import (
     chart_daytype_profiles,
     chart_daytype_ratio,
     chart_day_composite,
+    chart_operation_explorer,
     chart_day_in_window,
     chart_duration_comparison,
     chart_equity_curve,
@@ -594,3 +595,32 @@ def test_price_capture_days_divides_into_a_daily_average():
     assert hour18_daily == 50.0
     assert "per day" in per_day.layout.yaxis.title.text
     assert "per day" not in totals.layout.yaxis.title.text
+
+
+def _explorer_frames(days: int):
+    idx = pd.date_range("2026-08-01T00:00:00Z", periods=24 * days, freq="1h")
+    dispatch = pd.DataFrame(
+        {"timestamp": idx, "final_mw": 0.0, "da_mw": 0.0, "intraday_mw": 0.0,
+         "soc_after": 0.5, "da_price": 100.0, "mid_price": 100.0}
+    )
+    prices = pd.DataFrame({"day_ahead_price": 100.0, "mid_price": 100.0}, index=idx)
+    sched = pd.DataFrame({"timestamp": idx, "da_mw": 0.0, "da_price_pred": 100.0})
+    return prices, dispatch, sched
+
+
+def test_explorer_opens_on_five_days_but_holds_the_whole_window():
+    from dashboard.charts import EXPLORER_VIEW_DAYS
+
+    fig = chart_operation_explorer(*_explorer_frames(30), 0.1, 0.9)
+    lo, hi = (pd.Timestamp(v) for v in fig.layout.xaxis.range)
+    assert (hi - lo).days == EXPLORER_VIEW_DAYS
+    # The slider itself is left to autorange, so it spans everything selected
+    # — five days is the viewport, not a limit on what can be scrolled to.
+    assert fig.layout.xaxis.rangeslider.range is None
+    assert fig.layout.xaxis.rangeslider.visible
+
+
+def test_explorer_viewport_never_overshoots_a_short_window():
+    fig = chart_operation_explorer(*_explorer_frames(2), 0.1, 0.9)
+    lo, hi = (pd.Timestamp(v) for v in fig.layout.xaxis.range)
+    assert (hi - lo) <= pd.Timedelta(days=2)
