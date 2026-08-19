@@ -434,7 +434,10 @@ def chart_operation_explorer(
         rows=4,
         cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.095,
+        # The rangeslider hangs below row 1 and eats into the gap beneath it,
+        # so the first subplot title needs more clearance than a tight uniform
+        # spacing gives.
+        vertical_spacing=0.115,
         subplot_titles=(
             "",
             "Market Prices & Trades",
@@ -625,7 +628,7 @@ def chart_operation_explorer(
     # rangemode "auto" lets the slider miniature autorange onto the date text,
     # which the strip itself keeps out of view via its [5, 6] y-range
     fig.update_xaxes(
-        rangeslider=dict(visible=True, thickness=0.05, yaxis=dict(rangemode="auto")),
+        rangeslider=dict(visible=True, thickness=0.04, yaxis=dict(rangemode="auto")),
         row=1,
         col=1,
     )
