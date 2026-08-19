@@ -458,10 +458,8 @@ def _page_day():
     day_flags = flags[flags.index.date == day_date] if not flags.empty else flags
     day_system = _system_day(picked)
 
-    # Three groups, because the twelve numbers answer three different
-    # questions: what the model did, what the grid did, and what the real
-    # fleet did. Ungrouped they read as one undifferentiated wall.
-    st.markdown("**Baseline optimiser** · *how the simulation performed today*")
+    # Three groups: the model, the grid, the real fleet.
+    st.markdown("**Baseline optimiser**")
     opt = st.columns(4)
     opt[0].metric(
         _unit_label("Net PnL", "£/MW"),
@@ -507,7 +505,7 @@ def _page_day():
         "per MWh than cycling cost it.",
     )
 
-    st.markdown("**GB system** · *the physical grid today*")
+    st.markdown("**GB system**")
     sysc = st.columns(4)
     sysc[0].metric(
         _unit_label("DA high−low spread", "£/MWh"),
@@ -552,7 +550,7 @@ def _page_day():
     else:
         sysc[3].metric("Renewable share", "—")
 
-    st.markdown("**Real GB fleet** · *how reality compared with the model today*")
+    st.markdown("**Real GB fleet**")
     fleet_day = _fleet_day(picked)
     flt = st.columns(4)
     if fleet_day.empty:

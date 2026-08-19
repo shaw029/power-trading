@@ -85,17 +85,17 @@ grid did, and what the real fleet did — and ungrouped they read as one undiffe
 |---|---|---|---|---|
 | DAY-1 | Day picker | Filter | Which day you're looking at. Defaults to the most recent settled day and persists across pages; a filter change that strands the choice snaps it back to the latest. | Built |
 | DAY-17 | Day-type tags | Note | The classifier's tags for this day (`windy`, `volatile`, and so on), as chips under the picker. Absent on a day with no clear character. | Built |
-| — | **Baseline optimiser** | — | *How the simulation performed today.* | — |
+| — | **Baseline optimiser** | — | — | — |
 | DAY-2 | Net PnL | Number | What the battery made today, per MW, against a typical day in the window. | Built |
 | DAY-3 | Intraday improvement | Number | What re-optimising against the realised intraday price added on top of the day-ahead schedule, and its share of net PnL. Perfect foresight, so an upper bound. | Changed |
 | DAY-4 | Cycles | Number | How hard it worked today, with the cycle target beside it. | Built |
 | DAY-20 | Capture spread | Number | Gross margin per MWh discharged today. Same measure as the optimiser and fleet pages, and shares units with the degradation lever, so a day below it earned less per MWh than wear cost. | Added |
-| — | **GB system** | — | *The physical grid today.* | — |
+| — | **GB system** | — | — | — |
 | DAY-6 | DA high−low spread | Number | Cheapest to dearest hour today — the raw opportunity before any strategy. | Built |
 | DAY-21 | Peak & floor price | Number | The dearest and cheapest hours the auction cleared. A negative floor means generators paid to keep running. | Added |
 | DAY-18 | Peak residual load | Number | The tightest the grid got today (demand − wind − solar), and how many half-hours were top-decile stress. | Changed |
 | DAY-22 | Renewable share | Number | Wind, solar, hydro and biomass as a share of GB generation today — grounds the price volatility beside it. | Added |
-| — | **Real GB fleet** | — | *How reality compared with the model today.* | — |
+| — | **Real GB fleet** | — | — | — |
 | DAY-23 | Fleet median PnL | Number | What the typical real battery earned today, with how many sites reported. | Added |
 | DAY-24 | Sim vs fleet gap | Number | How far the perfect-foresight model sits above the typical real battery today — a ceiling, not a competitor. | Added |
 | DAY-25 | Fleet median cycles | Number | How hard the typical real battery worked, with the simulation's own cycles beside it. | Added |
