@@ -14,8 +14,8 @@ to change what it says, or move one between pages. That edit is the instruction 
 over and every *Added* and *Removed* row is the job. Both flip to *Built* (or disappear) once
 the dashboard matches.
 
-Types are **Number**, **Graph**, **Table** and **Filter** — that's the distinction design
-cares about.
+Types are **Number**, **Graph**, **Table**, **Filter**, **Note** (a line of computed text, not
+static prose) and **Download** — that's the distinction design cares about.
 
 ## Design conventions
 
@@ -24,14 +24,14 @@ pages are brought into line when we next work on them.
 
 | Convention | Rule | Rolled out |
 |---|---|---|
-| **Units** | The unit sits on a second label line beneath the name — "Avg wholesale price" over "£/MWh" — and the value stays a bare number (`62`). Labels render in muted grey, so the unit reads as a caption and the eye can compare magnitudes down a row without stepping over a currency sign. | System overview · Fleet performance |
-| **Percentages** | The exception to the above: the sign stays welded to the value (`68%`) and the label carries no unit line. A percent sign is read at a glance; a whole line for it is noise. | System overview · Fleet performance |
+| **Units** | The unit sits on a second label line beneath the name — "Avg wholesale price" over "£/MWh" — and the value stays a bare number (`62`). Labels render in muted grey, so the unit reads as a caption and the eye can compare magnitudes down a row without stepping over a currency sign. | System overview · Fleet performance · Optimiser performance |
+| **Percentages** | The exception to the above: the sign stays welded to the value (`68%`) and the label carries no unit line. A percent sign is read at a glance; a whole line for it is noise. | System overview · Fleet performance · Optimiser performance |
 | **Tooltips** | A chart with unified hover already prints the date or time once in its header, so no series repeats it. Charts using closest-hover still carry it, because there is no header to carry it for them. | All charts |
 | **Ranges in tooltips** | A band named for a range shows both ends — "Min–max £-15 → £180", never one number beside a two-ended label. | All charts |
 
-**Pending:** the unit and percentage rules are live on System overview and Fleet performance —
-the two pages rebuilt so far. The remaining six get them as they are opened, a page at a time,
-so every change carries its own review rather than being scattered through unrelated work.
+**Pending:** the unit and percentage rules are live on the three pages rebuilt so far. The rest —
+including Day, whose values still carry their units — get them as they are opened, a page at a
+time, so every change carries its own review rather than being scattered through unrelated work.
 
 ## How the pages are grouped
 
@@ -81,22 +81,28 @@ The landing page. Everything about a single delivery day.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| DAY-1 | Day picker | Filter | Which day you're looking at. Defaults to the most recent. | Built |
-| DAY-2 | Net PnL | Number | What the battery made that day, per MW, and how that compares to a typical day in the window. | Built |
+| DAY-1 | Day picker | Filter | Which day you're looking at. Defaults to the most recent settled day and persists across pages; a filter change that strands the choice snaps it back to the latest. | Built |
+| DAY-17 | Day-type tags | Note | The classifier's tags for this day (`windy`, `volatile`, and so on), shown as chips under the header. Absent on a day with no clear character. | Built |
+| DAY-2 | Net PnL | Number | What the battery made that day, per MW, against a typical day in the window. | Built |
 | DAY-3 | DA benchmark | Number | What it would have made on the day-ahead plan alone, before any intraday trading. | Built |
-| DAY-4 | Cycles | Number | How hard it worked — one cycle is one full discharge. | Built |
+| DAY-4 | Cycles | Number | How hard it worked — one cycle is one full discharge. The help also reports how much of the cycle budget the locked day-ahead leg committed. | Built |
 | DAY-5 | Capture | Number | How much of the day's available money it actually caught. | Built |
 | DAY-6 | DA spread | Number | Cheapest to dearest hour — the raw opportunity before any strategy. | Built |
-| DAY-7 | The day on one timeline | Graph | Prices, what it did, how full it was, and how stressed the grid was — all stacked on the same clock. | Built |
-| DAY-8 | Dispatch vs grid stress | Graph | Did it discharge when the system was tight? | Built |
+| DAY-18 | Stress half-hours | Note | How many half-hours that day were top-decile stress, when any were. | Built |
+| DAY-7 | The day on one timeline | Graph | Four panels sharing one clock: prices, dispatch against the locked day-ahead commitment, state of charge inside its band, and residual load with stress and surplus shaded. | Built |
+| DAY-8 | Dispatch vs grid stress | Graph | Did it discharge when the system was tight? Falls back to the realised-shape view on a day with no system data. | Built |
 | DAY-9 | Prices | Graph | Day-ahead against intraday. | Built |
-| DAY-10 | State of charge | Graph | How full it was through the day. | Built |
-| DAY-11 | Where the money came from | Graph | Revenue broken into its parts. | Built |
+| DAY-10 | State of charge | Graph | How full it was through the day, inside its permitted band. | Built |
+| DAY-11 | Where the money came from | Graph | The day's PnL split into day-ahead revenue, intraday improvement, execution costs and degradation. | Built |
 | DAY-12 | This day vs the window | Graph | Was this a good day or a dull one? | Built |
-| DAY-13 | Generation mix | Graph | What was powering GB that day (in a fold-out panel). | Built |
-| DAY-16 | Realised shape | Graph | Mean dispatch and execution prices by hour of day, in a fold-out panel — what the battery physically did after intraday, as opposed to what it planned. | Built |
-| DAY-14 | Half-hourly detail | Table | The underlying numbers, plus a CSV download. | Built |
-| DAY-15 | Real batteries this day | Table | What actual GB sites earned. | Built |
+| DAY-16 | Realised shape | Graph | In the **Battery detail** panel: mean dispatch and execution prices by hour — what the battery physically did after intraday, as opposed to what it planned. | Built |
+| DAY-13 | Generation mix | Graph | In the **System detail** panel: what powered GB that day, with demand overlaid. | Built |
+| DAY-14 | Half-hourly detail | Table | In the **System detail** panel: the underlying half-hourly numbers. | Built |
+| DAY-19 | System CSV | Download | That same half-hourly table, as a file. | Built |
+| DAY-15 | Real batteries this day | Table | In the **Fleet this day** panel: what actual GB sites earned, best first. | Built |
+
+Rows are in screen order. The three panels at the foot of the page are fold-out expanders,
+closed by default: **Battery detail**, **System detail**, **Fleet this day**.
 
 ## Optimiser performance — the whole window  ·  *Benchmark*
 
