@@ -168,39 +168,46 @@ def _build_asset(cfg, duration, degradation, soc_min, soc_max) -> dict:
 
 
 def _warm_fetch(date_isos: tuple, system_isos: tuple | None = None) -> None:
-    """Pre-fetch the days we actually need, with a visible progress bar.
+    """Pre-fetch the days we need, with a progress bar over what is missing.
 
-    ``date_isos`` are the days needing *prices*. The benchmark settle carries
-    state of charge from one day to the next, so it needs the whole history
-    whatever the period filter says — shortening it would change the numbers,
-    not just the view.
+    ``date_isos`` are the days needing *prices*; ``system_isos`` the days
+    needing the generation/demand snapshot, which is display-only and so is
+    usually just the days on screen.
 
-    ``system_isos`` are the days needing the generation/demand snapshot, which
-    is display-only and therefore just the days on screen. Defaults to
-    ``date_isos`` for callers that show everything they fetch.
-
-    Per-day results are cached, so a filter change re-runs this as cache hits;
-    the session flag only suppresses the bar.
+    Warmed days are tracked individually rather than behind a single
+    "warmed once" flag. That flag meant only the first page visited in a
+    session ever drew a bar — every later page fetched in silence, and
+    widening the filter refetched in silence too. Tracking the days makes the
+    rule simple and the same everywhere: work you have not done yet shows a
+    bar, work already cached does not.
     """
     system_isos = date_isos if system_isos is None else system_isos
-    system_set = set(system_isos)
-    if st.session_state.get("_prices_warmed"):
+    warmed_prices: set[str] = st.session_state.setdefault("_warmed_prices", set())
+    warmed_system: set[str] = st.session_state.setdefault("_warmed_system", set())
+
+    todo_prices = {iso for iso in date_isos if iso not in warmed_prices}
+    todo_system = {iso for iso in system_isos if iso not in warmed_system}
+    todo = sorted(todo_prices | todo_system)
+    if not todo:
         return
-    n = len(date_isos)
-    bar = st.progress(0.0, text=f"First load — fetching {n} days of GB market data…")
-    for i, iso in enumerate(date_isos):
-        try:
-            _fetch_day(iso)
-        except Exception:
-            pass  # _settle_range skips unfetchable days
-        if iso in system_set:
+
+    n = len(todo)
+    bar = st.progress(0.0, text=f"Fetching {n} day(s) of GB market data…")
+    for i, iso in enumerate(todo):
+        if iso in todo_prices:
             try:
-                _system_day(iso)  # warms the briefing/alignment system snapshots
+                _fetch_day(iso)
+            except Exception:
+                pass  # _settle_range skips unfetchable days
+        if iso in todo_system:
+            try:
+                _system_day(iso)
             except Exception:
                 pass
         bar.progress((i + 1) / n, text=f"Fetching GB market data · {iso} ({i + 1}/{n})")
     bar.empty()
-    st.session_state["_prices_warmed"] = True
+    warmed_prices |= todo_prices
+    warmed_system |= todo_system
 
 
 @st.cache_data(show_spinner="Settling the benchmark battery…")
@@ -365,6 +372,20 @@ def _page_header(title: str, subtitle: str) -> None:
     st.caption(subtitle)
 
 
+# Days settled ahead of the selected window so state of charge is carried in
+# rather than assumed. One day would do most of it; three is cheap insurance.
+_SETTLE_WARMUP_DAYS = 3
+
+
+def _settle_window(date_isos: tuple, start: str, end: str) -> tuple:
+    """The selected days, preceded by a short state-of-charge run-up."""
+    selected = [d for d in date_isos if start <= d <= end]
+    if not selected:
+        return tuple(selected)
+    first = date_isos.index(selected[0])
+    return tuple(date_isos[max(0, first - _SETTLE_WARMUP_DAYS):date_isos.index(selected[-1]) + 1])
+
+
 def _benchmark_view():
     """Sidebar controls + settled days shared by the three benchmark pages.
 
@@ -376,8 +397,14 @@ def _benchmark_view():
     start, end, day_types = _global_filters(date_isos)
     duration, cycle_target, degradation, soc_min, soc_max, commit = _benchmark_parameters()
 
-    _warm_fetch(date_isos, system_isos=tuple(d for d in date_isos if start <= d <= end))
-    days = _settle_range(date_isos, duration, cycle_target, degradation, soc_min, soc_max, commit)
+    # Settle the selected window plus a few days in front of it, not the whole
+    # history. The engine carries state of charge from one day into the next,
+    # so starting cold at the window edge would misstate its first day; a short
+    # run-up establishes that state and is then filtered back out. Picking 7
+    # days should cost seven days of work, not sixty.
+    settle_isos = _settle_window(date_isos, start, end)
+    _warm_fetch(settle_isos, system_isos=tuple(d for d in date_isos if start <= d <= end))
+    days = _settle_range(settle_isos, duration, cycle_target, degradation, soc_min, soc_max, commit)
     shown = _filter_days(days, start, end, day_types)
 
     if not days:
@@ -1272,7 +1299,8 @@ def _page_sim_vs_fleet():
         "invisible on both sides."
     )
 
-    date_isos = _dates()
+    # Only the days on screen: this fetch is per-BMU and the heaviest in the app.
+    date_isos = tuple(d["date"] for d in shown)
     fleet_df = _with_duration(_fleet_range(date_isos))
     if fleet_df.empty:
         st.warning("No fleet data could be fetched — Elexon per-unit data may be unavailable.")
@@ -1537,7 +1565,9 @@ def _page_system():
     # Every other page warms the day cache behind a progress bar before doing
     # anything slow. This page fetches just as much — day labels, then a daily
     # summary per day — so without it the first load is a blank screen.
-    labels = _day_labels(date_isos)
+    window = tuple(d for d in date_isos if start <= d <= end)
+    _warm_fetch(window)
+    labels = _day_labels(window)
     days = [
         d
         for d in date_isos
@@ -1553,7 +1583,6 @@ def _page_system():
         st.info("No days match the current filters — widen the period or clear a day type.")
         return
 
-    _warm_fetch(tuple(days))
     summaries = [s for s in (_system_summary_day(d) for d in days) if s is not None]
     if not summaries:
         st.warning("No system data could be fetched for the window — the Elexon or "
