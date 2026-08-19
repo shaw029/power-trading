@@ -785,22 +785,14 @@ def _page_history():
         width="stretch",
     )
 
-    # Dispatch explorer. Its slider zooms *within* whatever the sidebar
-    # selected rather than competing with it — the options are the filtered
-    # days — because hour-by-hour detail over a 60-day window is unreadable
-    # and slow to draw. Defaults to the most recent five days.
+    # Dispatch explorer over the most recent days of the sidebar's window. No
+    # slider: the sidebar period is the only day control on this page.
     st.markdown("#### Dispatch explorer")
-    st.caption("Hour-by-hour prices, trades and state of charge over the selected days.")
-    dates = [d["date"] for d in shown]
-    if len(dates) > 1:
-        start_iso, end_iso = st.select_slider(
-            "Explorer window (days)",
-            options=dates,
-            value=(dates[max(0, len(dates) - _EXPLORER_DEFAULT_DAYS)], dates[-1]),
-        )
-    else:
-        start_iso = end_iso = dates[0]
-    window = [d for d in shown if start_iso <= d["date"] <= end_iso]
+    st.caption(
+        f"Hour-by-hour prices, trades and state of charge over the last "
+        f"{_EXPLORER_DEFAULT_DAYS} days shown."
+    )
+    window = shown[-_EXPLORER_DEFAULT_DAYS:]
     win_dispatch = _range_dispatch(window, duration)
     st.plotly_chart(
         chart_operation_explorer(

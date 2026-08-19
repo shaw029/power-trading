@@ -134,8 +134,7 @@ Sidebar label: **Optimiser performance**.
 | HIS-6 | Price capture | Graph | Charging and discharging by hour of day, averaged per day, against the average day-ahead price — when the battery trades, not just how much. Per day rather than window totals, which would say more about the date filter than the battery. | Built |
 | HIS-9 | Avg capture spread | Number | Margin on every MWh discharged, averaged over the window — the same measure the fleet page reports, so simulated and real batteries compare on margin. | Built |
 | HIS-10 | Capture spread by day | Graph | That margin day by day, against the window mean and the degradation cost the lever is set to. Days below the wear line earned less per MWh than cycling cost. | Built |
-| HIS-7 | Explorer window | Filter | Zooms within the sidebar period, opening on the most recent 5 days. Its options are the filtered days, so it narrows rather than competes — hour-by-hour detail across 60 days is unreadable and slow to draw. | Built |
-| HIS-8 | Dispatch explorer | Graph | Hour by hour across the selected days: prices, what the battery traded, and its state of charge on one timeline. | Built |
+| HIS-8 | Dispatch explorer | Graph | Hour by hour over the last 5 days of the sidebar's window: prices, what the battery traded, and its state of charge on one timeline. No day control of its own — the sidebar period is the only one on this page. | Built |
 
 ## System overview — the GB grid itself  ·  *GB power system*
 
