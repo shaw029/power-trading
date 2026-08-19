@@ -210,11 +210,11 @@ being comparable to the degradation lever.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| DTY-1 | Earnings by day type | Graph | Which kinds of day actually pay. | Built |
+| DTY-1 | Capture rate by day type | Graph | How close the optimiser got to the perfect-foresight ceiling on each kind of day — a distribution, with every day plotted, not one number per type. Capture normalises away how big the opportunity was, so this reads as strategy fit rather than "volatile days pay more". | Built |
 | DTY-2 | Which tags travel together | Graph | Windy days are often also low-price days, etc. | Built |
 | DTY-3 | How common each type is | Graph | Frequency of each kind of day. | Built |
-| DTY-4 | Trading shape by type | Graph | Does it trade differently on a windy day? | Built |
-| DTY-5 | Days behind the tags | Table | Which real dates sit in each group. | Built |
+| DTY-4 | Mean state of charge by price character | Graph | Average state of charge through the day for each price tag — volatile, negative-price, peaky. Grouped by price character only: driver tags like *windy* are deliberately left out, because averaging them blurs distinct shapes. | Built |
+| DTY-5 | Days behind the tags | Table | Every day in the window with its tags, £/MW/day, capture and cycles, newest first. | Built |
 
 ## Benchmark vs fleet — simulation against reality  ·  *Research*
 
@@ -224,14 +224,14 @@ being comparable to the degradation lever.
 |---|---|---|---|---|
 | SVF-1 | Include grid-services sites | Filter | Off by default — including them exaggerates the gap. | Built |
 | SVF-2 | Simulation ceiling | Number | The best a perfect trader could have done. | Built |
-| SVF-3 | Real fleet average | Number | What real batteries actually made on the same footing. | Built |
+| SVF-3 | Fleet wholesale avg | Number | The wholesale leg (PN × MID) only, MW-weighted across the comparison sites — the single leg the simulation also plays. Balancing revenue is deliberately outside it. | Built |
 | SVF-4 | Realisation | Number | Real earnings as a share of the ceiling — the headline gap. | Built |
 | SVF-5 | Sites compared | Number | How many real batteries are in the comparison. | Built |
-| SVF-6 | Day by day | Graph | Simulation against fleet over time. | Built |
-| SVF-7 | Trading shape | Graph | Do real batteries trade at the same hours? | Built |
-| SVF-8 | Gap by day type | Graph | On which kinds of day does reality fall furthest short? | Built |
 | SVF-9 | Per-site vs the ceiling | Graph | Each site's £/MW/day split into the wholesale leg and the balancing leg, against the simulation ceiling drawn as a reference line. Only the wholesale leg is comparable — the sim does not play the balancing market. | Built |
+| SVF-6 | Day by day | Graph | Simulation against fleet over time. | Built |
+| SVF-7 | Trading shape | Graph | Do real batteries move at the same hours? Mean net output by hour, discharge positive. Absent on a window with no usable per-hour fleet shape. | Built |
 | SVF-10 | Work rate vs earnings | Graph | Every site plotted by cycles per day against £/MW/day, with the benchmark starred — does trading harder actually pay? | Built |
+| SVF-8 | Gap by day type | Graph | On which kinds of day does reality fall furthest short? Absent when no day in the window carries a tag. | Built |
 
 ## Alignment gap — does profit serve the grid?  ·  *Research*
 
