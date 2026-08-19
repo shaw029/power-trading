@@ -100,10 +100,9 @@ grid did, and what the real fleet did — and ungrouped they read as one undiffe
 | DAY-24 | Operator dispersion | Number | Interquartile spread across the real batteries today — what operator skill and siting were worth, measured where one exceptional site cannot move it. Mirrors FLT-4. | Built |
 | DAY-25 | Fleet median cycles | Number | How hard the typical real battery worked, with the simulation's own cycles beside it. | Added |
 | DAY-26 | Top real site | Number | The best-earning real battery today and the party trading it. | Added |
-| DAY-16 | Realised shape | Graph | Dispatch and execution prices by hour — what the battery physically did after intraday, as opposed to what it planned. The ghost step line is the locked day-ahead commitment, so the gap to the bars is the reshaping. | Changed |
-| DAY-11 | Where the money came from | Graph | The day's PnL split into day-ahead revenue, intraday improvement, execution costs and degradation. | Built |
+| DAY-16 | Optimiser dispatch — plan vs realised | Graph | What the simulated battery physically did by hour, against the day-ahead commitment it locked in — the ghost step line. The gap between them is the intraday reshaping. | Changed |
+| DAY-11 | Optimiser PnL bridge | Graph | The day's PnL split into day-ahead revenue, intraday improvement, execution costs and degradation. | Changed |
 | DAY-13 | Generation mix | Graph | What powered GB that day, with demand overlaid. | Changed |
-| DAY-14 | Half-hourly detail | Table | In the **Half-hourly system detail** panel: the underlying half-hourly numbers. | Changed |
 | DAY-15 | Real batteries this day | Table | In the **Fleet this day** panel: what actual GB sites earned, best first. | Built |
 
 Dropped: **Capture** (net PnL as a share of the day-ahead optimum) and **DA benchmark**. Both

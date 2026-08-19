@@ -652,14 +652,6 @@ def _page_day():
         demand = system["demand_actual"] if "demand_actual" in system.columns else None
         st.plotly_chart(chart_generation_mix(groups, demand), width="stretch")
 
-    with st.expander("Half-hourly system detail"):
-        if system.empty:
-            st.info("No system data available for this day.")
-        else:
-            raw = system.copy()
-            raw.index = raw.index.strftime("%Y-%m-%d %H:%M")
-            st.dataframe(raw, width="stretch")
-
     with st.expander("Fleet this day"):
         fleet_day = _fleet_day(picked)
         if fleet_day.empty:

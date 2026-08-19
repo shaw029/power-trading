@@ -279,7 +279,7 @@ def chart_realized_shape(
     fig.update_layout(
         # Kept short: the chart sits in a half-width column, where the old
         # subtitle truncated mid-word. The legend already names every series.
-        title="Realised dispatch shape",
+        title="Optimiser dispatch — plan vs realised",
         xaxis=dict(title="Hour of Day", dtick=1),
         yaxis=dict(title="Price (£/MWh)", side="left"),
         yaxis2=dict(
@@ -739,7 +739,7 @@ def chart_pnl_waterfall(results_df: pd.DataFrame):
         )
         running += v
 
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="PnL bridge — where the money came from")
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Optimiser PnL bridge")
     fig.update_layout(showlegend=False)
     fig.update_yaxes(title_text="£")
     return fig
