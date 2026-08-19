@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 _PN_DIR = "FLEET_PN"
 _MELS_DIR = "FLEET_MELS"
 _MILS_DIR = "FLEET_MILS"
+_BOALF_DIR = "FLEET_BOALF"
 _CASHFLOW_DIR = "FLEET_EBOCF"
 _TIMEOUT_S = 30
 
@@ -166,3 +167,19 @@ def fetch_day_mid_prices(date: dt.date) -> pd.DataFrame:
     return process_market_index_price(
         fetch_market_index_price(start_date=start, end_date=date.isoformat())
     )
+
+
+def fetch_fleet_boalf(date: dt.date) -> list[dict]:
+    """Accepted bid-offer levels for every fleet BMU on one settlement day.
+
+    A Balancing Mechanism acceptance instructs a unit away from its Physical
+    Notification, so PN alone is a plan, not delivery. For GB batteries the
+    difference is not a rounding error — accepted volume is of the same order
+    as the notified position — which is why cycles, throughput and capture
+    spread are measured against PN corrected by these acceptances.
+
+    Records carry the same irregular-span shape as MELS/MILS, plus
+    ``acceptanceTime``/``acceptanceNumber`` which order overlapping
+    acceptances; :func:`fleet.performance.site_physical_profile` resolves them.
+    """
+    return _fetch_day_stream("BOALF", _BOALF_DIR, date)

@@ -87,7 +87,10 @@ rm -rf data/raw/CMN/                     # Capacity Market Notice register (NESO
 rm -rf data/raw/FLEET_PN/                # per-BMU Physical Notifications (fleet)
 rm -rf data/raw/FLEET_MELS/              # per-BMU max export limits (fleet)
 rm -rf data/raw/FLEET_MILS/              # per-BMU max import limits (fleet)
+rm -rf data/raw/FLEET_BOALF/             # per-BMU accepted bid-offer levels (fleet)
 ```
+
+> **Fleet physical delivery:** a Physical Notification is a *plan*; a Balancing Mechanism acceptance (`BOALF`) is the system operator instructing the unit to do something else. For GB batteries the correction is material — delivered throughput runs about 25% below notified over a recent week — so cycles, volume and capture spread are measured on PN overwritten by acceptances. Acceptances are often only minutes long, so the two are combined on a minute grid before averaging onto settlement periods; resolving them half-hourly would let a three-minute instruction rewrite a thirty-minute period. Revenue still prices the notified position at MID, with acceptances paid separately through `EBOCF` cashflows, so neither side double-counts.
 
 > **Fleet declared-limit feeds:** `MELS` and `MILS` (per-BMU maximum export / import limits) are fetched by `fleet/fetch_fleet.py` alongside `PN`, for the stress-response study's availability metrics. Records carry *irregular* sub-period spans — a mid-period redeclaration cuts a settlement period into pieces and each carries a `notificationTime`/`notificationSequence` — so `fleet.performance.site_limit_profile` resolves them onto the half-hourly grid by painting a minute grid in notification order and time-weighting. A unit derated for 24 of 30 minutes reads as 80% available, which is the point.
 

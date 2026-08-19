@@ -156,7 +156,9 @@ and SYS-17 carries **three** series, not the two its legend showed.
 
 Estimated from public data. Sites earning mainly from grid services look worse than they
 are, so they're flagged rather than quietly mixed in.
-*Data: real sites' declared output, market prices, balancing payments.*
+*Data: real sites' notified output corrected by balancing-market acceptances, market prices, balancing payments.*
+
+**Throughput is measured on delivery, not the plan.** A Physical Notification says what a battery intended; an accepted balancing instruction says what it was told to do instead. Over a recent week delivered throughput ran about 25% below notified, so cycles, volume and capture spread all use the corrected figure. Revenue still prices the notified position, with acceptances paid through the balancing cashflows.
 
 **The numbers follow the metric switch.** Choosing a metric in FLT-2 re-computes the four
 Numbers as well as every chart, so the page describes one thing at a time. Today those Numbers

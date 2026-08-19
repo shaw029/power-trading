@@ -256,7 +256,14 @@ def _fleet_day(date_iso: str) -> pd.DataFrame:
         cashflows = fetch_fleet.fetch_fleet_bm_cashflows(date)
     except Exception:
         cashflows = {"bid": [], "offer": []}
-    return fleet_perf.day_site_metrics(date_iso, pn, cashflows, mid)
+    # Acceptances correct the notified position into actual delivery. A day
+    # whose acceptances have not published yet falls back to PN alone rather
+    # than dropping the day.
+    try:
+        boalf = fetch_fleet.fetch_fleet_boalf(date)
+    except Exception:
+        boalf = []
+    return fleet_perf.day_site_metrics(date_iso, pn, cashflows, mid, boalf)
 
 
 def _fleet_range(date_isos: tuple) -> pd.DataFrame:

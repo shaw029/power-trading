@@ -419,3 +419,47 @@ def test_capture_spread_drops_negligible_throughput():
     # Balancing-market money over almost no throughput would read as thousands
     # of pounds per MWh; it is reported as nothing instead.
     assert performance.fleet_daily_distribution(pd.DataFrame(rows), "capture").empty
+
+
+def _boalf(bmu: str, t_from: str, t_to: str, level: float, seq: int = 1) -> dict:
+    return {
+        "bmUnit": bmu, "settlementDate": _DATE,
+        "timeFrom": f"{_DATE}T{t_from}:00Z", "timeTo": f"{_DATE}T{t_to}:00Z",
+        "levelFrom": level, "levelTo": level,
+        "acceptanceTime": f"{_DATE}T17:00:00Z", "acceptanceNumber": seq,
+    }
+
+
+def test_physical_profile_lets_an_acceptance_override_the_notification():
+    pn = [_pn_record("E_PILLB-1", 18, 0, 10.0)]
+    # The operator instructs 50 MW where the unit notified 10.
+    boalf = [_boalf("E_PILLB-1", "18:00", "18:30", 50.0)]
+    physical = performance.site_physical_profile(pn, boalf)
+    assert physical.loc[physical["time"] == pd.Timestamp(f"{_DATE}T18:00:00Z"),
+                        "mw"].iloc[0] == pytest.approx(50.0)
+    # Untouched periods keep the notified level.
+    pn2 = pn + [_pn_record("E_PILLB-1", 19, 0, 10.0)]
+    physical2 = performance.site_physical_profile(pn2, boalf)
+    assert physical2.loc[physical2["time"] == pd.Timestamp(f"{_DATE}T19:00:00Z"),
+                         "mw"].iloc[0] == pytest.approx(10.0)
+
+
+def test_physical_profile_without_acceptances_is_the_notification():
+    pn = [_pn_record("E_PILLB-1", 18, 0, 10.0)]
+    assert performance.site_physical_profile(pn, []).equals(performance.site_profile(pn))
+
+
+def test_day_site_metrics_measures_throughput_on_delivery_not_the_plan():
+    pn = [_pn_record("E_PILLB-1", 18, 0, 10.0)]
+    boalf = [_boalf("E_PILLB-1", "18:00", "18:30", 50.0)]
+    plan = performance.day_site_metrics(_DATE, pn, {"bid": [], "offer": []}, _mid(100.0))
+    delivered = performance.day_site_metrics(
+        _DATE, pn, {"bid": [], "offer": []}, _mid(100.0), boalf
+    )
+    assert plan.iloc[0]["discharge_mwh"] == pytest.approx(5.0)    # 10 MW × 0.5 h
+    assert delivered.iloc[0]["discharge_mwh"] == pytest.approx(25.0)  # 50 MW × 0.5 h
+    # Revenue still prices the notified position; the acceptance is paid
+    # separately through BM cashflows, so it must not move.
+    assert plan.iloc[0]["wholesale_gbp"] == pytest.approx(
+        delivered.iloc[0]["wholesale_gbp"]
+    )

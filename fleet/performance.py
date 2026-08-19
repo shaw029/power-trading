@@ -24,6 +24,7 @@ from fleet.registry import FLEET, bmu_to_site
 
 # MID is published on a half-hourly grid; PN spans are floored onto it.
 _MID_FREQ = "30min"
+_SLOT_HOURS = 0.5
 
 # Merchant GB batteries cycle roughly 0.8–1.5×/day; sites parked on an
 # ancillary contract mostly hold SOC and cycle far less. Below this many
@@ -100,6 +101,7 @@ def day_site_metrics(
     pn_records: list[dict],
     cashflows: dict[str, list[dict]],
     mid_prices: pd.DataFrame,
+    boalf_records: list[dict] | None = None,
 ) -> pd.DataFrame:
     """Per-site metrics for one settlement day.
 
@@ -109,6 +111,16 @@ def day_site_metrics(
     than reported as zero.
     """
     site_of = bmu_to_site()
+    # Throughput is measured on physical delivery -- the notified position
+    # corrected by Balancing Mechanism acceptances -- because for GB batteries
+    # accepted volume runs at roughly the size of the notified one. Revenue
+    # still prices the notified position at MID, with the acceptances paid
+    # separately through the BM cashflows, so neither side double-counts.
+    physical = (
+        site_physical_profile(pn_records, boalf_records)
+        if boalf_records is not None
+        else None
+    )
 
     pn = _pn_frame(pn_records)
     pn = pn[pn["bmUnit"].isin(site_of)]
@@ -133,9 +145,14 @@ def day_site_metrics(
         bm_offer = float(offer.reindex(ids).sum())
         if site_pn.empty and bm_bid == 0.0 and bm_offer == 0.0:
             continue
-        energy = site_pn["energy_mwh"] if not site_pn.empty else pd.Series(dtype=float)
-        discharge = float(energy[energy > 0].sum())
-        charge = float(-energy[energy < 0].sum())
+        if physical is not None:
+            mine = physical[physical["site"] == site.site]["mw"]
+            discharge = float(mine[mine > 0].sum()) * _SLOT_HOURS
+            charge = float(-mine[mine < 0].sum()) * _SLOT_HOURS
+        else:
+            energy = site_pn["energy_mwh"] if not site_pn.empty else pd.Series(dtype=float)
+            discharge = float(energy[energy > 0].sum())
+            charge = float(-energy[energy < 0].sum())
         wholesale = float(site_pn["wholesale_gbp"].sum()) if not site_pn.empty else 0.0
         total = wholesale + bm_bid + bm_offer
         rows.append(
@@ -178,53 +195,33 @@ def site_profile(pn_records: list[dict]) -> pd.DataFrame:
     return grouped[["site", "time", "mw"]]
 
 
-def site_limit_profile(records: list[dict]) -> pd.DataFrame:
-    """Effective declared limit per fleet site per half-hour, in MW.
+def _paint_profile(
+    df: pd.DataFrame, order_cols: list[str], site_of: dict
+) -> pd.DataFrame:
+    """Paint irregular MW spans onto the half-hourly grid, per site.
 
-    Works for MELS (export limits, levels ≥ 0) and MILS (import limits,
-    levels ≤ 0). Unlike PN spans, limit records are irregular — redeclarations
-    cut settlement periods into sub-spans and overlap earlier declarations —
-    so each BMU is painted onto a 1-minute UTC grid in notification order
-    (``notificationTime``, tie-broken by ``notificationSequence``), later
-    notifications overwriting earlier ones, then averaged per half-hour.
-    Time-weighting is deliberate: a unit derated for 24 of 30 minutes was 80%
-    unavailable that period, which is exactly the availability signal — a
-    last-effective rule would read it as 0% or 100%. Returns tidy
-    ``['site', 'time', 'mw']`` like :func:`site_profile`.
+    Records with ``timeFrom``/``timeTo``/``levelFrom``/``levelTo`` are laid on
+    a 1-minute grid in ``order_cols`` order so later declarations overwrite
+    earlier ones, then averaged per half-hour. Time-weighting is deliberate: a
+    level held for 24 of 30 minutes counted 80% of that period.
     """
-    site_of = bmu_to_site()
-    df = pd.DataFrame(records)
-    if df.empty or "bmUnit" not in df.columns:
-        return pd.DataFrame(columns=["site", "time", "mw"])
-    df = df[df["bmUnit"].isin(site_of)].copy()
-    if df.empty:
-        return pd.DataFrame(columns=["site", "time", "mw"])
-    df["timeFrom"] = pd.to_datetime(df["timeFrom"], utc=True)
-    df["timeTo"] = pd.to_datetime(df["timeTo"], utc=True)
-    if "notificationTime" not in df.columns:
-        df["notificationTime"] = pd.NaT
-    if "notificationSequence" not in df.columns:
-        df["notificationSequence"] = 0
-    df["notificationTime"] = pd.to_datetime(df["notificationTime"], utc=True)
-    df = df.sort_values(["notificationTime", "notificationSequence"], na_position="first")
-
     parts = []
     for bmu, spans in df.groupby("bmUnit"):
         start = spans["timeFrom"].min().floor(_MID_FREQ)
         end = spans["timeTo"].max().ceil(_MID_FREQ)
         minutes = pd.date_range(start, end, freq="1min", inclusive="left")
         level = pd.Series(float("nan"), index=minutes)
-        for row in spans.itertuples():
-            span_min = pd.date_range(row.timeFrom, row.timeTo, freq="1min", inclusive="left")
-            if len(span_min) == 0:
+        for row in spans.sort_values(order_cols, na_position="first").itertuples():
+            span = pd.date_range(row.timeFrom, row.timeTo, freq="1min", inclusive="left")
+            if len(span) == 0:
                 continue
             ramp = pd.Series(
                 [
                     row.levelFrom
-                    + (row.levelTo - row.levelFrom) * i / max(len(span_min) - 1, 1)
-                    for i in range(len(span_min))
+                    + (row.levelTo - row.levelFrom) * i / max(len(span) - 1, 1)
+                    for i in range(len(span))
                 ],
-                index=span_min,
+                index=span,
             )
             level.loc[ramp.index] = ramp
         half_hourly = level.resample(_MID_FREQ).mean().dropna()
@@ -232,17 +229,113 @@ def site_limit_profile(records: list[dict]) -> pd.DataFrame:
             continue
         parts.append(
             pd.DataFrame(
-                {
-                    "site": site_of[bmu].site,
-                    "time": half_hourly.index,
-                    "mw": half_hourly.values,
-                }
+                {"site": site_of[bmu].site, "time": half_hourly.index,
+                 "mw": half_hourly.values}
             )
         )
     if not parts:
         return pd.DataFrame(columns=["site", "time", "mw"])
-    tidy = pd.concat(parts, ignore_index=True)
-    return tidy.groupby(["site", "time"], as_index=False)["mw"].sum()
+    return pd.concat(parts, ignore_index=True).groupby(
+        ["site", "time"], as_index=False
+    )["mw"].sum()
+
+
+def _span_frame(records: list[dict], order_cols: list[str]) -> pd.DataFrame:
+    """Common preparation for the irregular-span feeds (MELS, MILS, BOALF)."""
+    site_of = bmu_to_site()
+    df = pd.DataFrame(records)
+    if df.empty or "bmUnit" not in df.columns:
+        return pd.DataFrame()
+    df = df[df["bmUnit"].isin(site_of)].copy()
+    if df.empty:
+        return pd.DataFrame()
+    df["timeFrom"] = pd.to_datetime(df["timeFrom"], utc=True)
+    df["timeTo"] = pd.to_datetime(df["timeTo"], utc=True)
+    for col in order_cols:
+        if col not in df.columns:
+            df[col] = pd.NaT if "Time" in col else 0
+    for col in order_cols:
+        if "Time" in col:
+            df[col] = pd.to_datetime(df[col], utc=True)
+    return df
+
+
+def site_physical_profile(
+    pn_records: list[dict], boalf_records: list[dict]
+) -> pd.DataFrame:
+    """Physical delivery per site per half-hour: PN overwritten by acceptances.
+
+    A Physical Notification is what a unit intended to do; a Balancing
+    Mechanism acceptance is the system operator instructing it to do something
+    else. Both are painted onto one minute grid — the notification first as the
+    baseline, then the acceptances over the top — and only then averaged onto
+    the half-hourly grid.
+
+    Painting order matters more than it looks. Acceptances are often only
+    minutes long (an 18:00→18:03 instruction is typical), so resolving them at
+    half-hourly resolution would let three minutes of instruction rewrite a
+    thirty-minute period. Overlaying on the minute grid keeps the rest of the
+    period at the notified level, which is what actually happened.
+    """
+    pn_df = _span_frame(pn_records, ["timeFrom"])
+    boalf_df = _span_frame(boalf_records, ["acceptanceTime", "acceptanceNumber"])
+    if pn_df.empty:
+        return (
+            _paint_profile(boalf_df, ["acceptanceTime", "acceptanceNumber"], bmu_to_site())
+            if not boalf_df.empty
+            else pd.DataFrame(columns=["site", "time", "mw"])
+        )
+    if boalf_df.empty:
+        return site_profile(pn_records)
+
+    site_of = bmu_to_site()
+    layers = [(pn_df, ["timeFrom"]), (boalf_df, ["acceptanceTime", "acceptanceNumber"])]
+    parts = []
+    for bmu in sorted(set(pn_df["bmUnit"]) | set(boalf_df["bmUnit"])):
+        spans = [(d[d["bmUnit"] == bmu], order) for d, order in layers]
+        spans = [(d, order) for d, order in spans if not d.empty]
+        if not spans:
+            continue
+        start = min(d["timeFrom"].min() for d, _ in spans).floor(_MID_FREQ)
+        stop = max(d["timeTo"].max() for d, _ in spans).ceil(_MID_FREQ)
+        level = pd.Series(float("nan"), index=pd.date_range(start, stop, freq="1min",
+                                                            inclusive="left"))
+        for frame, order in spans:                      # PN first, then acceptances
+            for row in frame.sort_values(order, na_position="first").itertuples():
+                minutes = pd.date_range(row.timeFrom, row.timeTo, freq="1min",
+                                        inclusive="left")
+                if len(minutes) == 0:
+                    continue
+                level.loc[minutes] = [
+                    row.levelFrom
+                    + (row.levelTo - row.levelFrom) * i / max(len(minutes) - 1, 1)
+                    for i in range(len(minutes))
+                ]
+        half_hourly = level.resample(_MID_FREQ).mean().dropna()
+        if half_hourly.empty:
+            continue
+        parts.append(
+            pd.DataFrame({"site": site_of[bmu].site, "time": half_hourly.index,
+                          "mw": half_hourly.values})
+        )
+    if not parts:
+        return pd.DataFrame(columns=["site", "time", "mw"])
+    return pd.concat(parts, ignore_index=True).groupby(
+        ["site", "time"], as_index=False
+    )["mw"].sum()
+
+
+def site_limit_profile(records: list[dict]) -> pd.DataFrame:
+    """Effective declared limit per fleet site per half-hour, in MW.
+
+    Works for MELS (export limits, levels ≥ 0) and MILS (import limits,
+    levels ≤ 0). Redeclarations cut settlement periods into overlapping
+    sub-spans, resolved in notification order; see :func:`_paint_profile`.
+    """
+    df = _span_frame(records, ["notificationTime", "notificationSequence"])
+    if df.empty:
+        return pd.DataFrame(columns=["site", "time", "mw"])
+    return _paint_profile(df, ["notificationTime", "notificationSequence"], bmu_to_site())
 
 
 def filter_daily(
