@@ -228,6 +228,13 @@ GENERATION_GROUP_ORDER: tuple[str, ...] = (
 LOW_CARBON_GROUPS: frozenset[str] = frozenset(
     {"Wind", "Solar", "Nuclear", "Hydro & storage", "Biomass"}
 )
+# Renewable is low-carbon without nuclear: same clean electricity, different
+# question — one asks about carbon, the other about a fuel that replenishes.
+# "Hydro & storage" carries pumped storage as well as run-of-river, and stored
+# energy is only as renewable as whatever charged it; GB pumped-storage output
+# is small beside wind and solar, so it is counted here and the caveat stated
+# rather than splitting a band the whole app colours as one.
+RENEWABLE_GROUPS: frozenset[str] = LOW_CARBON_GROUPS - {"Nuclear"}
 
 
 def group_generation(system: pd.DataFrame) -> pd.DataFrame:

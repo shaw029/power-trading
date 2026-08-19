@@ -27,7 +27,7 @@ from dashboard.charts import (
     chart_gap_by_daytype,
     chart_generation_daily,
     chart_generation_mix,
-    chart_low_carbon_daily,
+    chart_renewable_daily,
     chart_price_capture,
     chart_price_volatility,
     chart_shape_overlay,
@@ -211,7 +211,7 @@ def test_chart_generation_daily_stacks_one_bar_per_day():
     assert fig.layout.barmode == "relative"
 
 
-def test_chart_low_carbon_daily_plots_percentage_and_energy_hover():
+def test_chart_renewable_daily_plots_percentage_and_energy_hover():
     daily = pd.DataFrame(
         {
             "date": ["2024-01-01", "2024-01-02"],
@@ -220,7 +220,7 @@ def test_chart_low_carbon_daily_plots_percentage_and_energy_hover():
             "Gas": [90.0, 60.0],
         }
     )
-    fig = chart_low_carbon_daily(daily, ["Wind", "Solar"])
+    fig = chart_renewable_daily(daily, ["Wind", "Solar"])
     assert isinstance(fig, go.Figure)
     assert list(fig.data[0].y) == [0.55, 0.7]
     assert list(fig.data[0].customdata) == [110.0, 140.0]

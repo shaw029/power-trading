@@ -44,7 +44,7 @@ from dashboard.charts import (  # noqa: E402
     chart_fleet_leaderboard,
     chart_fleet_spread,
     chart_generation_daily,
-    chart_low_carbon_daily,
+    chart_renewable_daily,
     chart_generation_mix,
     chart_operation_explorer,
     chart_pnl_waterfall,
@@ -1471,8 +1471,8 @@ def _page_system():
     # Window KPIs are summed over the actual days shown, so the day-type filter
     # flows straight through (e.g. "low-carbon share on sunny days").
     total_gen = float(sdf[gen_cols].to_numpy().sum())
-    low_carbon = float(
-        sdf[[g for g in gen_cols if g in fetch_live.LOW_CARBON_GROUPS]].to_numpy().sum()
+    renewable = float(
+        sdf[[g for g in gen_cols if g in fetch_live.RENEWABLE_GROUPS]].to_numpy().sum()
     )
     da_hours = float(sdf["da_hours"].sum()) if "da_hours" in sdf else 0.0
     # Hour-weighted so DST days (23 or 25 hours) don't distort the mean.
@@ -1486,10 +1486,13 @@ def _page_system():
     # Percentages are the exception — see _unit_label.
     row1 = st.columns(4)
     row1[0].metric(
-        "Low-carbon share",
-        f"{low_carbon / total_gen:.0%}" if total_gen > 0 else "—",
-        help="Wind, solar, nuclear, hydro and biomass as a share of GB generation "
-        "over the window (interconnector imports excluded).",
+        "Renewable share",
+        f"{renewable / total_gen:.0%}" if total_gen > 0 else "—",
+        help="Wind, solar, hydro and biomass as a share of GB generation over the "
+        "window (interconnector imports excluded). Nuclear is clean but not "
+        "renewable, and runs as flat baseload, so leaving it out keeps the "
+        "number moving with the weather. The hydro band also carries pumped "
+        "storage, which is only as renewable as whatever charged it.",
     )
     row1[1].metric(
         _unit_label("Avg wholesale price", "£/MWh"),
@@ -1543,8 +1546,8 @@ def _page_system():
     # chart that explains them belongs directly beneath them.
     st.plotly_chart(chart_price_volatility(sdf), width="stretch")
     st.plotly_chart(chart_generation_daily(sdf, group_cols), width="stretch")
-    low_carbon_cols = [g for g in gen_cols if g in fetch_live.LOW_CARBON_GROUPS]
-    st.plotly_chart(chart_low_carbon_daily(sdf, low_carbon_cols), width="stretch")
+    renewable_cols = [g for g in gen_cols if g in fetch_live.RENEWABLE_GROUPS]
+    st.plotly_chart(chart_renewable_daily(sdf, renewable_cols), width="stretch")
     st.plotly_chart(chart_stress_vs_demand(sdf), width="stretch")
 
     # Stress is a window-relative decile, so it is classified once across the

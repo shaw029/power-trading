@@ -127,9 +127,9 @@ moves when the date filter moves.
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | SYS-1 | Days shown | Number | How many days the active date filter covers. Sits as a small chip in the page header beside the date range — deliberately not a KPI tile, because it describes the filter rather than the grid. | Built |
-| SYS-3 | Low-carbon share | Number | How much generation came from wind, solar, nuclear, hydro and biomass. | Built |
+| SYS-3 | Renewable share | Number | How much generation came from wind, solar, hydro and biomass. Nuclear is clean but runs flat, so leaving it out keeps the number moving with the weather. | Built |
 | SYS-5 | Generation mix over time | Graph | What powered GB day by day, aggregated into presentation groups. | Built |
-| SYS-6 | Low-carbon over time | Graph | Is the mix getting cleaner across the window? | Built |
+| SYS-6 | Renewable share over time | Graph | How much of GB ran on wind, solar, hydro and biomass, day by day — the variability a battery trades against. | Built |
 | SYS-8 | Average wholesale price | Number | Mean day-ahead price across the window. | Built |
 | SYS-9 | Highest wholesale price | Number | The peak day-ahead price reached in the window. | Built |
 | SYS-10 | Lowest wholesale price | Number | The floor day-ahead price in the window — below zero when generators paid to keep running. | Built |

@@ -1901,33 +1901,43 @@ def chart_generation_daily(daily: pd.DataFrame, group_cols: list[str]) -> go.Fig
     return fig
 
 
-def chart_low_carbon_daily(daily: pd.DataFrame, low_carbon_cols: list[str]) -> go.Figure:
-    """Daily low-carbon share of GB generation, with energy in hover."""
+def chart_renewable_daily(daily: pd.DataFrame, renewable_cols: list[str]) -> go.Figure:
+    """Daily renewable share of GB generation, with energy in hover.
+
+    Renewables rather than low-carbon: nuclear is clean but runs as flat
+    baseload, so including it adds a near-constant offset and damps exactly the
+    variability this page exists to show. Wind and solar swinging is what moves
+    prices and what a battery trades against.
+
+    ``renewable_cols`` are the generation groups counted as renewable — see
+    :data:`live.fetch_live.RENEWABLE_GROUPS`, which notes that the hydro band
+    also carries pumped storage.
+    """
     dates = pd.to_datetime(daily["date"])
-    low_carbon = daily[low_carbon_cols].fillna(0.0).sum(axis=1)
     generation_cols = [
         c for c in GENERATION_COLORS if c in daily.columns and c != "Interconnectors"
     ]
     total = daily[generation_cols].fillna(0.0).sum(axis=1)
-    share = low_carbon.div(total.where(total > 0))
+    renewable = daily[renewable_cols].fillna(0.0).sum(axis=1)
     fig = go.Figure(
         go.Scatter(
             x=dates,
-            y=share,
-            customdata=low_carbon,
-            name="Low-carbon share",
+            y=renewable.div(total.where(total > 0)),
+            customdata=renewable,
+            name="Renewable share",
             mode="lines+markers",
-            line=dict(color=GENERATION_COLORS["Hydro & storage"], width=3),
+            line=dict(color=GENERATION_COLORS["Biomass"], width=3),
             marker=dict(size=6),
             fill="tozeroy",
-            fillcolor="rgba(27,175,122,0.14)",
+            fillcolor="rgba(102, 187, 106, 0.18)",
             hovertemplate=(
-                "%{x|%Y-%m-%d}<br>Low-carbon share: %{y:.1%}<br>"
-                "Low-carbon generation: %{customdata:,.0f} GWh<extra></extra>"
+                "Renewable share: %{y:.1%}<br>"
+                "Renewable generation: %{customdata:,.0f} GWh<extra></extra>"
             ),
         )
     )
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Daily low-carbon generation share")
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Daily renewable generation share")
+    fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text="Share of GB generation", tickformat=".0%", range=[0, 1])
     return fig
 

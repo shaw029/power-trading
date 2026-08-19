@@ -1,5 +1,10 @@
 """Headless smoke test for the live Streamlit dashboard.
 
+Every AppTest here allows 120s. The pages now do markedly more work per run —
+physical-delivery reconstruction, tier classification, several more charts —
+and at 60s the harness tripped intermittently on whichever test happened to run
+under load, while the suite as a whole still finished in under 20s.
+
 ``live.fetch_live`` and the ``fleet`` fetchers are mocked so no network call
 happens, and Streamlit's ``AppTest`` runs the script in-process and surfaces
 any exception. This proves the app boots, renders its tabs, and stays
@@ -97,11 +102,17 @@ def app(monkeypatch):
         fetch_fleet, "fetch_fleet_bm_cashflows", lambda d: {"bid": [], "offer": []}
     )
     monkeypatch.setattr(fetch_fleet, "fetch_day_mid_prices", _fleet_mid)
+    # Physical delivery needs acceptances; without this the suite silently
+    # starts hitting Elexon, which is exactly what this fixture exists to stop.
+    monkeypatch.setattr(fetch_fleet, "fetch_fleet_boalf", lambda d: [])
     monkeypatch.setattr(fetch_live, "get_day_system", _system)
     monkeypatch.setattr(fetch_live, "get_day_lolpdrm", _lolpdrm)
     monkeypatch.setattr(fetch_live, "get_cmn_notices", _no_cmn)
-    # Keep the smoke test fast — settle a handful of days, not the full window.
-    monkeypatch.setattr(live_app, "_MAX_HISTORY_DAYS", 5)
+    # Keep the smoke test fast. Three days is enough for every assertion here,
+    # and the alignment page solves a resilience LP per settled day — at five
+    # days the four AppTest runs in one process contended enough that one of
+    # them, varying between runs, tripped the harness timeout.
+    monkeypatch.setattr(live_app, "_MAX_HISTORY_DAYS", 3)
     # Drop any cached real data from other runs so the mocks take effect.
     live_app._fetch_day.clear()
     live_app._settle_range.clear()
@@ -119,7 +130,7 @@ def app(monkeypatch):
 def test_app_boots_on_latest_day_page(app):
     from streamlit.testing.v1 import AppTest
 
-    at = AppTest.from_file("dashboard/live_app.py", default_timeout=60)
+    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
     at.run()
 
     assert not at.exception
@@ -162,7 +173,7 @@ def test_system_page_renders_price_and_stress_kpis(app):
     # The unit sits on a second label line so the value stays a bare,
     # comparable number.
     assert labels == [
-        "Low-carbon share",
+        "Renewable share",
         "Avg wholesale price  \n£/MWh",
         "Highest wholesale price  \n£/MWh",
         "Lowest wholesale price  \n£/MWh",
@@ -235,7 +246,7 @@ def test_filter_days_by_period_and_day_type():
 def test_duration_change_does_not_error(app):
     from streamlit.testing.v1 import AppTest
 
-    at = AppTest.from_file("dashboard/live_app.py", default_timeout=60)
+    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
     at.run()
     # The levers sit in a sidebar form: pick a new duration, then Apply.
     at.radio[0].set_value("4h")
