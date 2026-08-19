@@ -39,6 +39,7 @@ from dashboard.charts import (  # noqa: E402
     chart_fleet_by_optimiser,
     chart_fleet_by_region,
     chart_fleet_daily,
+    chart_fleet_dispersion,
     chart_fleet_leaderboard,
     chart_fleet_spread,
     chart_generation_daily,
@@ -652,8 +653,19 @@ def _page_day():
         demand = system["demand_actual"] if "demand_actual" in system.columns else None
         st.plotly_chart(chart_generation_mix(groups, demand), width="stretch")
 
+    # Fleet dispersion. fleet_day is loaded for the fleet KPIs above and already
+    # carries `cycles` on the non-empty branch, so this costs only the chart.
+    if not fleet_day.empty:
+        st.plotly_chart(
+            chart_fleet_dispersion(
+                fleet_day,
+                dur_result.cycles,
+                dur_result.net_pnl / REFERENCE_POWER_MW,
+            ),
+            width="stretch",
+        )
+
     with st.expander("Fleet this day"):
-        fleet_day = _fleet_day(picked)
         if fleet_day.empty:
             st.info("No fleet data available for this day.")
         else:

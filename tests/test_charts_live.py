@@ -25,6 +25,7 @@ from dashboard.charts import (
     chart_equity_curve,
     chart_fleet_leaderboard,
     chart_fleet_daily,
+    chart_fleet_dispersion,
     chart_fleet_spread,
     chart_gap_by_daytype,
     chart_generation_daily,
@@ -171,6 +172,41 @@ def test_chart_cycles_vs_revenue_ghosts_excluded_sites():
     fig = chart_cycles_vs_revenue(df, sim_cycles=1.4, sim_gbp=120.0)
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 3  # sites, ghosts, sim star
+
+
+def test_chart_fleet_dispersion_splits_by_sign_and_labels_the_ends():
+    df = pd.DataFrame(
+        {
+            "site": ["A", "B", "C", "D"],
+            "optimiser": ["W", "X", "Y", "Z"],
+            "cycles": [1.1, 0.9, 0.0, 2.4],
+            "gbp_per_mw": [90.0, 70.0, -40.0, 150.0],
+        }
+    )
+    fig = chart_fleet_dispersion(df, sim_cycles=1.0, sim_gbp=120.0)
+    assert isinstance(fig, go.Figure)
+    assert [t.name for t in fig.data] == [
+        "Earned",
+        "Lost money",
+        "Optimiser (perfect foresight)",
+    ]
+    # Best and worst are named on the plot; the rest stay to hover.
+    assert {a.text for a in fig.layout.annotations} == {"D", "C"}
+    # Median crosshairs, not a decoration: one per axis.
+    assert len(fig.layout.shapes) == 2
+
+
+def test_chart_fleet_dispersion_survives_an_all_profitable_day():
+    df = pd.DataFrame(
+        {
+            "site": ["A", "B"],
+            "optimiser": ["X", "Y"],
+            "cycles": [1.0, 0.5],
+            "gbp_per_mw": [90.0, 70.0],
+        }
+    )
+    fig = chart_fleet_dispersion(df, sim_cycles=1.0, sim_gbp=120.0)
+    assert [t.name for t in fig.data] == ["Earned", "Optimiser (perfect foresight)"]
 
 
 def test_chart_generation_mix_stacks_groups_and_demand():

@@ -1676,6 +1676,89 @@ def chart_cycles_vs_revenue(df: pd.DataFrame, sim_cycles: float, sim_gbp: float)
     return fig
 
 
+def chart_fleet_dispersion(
+    df: pd.DataFrame, sim_cycles: float, sim_gbp: float
+) -> go.Figure:
+    """One day's real sites by cycles worked against £/MW earned.
+
+    The day-page counterpart to :func:`chart_cycles_vs_revenue`, which measures
+    the same two axes as rates over a window. Here both are a single day, so the
+    scatter reads as strategies rather than averages: hard cycling that paid, and
+    hard cycling that did not.
+
+    ``df`` columns: ``site``, ``optimiser``, ``cycles``, ``gbp_per_mw``.
+
+    Two departures from the window version. Faint median crosshairs split the
+    field into quadrants, which is what makes "cycled more than typical, earned
+    less than typical" visible rather than something the reader has to compute.
+    And colour marks the sign of earnings, because on any single day part of the
+    fleet loses money — a distinction the window averages hide. Sign is also
+    carried by position against the zero line, so colour is never the only cue.
+    """
+    fig = go.Figure()
+    med_cycles = float(df["cycles"].median())
+    med_gbp = float(df["gbp_per_mw"].median())
+    for line, kwargs in (
+        (med_gbp, dict(y0=med_gbp, y1=med_gbp, x0=0, x1=1, yref="y", xref="paper")),
+        (med_cycles, dict(x0=med_cycles, x1=med_cycles, y0=0, y1=1,
+                          xref="x", yref="paper")),
+    ):
+        fig.add_shape(
+            type="line", line=dict(color=COLORS["ghost"], width=1, dash="dot"), **kwargs
+        )
+
+    for earned, name, color in (
+        (True, "Earned", COLORS["gain"]),
+        (False, "Lost money", COLORS["cost"]),
+    ):
+        sub = df[(df["gbp_per_mw"] >= 0) == earned]
+        if sub.empty:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=sub["cycles"],
+                y=sub["gbp_per_mw"],
+                mode="markers",
+                name=name,
+                marker=dict(color=color, size=10, line=dict(width=1, color="white")),
+                customdata=[f"{s} · {o}" for s, o in zip(sub["site"], sub["optimiser"])],
+                hovertemplate=(
+                    "%{customdata}<br>%{x:.2f} cycles · £%{y:,.0f}/MW<extra></extra>"
+                ),
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=[sim_cycles],
+            y=[sim_gbp],
+            mode="markers",
+            name="Optimiser (perfect foresight)",
+            marker=dict(color=COLORS["net"], size=14, symbol="star"),
+            hovertemplate="Optimiser<br>%{x:.2f} cycles · £%{y:,.0f}/MW<extra></extra>",
+        )
+    )
+    # Name only the two ends. Labelling 20 sites would bury the shape the chart
+    # exists to show; the rest are one hover away.
+    for _, row in (
+        df.loc[[df["gbp_per_mw"].idxmax(), df["gbp_per_mw"].idxmin()]].iterrows()
+    ):
+        right_half = row["cycles"] > (df["cycles"].max() + df["cycles"].min()) / 2
+        fig.add_annotation(
+            x=row["cycles"],
+            y=row["gbp_per_mw"],
+            text=row["site"],
+            showarrow=False,
+            xanchor="right" if right_half else "left",
+            xshift=-12 if right_half else 12,
+            font=dict(size=11, color=_INK),
+        )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Fleet dispersion — cycles vs earnings today")
+    fig.update_layout(hovermode="closest")
+    fig.update_xaxes(title_text="Cycles today")
+    fig.update_yaxes(title_text="Estimated earnings (£/MW)")
+    return fig
+
+
 def chart_daytype_ratio(df: pd.DataFrame) -> go.Figure:
     """Fleet-wholesale ÷ sim-ceiling ratio per day-type tag.
 
