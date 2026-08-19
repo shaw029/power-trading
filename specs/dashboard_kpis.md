@@ -97,7 +97,7 @@ grid did, and what the real fleet did — and ungrouped they read as one undiffe
 | DAY-22 | Renewable share | Number | Wind, solar, hydro and biomass as a share of GB generation today — grounds the price volatility beside it. | Added |
 | — | **Real GB fleet** | — | — | — |
 | DAY-23 | Fleet median PnL | Number | What the typical real battery earned today, with how many sites reported. | Added |
-| DAY-24 | Sim vs fleet gap | Number | How far the perfect-foresight model sits above the typical real battery today — a ceiling, not a competitor. | Added |
+| DAY-24 | Operator dispersion | Number | Interquartile spread across the real batteries today — what operator skill and siting were worth, measured where one exceptional site cannot move it. Mirrors FLT-4. | Built |
 | DAY-25 | Fleet median cycles | Number | How hard the typical real battery worked, with the simulation's own cycles beside it. | Added |
 | DAY-26 | Top real site | Number | The best-earning real battery today and the party trading it. | Added |
 | DAY-7 | The day on one timeline | Graph | Four panels sharing one clock: prices, dispatch against the locked day-ahead commitment, state of charge inside its band, and residual load with stress and surplus shaded. | Built |

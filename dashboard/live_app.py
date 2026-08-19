@@ -580,7 +580,7 @@ def _page_day():
     flt = st.columns(4)
     if fleet_day.empty:
         flt[0].metric(_unit_label("Fleet median PnL", "£/MW"), "—")
-        flt[1].metric(_unit_label("Sim vs fleet gap", "£/MW"), "—")
+        flt[1].metric(_unit_label("Operator dispersion", "£/MW"), "—")
         flt[2].metric("Fleet median cycles", "—")
         flt[3].metric("Top real site", "—")
     else:
@@ -588,7 +588,6 @@ def _page_day():
             cycles=fleet_day["discharge_mwh"] / fleet_day["capacity_mwh"]
         )
         median_gbp = float(fleet_day["gbp_per_mw"].median())
-        sim_gbp = dur_result.net_pnl / REFERENCE_POWER_MW
         best = fleet_day.loc[fleet_day["gbp_per_mw"].idxmax()]
         flt[0].metric(
             _unit_label("Fleet median PnL", "£/MW"),
@@ -599,12 +598,18 @@ def _page_day():
             "(delivered output × MID + balancing cashflows). Ancillary income "
             "is invisible here, so sites trading it read low.",
         )
+        _spread = fleet_day["gbp_per_mw"]
+        _iqr = (
+            float(_spread.quantile(0.75) - _spread.quantile(0.25))
+            if len(_spread) >= 4 else None
+        )
         flt[1].metric(
-            _unit_label("Sim vs fleet gap", "£/MW"),
-            f"{sim_gbp - median_gbp:+,.0f}",
-            help="How far the perfect-foresight simulation sits above the typical "
-            "real battery today. It is a ceiling, not a competitor: no live "
-            "trader sees the intraday price in advance.",
+            _unit_label("Operator dispersion", "£/MW"),
+            f"{_iqr:,.0f}" if _iqr is not None else "—",
+            help="Interquartile spread (P75 − P25) across the real batteries "
+            "today — what operator skill and siting were worth on this day, "
+            "measured where one exceptional site cannot move it. The same "
+            "measure the fleet page reports. Needs at least four sites.",
         )
         flt[2].metric(
             "Fleet median cycles",
