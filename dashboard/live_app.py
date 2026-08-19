@@ -103,8 +103,6 @@ the settlement engine run over published market data.
 """
 
 RESOLUTION_H = 1.0
-# Days the dispatch explorer opens on, inside whatever the sidebar selected.
-_EXPLORER_DEFAULT_DAYS = 5
 # Nord Pool serves recent GB day-ahead prices without a subscription back to
 # roughly 65 days; 60 leaves a safety margin. Older days simply 401 → their DA
 # frame comes back empty and the day is skipped, so the window self-trims.
@@ -810,15 +808,11 @@ def _page_history():
         width="stretch",
     )
 
-    # Dispatch explorer over the most recent days of the sidebar's window. No
-    # slider: the sidebar period is the only day control on this page.
+    # Dispatch explorer over exactly the days the sidebar selected — the same
+    # window every other chart on this page uses.
     st.markdown("#### Dispatch explorer")
-    st.caption(
-        f"Hour-by-hour prices, trades and state of charge over the last "
-        f"{_EXPLORER_DEFAULT_DAYS} days shown."
-    )
-    window = shown[-_EXPLORER_DEFAULT_DAYS:]
-    win_dispatch = _range_dispatch(window, duration)
+    st.caption("Hour-by-hour prices, trades and state of charge over the selected days.")
+    win_dispatch = _range_dispatch(shown, duration)
     st.plotly_chart(
         chart_operation_explorer(
             _prices_hourly(win_dispatch),
