@@ -103,6 +103,8 @@ the settlement engine run over published market data.
 """
 
 RESOLUTION_H = 1.0
+# Days the dispatch explorer opens on, inside whatever the sidebar selected.
+_EXPLORER_DEFAULT_DAYS = 5
 # Nord Pool serves recent GB day-ahead prices without a subscription back to
 # roughly 65 days; 60 leaves a safety margin. Older days simply 401 → their DA
 # frame comes back empty and the day is skipped, so the window self-trims.
@@ -687,12 +689,23 @@ def _page_history():
         width="stretch",
     )
 
-    # Dispatch explorer over the window the sidebar already selected. It used
-    # to carry its own day slider, which was a second filter competing with
-    # the first — narrowing the period is what the sidebar is for.
+    # Dispatch explorer. Its slider zooms *within* whatever the sidebar
+    # selected rather than competing with it — the options are the filtered
+    # days — because hour-by-hour detail over a 60-day window is unreadable
+    # and slow to draw. Defaults to the most recent five days.
     st.markdown("#### Dispatch explorer")
-    st.caption("Hour-by-hour prices, trades and state of charge across the shown days.")
-    win_dispatch = _range_dispatch(shown, duration)
+    st.caption("Hour-by-hour prices, trades and state of charge over the selected days.")
+    dates = [d["date"] for d in shown]
+    if len(dates) > 1:
+        start_iso, end_iso = st.select_slider(
+            "Explorer window (days)",
+            options=dates,
+            value=(dates[max(0, len(dates) - _EXPLORER_DEFAULT_DAYS)], dates[-1]),
+        )
+    else:
+        start_iso = end_iso = dates[0]
+    window = [d for d in shown if start_iso <= d["date"] <= end_iso]
+    win_dispatch = _range_dispatch(window, duration)
     st.plotly_chart(
         chart_operation_explorer(
             _prices_hourly(win_dispatch),
