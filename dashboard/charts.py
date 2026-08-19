@@ -193,11 +193,16 @@ def chart_realized_shape(
     """Mean realised physical dispatch and execution prices by hour-of-day.
 
     The execution layer: what the battery physically did after the rolling
-    re-optimisation reshaped the committed schedule. Faint reference bars are the locked DA
-    commitment, so the gap to the solid bars is the net intraday reshaping — the
+    re-optimisation reshaped the committed schedule. A ghost step line is the locked DA
+    commitment, so the gap to the bars is the net intraday reshaping — the
     re-optimisation's deviation (``spread_mw``) moving energy across the day. The
     lines are the realised DA price (the proxy the engine *decides* on) and the
     realised MID (where the deviations *settle*).
+
+    Labels drop the "Mean" prefix when the frame holds a single day, where an
+    average over one observation per hour says nothing. That is read off the data
+    rather than passed in, so a page that narrows its filter to one day gets the
+    honest wording without the call site having to know.
     """
     d = dispatch_df.copy()
     d["timestamp"] = pd.to_datetime(d["timestamp"])
@@ -220,32 +225,31 @@ def chart_realized_shape(
     da_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["day_ahead_price"].mean()
     mid_by_hour = prices_hourly.groupby(prices_hourly.index.hour)["mid_price"].mean()
 
+    if d["timestamp"].dt.normalize().nunique() > 1:
+        commit_name, dispatch_name = "Mean DA commitment", "Mean realised dispatch"
+        da_name, mid_name = "Mean DA price", "Mean MID price"
+        dispatch_axis = "Mean dispatch (MW, + discharge / − charge)"
+    else:
+        commit_name, dispatch_name = "DA commitment", "Realised dispatch"
+        da_name, mid_name = "DA price", "MID price"
+        dispatch_axis = "Dispatch (MW, + discharge / − charge)"
+
     fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=da_commit.index,
-            y=da_commit.values,
-            name="Mean DA commitment MW",
-            yaxis="y2",
-            marker_color=COLORS["ghost"],
-            opacity=0.45,
-        )
-    )
     fig.add_trace(
         go.Bar(
             x=mean_mw.index,
             y=mean_mw.values,
-            name="Mean realised dispatch MW",
+            name=dispatch_name,
             yaxis="y2",
             marker_color=_dispatch_bar_colors(mean_mw.values),
-            opacity=0.65,
+            opacity=0.85,
         )
     )
     fig.add_trace(
         go.Scatter(
             x=da_by_hour.index,
             y=da_by_hour.values,
-            name="Mean DA price (decision proxy)",
+            name=da_name,
             yaxis="y",
             line=dict(color=COLORS["da"], width=2),
         )
@@ -254,9 +258,22 @@ def chart_realized_shape(
         go.Scatter(
             x=mid_by_hour.index,
             y=mid_by_hour.values,
-            name="Mean MID price (settlement)",
+            name=mid_name,
             yaxis="y",
             line=dict(color=COLORS["mid"], width=2),
+        )
+    )
+    # Drawn last so the outline sits over the bars, but ranked first so the
+    # legend keeps reading commitment → realised, as it did as a bar.
+    fig.add_trace(
+        go.Scatter(
+            x=da_commit.index,
+            y=da_commit.values,
+            name=commit_name,
+            yaxis="y2",
+            mode="lines",
+            line=dict(color=COLORS["ghost"], width=2, shape="hvh"),
+            legendrank=1,
         )
     )
     fig.update_layout(
@@ -264,7 +281,7 @@ def chart_realized_shape(
         xaxis=dict(title="Hour of Day", dtick=1),
         yaxis=dict(title="Price (£/MWh)", side="left"),
         yaxis2=dict(
-            title="Mean Dispatch (MW, + discharge / − charge)",
+            title=dispatch_axis,
             side="right",
             overlaying="y",
             title_font=dict(color="#555"),
