@@ -168,6 +168,23 @@ def test_alignment_page_renders_system_tightness(app):
     assert "Tier-2 stress coverage" in labels
 
 
+def test_day_types_page_renders_the_two_family_charts(app):
+    from streamlit.testing.v1 import AppTest
+    from streamlit.testing.v1.app_test import calc_hash
+
+    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    at._page_hash = calc_hash("day-types")
+    at.run()
+
+    assert not at.exception
+    titles = [c.proto.spec for c in at.get("plotly_chart")]
+    # Six charts: capture, yield/wear, crossing matrix, frequency, SOC
+    # profiles, market reliance. The last two are the new pair, and the
+    # reliance chart is the one that can degrade to an info box, so its
+    # presence proves the gross-earnings branch held.
+    assert len(at.get("plotly_chart")) == 6, titles
+
+
 def test_system_page_renders_price_and_stress_kpis(app):
     from streamlit.testing.v1 import AppTest
     from streamlit.testing.v1.app_test import calc_hash

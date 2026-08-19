@@ -15,7 +15,9 @@ from dashboard.charts import (
     chart_cycles_vs_revenue,
     chart_daytype_capture,
     chart_daytype_frequency,
+    chart_daytype_market_reliance,
     chart_daytype_matrix,
+    chart_daytype_yield_wear,
     chart_daytype_profiles,
     chart_daytype_ratio,
     chart_day_composite,
@@ -207,6 +209,42 @@ def test_chart_fleet_dispersion_survives_an_all_profitable_day():
     )
     fig = chart_fleet_dispersion(df, sim_cycles=1.0, sim_gbp=120.0)
     assert [t.name for t in fig.data] == ["Earned", "Optimiser (perfect foresight)"]
+
+
+def test_chart_daytype_yield_wear_sizes_by_days_and_splits_families():
+    df = pd.DataFrame(
+        {
+            "tag": ["wind-led", "wind-drought", "volatile"],
+            "family": ["driver", "driver", "price"],
+            "gbp_per_mw": [208.0, 96.0, 131.0],
+            "cycles": [0.75, 0.80, 0.80],
+            "days": [3, 5, 22],
+        }
+    )
+    fig = chart_daytype_yield_wear(df)
+    assert isinstance(fig, go.Figure)
+    assert [t.name for t in fig.data] == [
+        "Fundamentals (physics)",
+        "Price traits (finance)",
+    ]
+    # Every tag is named on the plot, and the bubble carries the day count.
+    assert set(fig.data[0].text) == {"wind-led", "wind-drought"}
+    assert list(fig.data[0].marker.size) == [3, 5]
+
+
+def test_chart_daytype_market_reliance_orders_by_intraday_share():
+    df = pd.DataFrame(
+        {
+            "tag": ["solar-led", "wind-led", "volatile"],
+            "family": ["driver", "driver", "price"],
+            "da_share": [0.87, 0.95, 0.88],
+            "intraday_share": [0.13, 0.05, 0.12],
+        }
+    )
+    fig = chart_daytype_market_reliance(df)
+    assert [t.name for t in fig.data] == ["Day-ahead auction", "Intraday re-trading"]
+    # Ascending intraday share, so the in-day hunters end up together.
+    assert list(fig.data[0].y) == ["wind-led", "volatile", "solar-led"]
 
 
 def test_chart_generation_mix_stacks_groups_and_demand():

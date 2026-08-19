@@ -1,19 +1,23 @@
 """Descriptive day-type tagging for the live GB BESS benchmark.
 
 This module labels a single delivery day with zero or more human-readable tags
-drawn from a fixed vocabulary. The vocabulary is split into two independent
-families so downstream reporting can cross them without circularity:
+drawn from a fixed vocabulary. The vocabulary is flat, and split into two
+independent families so downstream reporting can cross them without
+circularity:
 
-* **Driver tags** describe what *caused* the day — the weather and demand
-  fundamentals (``windy``, ``sunny``, ``high_demand``, ``low_demand``) and the
-  calendar (``weekend``).
-* **Price-character tags** describe how *prices behaved* — volatility
-  (``volatile`` / ``calm``), sub-zero hours (``negative_prices``) and the
-  intraday shape (``two_peak`` / ``single_peak``).
+* **Fundamentals** — the physics. What the weather and human behaviour did:
+  ``wind-led`` / ``wind-drought``, ``solar-led``, ``high-demand`` /
+  ``low-demand``, and the calendar's ``weekend``.
+* **Price traits** — the finance. How the market reacted to that physics:
+  ``volatile`` / ``flat``, sub-zero hours (``negative-price``) and the intraday
+  shape (``two-peak`` / ``single-peak``).
 
 Keeping the families separate matters because a battery's revenue is largely a
 function of the price character: "volatile days earn more" is close to a
-tautology, whereas "windy days turn volatile and earn more" is a finding.
+tautology, whereas "wind-led days turn volatile and earn more" is a finding.
+It also means composite regimes need no vocabulary of their own — a scarcity
+day is simply where ``wind-drought`` and ``volatile`` overlap, which the
+crossing chart shows directly rather than a hard-coded label asserting it.
 
 The classifier is intentionally pure, deterministic and total: it consumes the
 already-fetched price frame and context dict from :mod:`live.fetch_live` (A2),
@@ -26,10 +30,10 @@ import pandas as pd
 # The two tag families. Kept as module-level constants so callers and tests can
 # assert against the exact vocabulary and split charts by family.
 DRIVER_TAGS: frozenset[str] = frozenset(
-    {"windy", "sunny", "high_demand", "low_demand", "weekend"}
+    {"wind-led", "wind-drought", "solar-led", "high-demand", "low-demand", "weekend"}
 )
 PRICE_TAGS: frozenset[str] = frozenset(
-    {"volatile", "calm", "negative_prices", "two_peak", "single_peak"}
+    {"volatile", "flat", "negative-price", "two-peak", "single-peak"}
 )
 TAGS: frozenset[str] = DRIVER_TAGS | PRICE_TAGS
 
@@ -40,12 +44,18 @@ DEFAULTS: dict[str, float] = {
     # Day-ahead intraday spread (max - min over the day), in £/MWh.
     # A quiet GB day rarely swings more than ~£20/MWh peak-to-trough, whereas a
     # genuinely volatile day blows well past £60/MWh; the gap in between is left
-    # untagged so only clear-cut days earn "calm" or "volatile".
+    # untagged so only clear-cut days earn "flat" or "volatile".
     "volatile_spread": 60.0,
-    "calm_spread": 20.0,
+    "flat_spread": 20.0,
     # Wind share of total generation (0-1). GB wind routinely supplies a large
     # slice of the mix; ~40%+ marks a day where wind clearly dominates.
     "wind_share": 0.40,
+    # The other end of the same axis. GB wind share averages roughly a quarter
+    # to a third of generation across a year, so a day at or below 15% is a
+    # genuine lull — the residual load the rest of the fleet must carry, and
+    # the setup for a scarcity day. The band between this and "wind_share" is
+    # left untagged so only clear-cut days earn either label.
+    "wind_drought_share": 0.15,
     # Solar energy over the day, in GWh. GB solar output is modest — annual
     # generation averages only ~35-40 GWh/day — so a sunny day stands out well
     # below the wind scale; ~55 GWh/day reflects a strong clear-sky summer day.
@@ -81,7 +91,7 @@ def _day_ahead_spread(prices: pd.DataFrame) -> float | None:
 
 
 def _peak_shape(prices: pd.DataFrame, prominence: float) -> str | None:
-    """``"two_peak"``, ``"single_peak"`` or ``None`` for a shapeless day.
+    """``"two-peak"``, ``"single-peak"`` or ``None`` for a shapeless day.
 
     A peak exists when the maximum of its window (morning 05–12 or evening
     16–22 UTC) rises at least ``prominence`` above the midday-trough minimum.
@@ -106,9 +116,9 @@ def _peak_shape(prices: pd.DataFrame, prominence: float) -> str | None:
         if not in_window.empty and float(in_window.max()) - trough >= prominence:
             peaks += 1
     if peaks == 2:
-        return "two_peak"
+        return "two-peak"
     if peaks == 1:
-        return "single_peak"
+        return "single-peak"
     return None
 
 
@@ -149,19 +159,22 @@ def classify(
 
     # --- Driver tags: what caused the day. -------------------------------- #
     wind_share = context.get("wind_share")
-    if wind_share is not None and wind_share >= thresholds["wind_share"]:
-        tags.append("windy")
+    if wind_share is not None:
+        if wind_share >= thresholds["wind_share"]:
+            tags.append("wind-led")
+        elif wind_share <= thresholds["wind_drought_share"]:
+            tags.append("wind-drought")
 
     solar_gwh = context.get("solar_gwh")
     if solar_gwh is not None and solar_gwh >= thresholds["solar_gwh"]:
-        tags.append("sunny")
+        tags.append("solar-led")
 
     demand_gwh = context.get("demand_gwh")
     if demand_gwh is not None:
         if demand_gwh >= thresholds["high_demand_gwh"]:
-            tags.append("high_demand")
+            tags.append("high-demand")
         elif demand_gwh <= thresholds["low_demand_gwh"]:
-            tags.append("low_demand")
+            tags.append("low-demand")
 
     if isinstance(prices.index, pd.DatetimeIndex) and len(prices.index):
         if int(prices.index[0].dayofweek) >= 5:
@@ -172,13 +185,13 @@ def classify(
     if spread is not None:
         if spread >= thresholds["volatile_spread"]:
             tags.append("volatile")
-        elif spread <= thresholds["calm_spread"]:
-            tags.append("calm")
+        elif spread <= thresholds["flat_spread"]:
+            tags.append("flat")
 
     if "day_ahead_price" in prices.columns:
         da = prices["day_ahead_price"].dropna()
         if not da.empty and float(da.min()) < 0.0:
-            tags.append("negative_prices")
+            tags.append("negative-price")
 
     shape = _peak_shape(prices, thresholds["peak_prominence"])
     if shape is not None:

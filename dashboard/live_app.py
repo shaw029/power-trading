@@ -34,6 +34,8 @@ from dashboard.charts import (  # noqa: E402
     chart_daytype_capture,
     chart_daytype_frequency,
     chart_daytype_matrix,
+    chart_daytype_market_reliance,
+    chart_daytype_yield_wear,
     chart_daytype_profiles,
     chart_daytype_ratio,
     chart_fleet_by_optimiser,
@@ -776,10 +778,15 @@ def _page_day_types():
 
     _page_header("Day types", caption)
     st.caption(
-        "Each settled day is tagged on two independent axes: what **drove** it "
-        "(wind, sun, demand, weekend) and how **prices behaved** (volatility, "
-        "negative hours, peak shape). A day can hold several tags and counts "
-        "under each — so read these as regime views, not disjoint buckets."
+        "Every settled day carries a flat set of tags from two independent "
+        "families: **fundamentals** — the physics of what the weather and demand "
+        "did (`wind-led`, `wind-drought`, `solar-led`, `high-demand`, "
+        "`low-demand`, `weekend`) — and **price traits**, how the market reacted "
+        "(`volatile`, `flat`, `negative-price`, `two-peak`, `single-peak`). A day "
+        "holds as many as fit and counts under each, so read these as regime "
+        "views, not disjoint buckets. Composite regimes need no label of their "
+        "own: a scarcity day is where `wind-drought` and `volatile` overlap, "
+        "which the crossing chart below shows directly."
     )
 
     membership_rows, matrix_counts, profile_rows, table_rows = [], {}, [], []
@@ -793,27 +800,32 @@ def _page_day_types():
             membership_rows.append(
                 {
                     "date": record["date"],
-                    "tag": tag.replace("_", " "),
+                    "tag": tag,
                     "family": "driver" if tag in classify_mod.DRIVER_TAGS else "price",
                     "capture": dur_result.capture,
+                    # Carried per membership so the yield/wear and reliance
+                    # views aggregate over exactly the days a tag covers.
+                    "gbp_per_mw": dur_result.net_pnl / REFERENCE_POWER_MW,
+                    "cycles": dur_result.cycles,
+                    "da_gbp": dur_result.benchmark_da_revenue,
+                    "intraday_gbp": dur_result.intraday_da_improvement,
                 }
             )
         for d in drivers or ["(none)"]:
             for p in price_tags or ["(none)"]:
-                key = (d.replace("_", " "), p.replace("_", " "))
+                key = (d, p)
                 matrix_counts[key] = matrix_counts.get(key, 0) + 1
-        # SOC shape is grouped by price character only — that's what dispatch
-        # actually responds to; a windy-tag average would blur distinct shapes.
+        # SOC shape is grouped by price trait only — that's what dispatch
+        # actually responds to; a wind-led average would blur distinct shapes.
         for tag in price_tags or ["untagged"]:
             for i, entry in enumerate(dur_result.dispatch_log):
                 profile_rows.append(
-                    {"hour": i % 24, "soc": entry["soc_after"],
-                     "day_type": tag.replace("_", " ")}
+                    {"hour": i % 24, "soc": entry["soc_after"], "day_type": tag}
                 )
         table_rows.append(
             {
                 "date": record["date"],
-                "tags": ", ".join(tag.replace("_", " ") for tag in labels) or "untagged",
+                "tags": ", ".join(labels) or "untagged",
                 "gbp_per_mw": dur_result.net_pnl / REFERENCE_POWER_MW,
                 "capture": dur_result.capture,
                 "cycles": dur_result.cycles,
@@ -824,7 +836,20 @@ def _page_day_types():
         st.info("No tagged days in the current window — widen the period filter.")
         return
 
-    st.plotly_chart(chart_daytype_capture(pd.DataFrame(membership_rows)), width="stretch")
+    memberships = pd.DataFrame(membership_rows)
+    st.plotly_chart(chart_daytype_capture(memberships), width="stretch")
+
+    # Capture judges strategy fit with the opportunity normalised away; this
+    # pair puts the money and the wear back. Both aggregate the same membership
+    # rows, so a day counts under every tag it carries, exactly as above.
+    per_tag = memberships.groupby(["tag", "family"], as_index=False).agg(
+        gbp_per_mw=("gbp_per_mw", "mean"),
+        cycles=("cycles", "mean"),
+        days=("date", "nunique"),
+        da_gbp=("da_gbp", "sum"),
+        intraday_gbp=("intraday_gbp", "sum"),
+    )
+    st.plotly_chart(chart_daytype_yield_wear(per_tag), width="stretch")
 
     drivers_idx = sorted({d for d, _ in matrix_counts}) if matrix_counts else []
     price_cols = sorted({p for _, p in matrix_counts}) if matrix_counts else []
@@ -838,6 +863,23 @@ def _page_day_types():
     right.plotly_chart(chart_daytype_frequency(pd.DataFrame(membership_rows)), width="stretch")
 
     st.plotly_chart(chart_daytype_profiles(pd.DataFrame(profile_rows)), width="stretch")
+
+    # Reliance is a share of the gross legs, so a tag whose two legs cancel to
+    # nothing has no meaningful split and is dropped rather than drawn at 50/50.
+    reliance = per_tag.assign(gross=per_tag["da_gbp"] + per_tag["intraday_gbp"])
+    reliance = reliance[reliance["gross"] > 0]
+    if reliance.empty:
+        st.info("No day type earned enough to split day-ahead from intraday.")
+    else:
+        st.plotly_chart(
+            chart_daytype_market_reliance(
+                reliance.assign(
+                    da_share=reliance["da_gbp"] / reliance["gross"],
+                    intraday_share=reliance["intraday_gbp"] / reliance["gross"],
+                )
+            ),
+            width="stretch",
+        )
 
     st.markdown("#### Days behind the tags")
     table = pd.DataFrame(table_rows).sort_values("date", ascending=False).rename(

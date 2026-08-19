@@ -57,7 +57,7 @@ These set which days every page is about.
 | ID | Shows | Type | What it does | Status |
 |---|---|---|---|---|
 | GLB-1 | Period | Filter | Last 7 / 14 / 30 / 60 days, or a custom range. Defaults to 30 days. | Built |
-| GLB-2 | Day types | Filter | Show only windy days, volatile days, weekends, and so on. Nothing selected means all days. | Built |
+| GLB-2 | Day types | Filter | Show only `wind-led` days, `volatile` days, `weekend`s, and so on — the flat tag vocabulary from the Day types page. Nothing selected means all days. | Built |
 
 ## Battery settings — sidebar, on the simulated pages only
 
@@ -84,7 +84,7 @@ grid did, and what the real fleet did — and ungrouped they read as one undiffe
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | DAY-1 | Day picker | Filter | Which day you're looking at. Defaults to the most recent settled day and persists across pages; a filter change that strands the choice snaps it back to the latest. | Built |
-| DAY-17 | Day-type tags | Note | The classifier's tags for this day (`windy`, `volatile`, and so on), as chips under the picker. Absent on a day with no clear character. | Built |
+| DAY-17 | Day-type tags | Note | The classifier's tags for this day (`wind-led`, `volatile`, and so on), as chips under the picker. Absent on a day with no clear character. | Built |
 | — | **Baseline optimiser** | — | — | — |
 | DAY-2 | Net PnL | Number | What the battery made today, per MW, against a typical day in the window. | Built |
 | DAY-3 | Intraday improvement | Number | What re-optimising against the realised intraday price added on top of the day-ahead schedule, and its share of net PnL. Perfect foresight, so an upper bound. | Changed |
@@ -208,13 +208,31 @@ being comparable to the degradation lever.
 
 *Data: day tags from the classifier, plus simulated earnings.*
 
+**The tags are flat, in two families.** Not a hierarchy — a day carries as many
+labels as fit, and the families are crossed rather than nested:
+
+| Family | Tags | What it is |
+|---|---|---|
+| **Fundamentals** *(the physics)* | `wind-led` · `wind-drought` · `solar-led` · `high-demand` · `low-demand` · `weekend` | What the weather and human behaviour did. |
+| **Price traits** *(the finance)* | `volatile` · `flat` · `negative-price` · `two-peak` · `single-peak` | How the market reacted to that physics. |
+
+Composite regimes need no vocabulary of their own, which is the point of keeping
+the families apart: a scarcity day is simply where `wind-drought` overlaps
+`volatile`, and DTY-2 shows that overlap directly instead of a hard-coded label
+asserting it. Wind sits on one axis with a deliberately untagged band between
+the two thresholds, so only clear-cut days earn either label.
+
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
 | DTY-1 | Capture rate by day type | Graph | How close the optimiser got to the perfect-foresight ceiling on each kind of day — a distribution, with every day plotted, not one number per type. Capture normalises away how big the opportunity was, so this reads as strategy fit rather than "volatile days pay more". | Built |
-| DTY-2 | Which tags travel together | Graph | Windy days are often also low-price days, etc. | Built |
+| DTY-6 | Yield & wear by day type | Graph | A bubble per tag: mean net PnL (£/MW/day) against mean cycles per day, sized by how many days carry the tag. The absolute reality DTY-1 normalises away — which days actually print money, and what they cost the battery. | Built |
+| DTY-2 | Which tags travel together | Graph | Day counts where a fundamental crosses a price trait — `wind-led` against `negative-price`, `wind-drought` against `volatile`. The engine for finding regimes rather than declaring them. | Built |
 | DTY-3 | How common each type is | Graph | Frequency of each kind of day. | Built |
-| DTY-4 | Mean state of charge by price character | Graph | Average state of charge through the day for each price tag — volatile, negative-price, peaky. Grouped by price character only: driver tags like *windy* are deliberately left out, because averaging them blurs distinct shapes. | Built |
+| DTY-4 | Mean state of charge by price character | Graph | Average state of charge through the day for each price trait — `volatile`, `flat`, `negative-price`, `two-peak`, `single-peak`. Grouped by price trait only: fundamentals like `wind-led` are deliberately left out, because averaging them blurs distinct shapes. | Built |
+| DTY-7 | Market reliance by day type | Graph | For each tag, the share of gross earnings from the day-ahead auction versus intraday re-trading, ordered by intraday reliance. Shows which days let the optimiser lock its money in at auction and which force it to hunt in-day. | Built |
 | DTY-5 | Days behind the tags | Table | Every day in the window with its tags, £/MW/day, capture and cycles, newest first. | Built |
+
+Rows are in screen order.
 
 ## Benchmark vs fleet — simulation against reality  ·  *Research*
 

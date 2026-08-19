@@ -852,7 +852,7 @@ def chart_duration_comparison(
 # The two day-type families share one colour each across every day-type chart:
 # what caused the day (driver) vs how prices behaved (price character).
 FAMILY_COLORS = {"driver": COLORS["da"], "price": COLORS["mid"]}
-FAMILY_NAMES = {"driver": "Driver (weather / demand)", "price": "Price character"}
+FAMILY_NAMES = {"driver": "Fundamentals (physics)", "price": "Price traits (finance)"}
 
 
 def _daytype_order(df: pd.DataFrame, value_col: str) -> list[str]:
@@ -944,8 +944,101 @@ def chart_daytype_frequency(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def chart_daytype_yield_wear(df: pd.DataFrame) -> go.Figure:
+    """Absolute earnings against physical wear, one bubble per tag.
+
+    The counterpart to :func:`chart_daytype_capture`, which normalises the
+    opportunity away to judge strategy fit. This one keeps the money: a day type
+    the optimiser handles at 95% of the ceiling can still be worth a fraction of
+    one it only reaches 80% on, and it can cost half the cycles doing it.
+
+    ``df`` columns: ``tag``, ``family``, ``gbp_per_mw`` and ``cycles`` (both
+    averaged over the days carrying that tag) and ``days`` (how many, which sets
+    the bubble area — a tag seen twice should not read like one seen forty
+    times). Tags are labelled on the plot, so the legend only carries family.
+    """
+    fig = go.Figure()
+    # Area, not diameter, carries the day count: doubling the days should look
+    # twice as big, which is what sizemode="area" gives.
+    sizeref = 2.0 * float(df["days"].max()) / (38.0**2) if len(df) else 1.0
+    for family in ("driver", "price"):
+        sub = df[df["family"] == family]
+        if sub.empty:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=sub["cycles"],
+                y=sub["gbp_per_mw"],
+                mode="markers+text",
+                name=FAMILY_NAMES[family],
+                text=sub["tag"],
+                textposition="top center",
+                textfont=dict(size=11, color=_INK),
+                marker=dict(
+                    color=FAMILY_COLORS[family],
+                    size=sub["days"],
+                    sizemode="area",
+                    sizeref=sizeref,
+                    sizemin=6,
+                    opacity=0.65,
+                    line=dict(width=1, color="white"),
+                ),
+                customdata=sub["days"],
+                hovertemplate=(
+                    "%{text}<br>£%{y:,.0f}/MW/day · %{x:.2f} cycles/day"
+                    "<br>%{customdata} day(s)<extra></extra>"
+                ),
+            )
+        )
+    apply_theme(
+        fig, height=DEFAULT_CHART_HEIGHT,
+        title="Yield vs wear by day type — what each kind of day pays, and costs",
+    )
+    fig.update_layout(hovermode="closest")
+    fig.update_xaxes(title_text="Mean cycles per day")
+    fig.update_yaxes(title_text="Mean net PnL (£/MW/day)")
+    return fig
+
+
+def chart_daytype_market_reliance(df: pd.DataFrame) -> go.Figure:
+    """Where each day type's money is made: day-ahead auction vs intraday.
+
+    ``df`` columns: ``tag``, ``family``, ``da_share`` and ``intraday_share``
+    (fractions summing to 1 across the days carrying that tag). Shares rather
+    than pounds, because the question is reliance, not size — that is
+    :func:`chart_daytype_yield_wear`'s job.
+
+    Bars are ordered by intraday reliance so the days that force the optimiser
+    to hunt in-day sit together at one end.
+    """
+    d = df.sort_values("intraday_share")
+    fig = go.Figure()
+    for col, name, color in (
+        ("da_share", "Day-ahead auction", COLORS["da"]),
+        ("intraday_share", "Intraday re-trading", COLORS["intraday"]),
+    ):
+        fig.add_trace(
+            go.Bar(
+                x=d[col],
+                y=d["tag"],
+                orientation="h",
+                name=name,
+                marker_color=color,
+                hovertemplate=f"{name}: %{{x:.0%}}<extra></extra>",
+            )
+        )
+    apply_theme(
+        fig,
+        height=max(HEIGHT_SM, 30 * len(d) + 130),
+        title="Market reliance by day type — where the money was made",
+    )
+    fig.update_layout(barmode="stack", hovermode="y unified")
+    fig.update_xaxes(title_text="Share of gross earnings", tickformat=".0%")
+    return fig
+
+
 def chart_daytype_matrix(matrix: pd.DataFrame) -> go.Figure:
-    """Driver × price-character day counts — do windy days turn volatile?
+    """Fundamentals × price-trait day counts — do wind-led days turn volatile?
 
     ``matrix`` is a frame indexed by driver tag with price-character tags as
     columns and day counts as values (a day holding several tags counts in

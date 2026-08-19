@@ -38,32 +38,51 @@ def test_high_spread_day_is_volatile() -> None:
     prices = _prices([10.0] * 12 + [10.0 + DEFAULTS["volatile_spread"] + 50.0] * 12)
     tags = classify.classify(prices, _full_context())
     assert "volatile" in tags
-    assert "calm" not in tags
+    assert "flat" not in tags
 
 
-def test_flat_day_is_calm() -> None:
+def test_level_day_is_flat() -> None:
     prices = _prices([50.0] * 24)
     tags = classify.classify(prices, _full_context())
-    assert "calm" in tags
+    assert "flat" in tags
     assert "volatile" not in tags
 
 
-def test_high_wind_share_is_windy() -> None:
+def test_high_wind_share_is_wind_led() -> None:
     context = _full_context()
     context["wind_share"] = DEFAULTS["wind_share"] + 0.2
     tags = classify.classify(_prices([50.0] * 24), context)
-    assert "windy" in tags
+    assert "wind-led" in tags
+    assert "wind-drought" not in tags
 
 
-def test_high_solar_is_sunny() -> None:
+def test_low_wind_share_is_a_wind_drought() -> None:
+    context = _full_context()
+    context["wind_share"] = DEFAULTS["wind_drought_share"] - 0.05
+    tags = classify.classify(_prices([50.0] * 24), context)
+    assert "wind-drought" in tags
+    assert "wind-led" not in tags
+
+
+def test_mid_wind_share_earns_neither_wind_tag() -> None:
+    # The band between the two thresholds is deliberately untagged, so only
+    # clear-cut days carry a wind label.
+    context = _full_context()
+    context["wind_share"] = (DEFAULTS["wind_drought_share"] + DEFAULTS["wind_share"]) / 2
+    tags = classify.classify(_prices([50.0] * 24), context)
+    assert "wind-led" not in tags
+    assert "wind-drought" not in tags
+
+
+def test_high_solar_is_solar_led() -> None:
     context = _full_context()
     context["solar_gwh"] = DEFAULTS["solar_gwh"] + 10.0
     tags = classify.classify(_prices([50.0] * 24), context)
-    assert "sunny" in tags
+    assert "solar-led" in tags
 
     # Just below the threshold the tag is withheld.
     context["solar_gwh"] = DEFAULTS["solar_gwh"] - 10.0
-    assert "sunny" not in classify.classify(_prices([50.0] * 24), context)
+    assert "solar-led" not in classify.classify(_prices([50.0] * 24), context)
 
 
 def test_all_none_context_returns_price_tags_only() -> None:
@@ -91,11 +110,11 @@ def test_returns_only_known_tags_and_never_raises() -> None:
 def test_high_and_low_demand() -> None:
     high = _full_context()
     high["demand_gwh"] = DEFAULTS["high_demand_gwh"] + 50.0
-    assert "high_demand" in classify.classify(_prices([50.0] * 24), high)
+    assert "high-demand" in classify.classify(_prices([50.0] * 24), high)
 
     low = _full_context()
     low["demand_gwh"] = DEFAULTS["low_demand_gwh"] - 50.0
-    assert "low_demand" in classify.classify(_prices([50.0] * 24), low)
+    assert "low-demand" in classify.classify(_prices([50.0] * 24), low)
 
 
 def test_weekend_tag_from_the_index_date() -> None:
@@ -108,8 +127,8 @@ def test_weekend_tag_from_the_index_date() -> None:
 def test_negative_prices_tag() -> None:
     values = [50.0] * 24
     values[3] = -5.0
-    assert "negative_prices" in classify.classify(_prices(values), _full_context())
-    assert "negative_prices" not in classify.classify(
+    assert "negative-price" in classify.classify(_prices(values), _full_context())
+    assert "negative-price" not in classify.classify(
         _prices([0.0] + [50.0] * 23), _full_context()
     )
 
@@ -120,8 +139,8 @@ def test_two_peak_shape() -> None:
     values[8] = 70.0
     values[18] = 70.0
     tags = classify.classify(_prices(values), _full_context())
-    assert "two_peak" in tags
-    assert "single_peak" not in tags
+    assert "two-peak" in tags
+    assert "single-peak" not in tags
 
 
 def test_single_peak_shape() -> None:
@@ -129,11 +148,11 @@ def test_single_peak_shape() -> None:
     values = [40.0] * 24
     values[18] = 70.0
     tags = classify.classify(_prices(values), _full_context())
-    assert "single_peak" in tags
-    assert "two_peak" not in tags
+    assert "single-peak" in tags
+    assert "two-peak" not in tags
 
 
-def test_flat_day_has_no_shape_tag() -> None:
+def test_level_day_has_no_shape_tag() -> None:
     tags = classify.classify(_prices([50.0] * 24), _full_context())
-    assert "single_peak" not in tags
-    assert "two_peak" not in tags
+    assert "single-peak" not in tags
+    assert "two-peak" not in tags
