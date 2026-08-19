@@ -277,7 +277,9 @@ def chart_realized_shape(
         )
     )
     fig.update_layout(
-        title="Realised Dispatch Shape — physical dispatch & execution prices by hour",
+        # Kept short: the chart sits in a half-width column, where the old
+        # subtitle truncated mid-word. The legend already names every series.
+        title="Realised dispatch shape",
         xaxis=dict(title="Hour of Day", dtick=1),
         yaxis=dict(title="Price (£/MWh)", side="left"),
         yaxis2=dict(

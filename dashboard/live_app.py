@@ -635,13 +635,11 @@ def _page_day():
     prices_hourly = _prices_hourly(dispatch)
     da_sched = _da_sched_frame(dispatch)
 
-    # Full width: the hour-of-day chart carries two axes, a four-item legend and
-    # 24 ticks, all of which crowd in a half-width column.
-    st.plotly_chart(
+    left, right = st.columns(2)
+    left.plotly_chart(
         chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch"
     )
-
-    st.plotly_chart(
+    right.plotly_chart(
         chart_pnl_waterfall(pd.DataFrame([_pnl_row(record["date"], dur_result)])),
         width="stretch",
     )
