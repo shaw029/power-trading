@@ -5,7 +5,7 @@ MID / generation / demand — both public, no API key), settles the reference
 battery with user-chosen parameters, and renders a sidebar-navigated app
 grouped by epistemic status: the Benchmark (Day briefing / History), the
 observed GB power system (System overview / Fleet performance), the Research
-analyses (Market regimes / Benchmark vs fleet / Alignment gap) and the
+analyses (Market regimes / Execution gap / Alignment gap) and the
 methodology. Because the engine re-runs on each parameter change, the
 dashboard is interactive rather than precomputed; it is meant to run on
 Streamlit Cloud.
@@ -1276,7 +1276,7 @@ def _page_sim_vs_fleet():
     params, shown, caption = view
     duration = params["duration"]
 
-    _page_header("Benchmark vs fleet", caption)
+    _page_header("Execution gap", caption)
     st.caption(
         "The simulation is a **perfect-foresight DA+MID ceiling** for one idealised "
         "battery; fleet numbers are free-data estimates spanning several markets. "
@@ -1328,24 +1328,43 @@ def _page_sim_vs_fleet():
     mw_days = float((comp_sites["power_mw"] * comp_sites["days"]).sum())
     fleet_wholesale = float(comp_sites["wholesale_gbp"].sum()) / mw_days
 
-    cols = st.columns(4)
+    # Cycles per site-day, weighted the same way the money is, so the physical
+    # gap and the earnings gap are computed over the same population.
+    fleet_cycles = float(
+        (comp_sites["cycles_per_day"] * comp_sites["days"]).sum()
+        / comp_sites["days"].sum()
+    )
+
+    st.markdown("**The headline gap** · *like legs only — wholesale against wholesale*")
+    cols = st.columns(5)
     cols[0].metric(
-        "Sim ceiling",
-        f"£{sim_gbp:,.0f}/MW/day",
-        help=f"Perfect-foresight {duration} benchmark over the {len(common)} common days.",
+        _unit_label("Sim ceiling", "£/MW/day"),
+        f"{sim_gbp:,.0f}",
+        help=f"Perfect-foresight {duration} benchmark on the DA/MID spread, over "
+        f"the {len(common)} common days.",
     )
     cols[1].metric(
-        "Fleet wholesale avg",
-        f"£{fleet_wholesale:,.0f}/MW/day",
+        _unit_label("Fleet wholesale avg", "£/MW/day"),
+        f"{fleet_wholesale:,.0f}",
         help="PN × MID leg only, MW-weighted over the comparison sites — the leg "
-        "the sim actually plays.",
+        "the sim actually plays. Balancing revenue is deliberately outside it.",
     )
     cols[2].metric(
         "Realisation",
         f"{fleet_wholesale / sim_gbp:.0%}" if sim_gbp > 1e-9 else "—",
-        help="Fleet wholesale average as a share of the sim ceiling.",
+        help="Fleet wholesale average as a share of the sim ceiling — the grading "
+        "of real execution against a perfect-foresight trader.",
     )
     cols[3].metric(
+        "Physical gap",
+        f"{fleet_cycles:.2f} vs {sim_cycles:.2f}",
+        f"{fleet_cycles - sim_cycles:+.2f} cycles/day",
+        delta_color="off",
+        help="Fleet cycles per day against the simulation's, on delivered "
+        "throughput. It separates the two ways of falling short: trading the "
+        "same energy worse, or simply moving less of it.",
+    )
+    cols[4].metric(
         "Sites compared",
         f"{len(comp_sites)} × {duration}",
         f"{len(excluded)} ⚠ excluded" if excluded else "none excluded",
@@ -1357,10 +1376,6 @@ def _page_sim_vs_fleet():
         bm=comp_sites["bm_gbp"] / (comp_sites["power_mw"] * comp_sites["days"]),
     )
     comp = comp.assign(ratio=comp["wholesale"] / sim_gbp if sim_gbp > 1e-9 else 0.0)
-    st.plotly_chart(
-        chart_sim_vs_fleet_sites(comp, sim_gbp, f"sim {duration} ceiling"), width="stretch"
-    )
-
     per_day = comp_daily.groupby("date").agg(
         wholesale_gbp=("wholesale_gbp", "sum"), mw=("power_mw", "sum")
     )
@@ -1376,9 +1391,9 @@ def _page_sim_vs_fleet():
             ],
         }
     )
+    st.markdown("**Behaviour & timing** · *when does reality fall behind?*")
     st.plotly_chart(chart_sim_vs_fleet_daily(daily), width="stretch")
 
-    left, right = st.columns(2)
     shape = _fleet_hourly_shape(common, comp_sites)
     if shape is not None:
         sim_hours: dict[int, list[float]] = {}
@@ -1390,11 +1405,7 @@ def _page_sim_vs_fleet():
         shape["sim"] = shape["hour"].map(
             lambda h: float(pd.Series(sim_hours.get(h, [0.0])).mean())
         )
-        left.plotly_chart(chart_shape_overlay(shape), width="stretch")
-    scatter = site_df.assign(excluded=site_df["site"].isin(excluded))
-    right.plotly_chart(
-        chart_cycles_vs_revenue(scatter, sim_cycles, sim_gbp), width="stretch"
-    )
+        st.plotly_chart(chart_shape_overlay(shape), width="stretch")
 
     labels = _day_labels(tuple(date_isos))
     fleet_by_day = dict(zip(daily["date"], daily["fleet"]))
@@ -1417,6 +1428,18 @@ def _page_sim_vs_fleet():
         )
     if ratio_rows:
         st.plotly_chart(chart_daytype_ratio(pd.DataFrame(ratio_rows)), width="stretch")
+
+    # Site level last: the two headline questions are answered above, and this
+    # is where you go to ask which operators closed the gap.
+    st.markdown("**Site-level breakdown** · *who closed the gap?*")
+    st.plotly_chart(
+        chart_sim_vs_fleet_sites(comp, sim_gbp, f"sim {duration} ceiling"),
+        width="stretch",
+    )
+    scatter = site_df.assign(excluded=site_df["site"].isin(excluded))
+    st.plotly_chart(
+        chart_cycles_vs_revenue(scatter, sim_cycles, sim_gbp), width="stretch"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -2316,7 +2339,7 @@ def main():
             ),
             st.Page(
                 _page_sim_vs_fleet,
-                title="Benchmark vs fleet",
+                title="Execution gap",
                 icon=":material/compare_arrows:",
                 url_path="sim-vs-fleet",
             ),

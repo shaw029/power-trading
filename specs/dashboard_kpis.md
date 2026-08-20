@@ -42,7 +42,7 @@ simulated from what actually happened, and keeps analysis that mixes the two in 
 |---|---|---|
 | **Benchmark** | Daily summary · Optimiser performance | The simulated battery. Numbers here come from a model, not the market. |
 | **GB power system** | System overview · Fleet performance | Observed reality. Nothing simulated, so the battery settings are hidden. |
-| **Research** | Market regimes · Benchmark vs fleet · Alignment gap | Analysis that uses both sides. |
+| **Research** | Market regimes · Execution gap · Alignment gap | Analysis that uses both sides. |
 | **About** | Methodology | What every number means, and what it isn't. |
 
 Daily summary is the default landing page and the only place a single day is chosen; the research pages
@@ -237,22 +237,31 @@ the two thresholds, so only clear-cut days earn either label.
 
 Rows are in screen order.
 
-## Benchmark vs fleet — simulation against reality  ·  *Research*
+## Execution gap — simulation vs reality  ·  *Research*  ·  URL `/sim-vs-fleet`
+
+Sidebar label: **Execution gap**.
 
 *Data: the simulation and the real fleet over the days they share.*
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| SVF-1 | Include grid-services sites | Filter | Off by default — including them exaggerates the gap. | Built |
-| SVF-2 | Simulation ceiling | Number | The best a perfect trader could have done. | Built |
+| SVF-1 | Include grid-services sites | Filter | Off by default — including them exaggerates the gap, as their wholesale volume is artificially low. | Built |
+| — | **The headline gap** | — | *Like legs only — wholesale against wholesale.* | — |
+| SVF-2 | Simulation ceiling | Number | The best a perfect trader could have done on the DA/MID spread (£/MW/day). | Built |
 | SVF-3 | Fleet wholesale avg | Number | The wholesale leg (PN × MID) only, MW-weighted across the comparison sites — the single leg the simulation also plays. Balancing revenue is deliberately outside it. | Built |
-| SVF-4 | Realisation | Number | Real earnings as a share of the ceiling — the headline gap. | Built |
+| SVF-4 | Realisation | Number | Real wholesale earnings as a share of the ceiling (SVF-3 ÷ SVF-2) — the grading of real execution. | Built |
+| SVF-11 | Physical gap | Number | Fleet cycles per day against the simulation's, on delivered throughput. Explains *why* the realisation gap exists: did the fleet trade the same energy worse, or simply move less of it? | Built |
 | SVF-5 | Sites compared | Number | How many real batteries are in the comparison. | Built |
-| SVF-9 | Per-site vs the ceiling | Graph | Each site's £/MW/day split into the wholesale leg and the balancing leg, against the simulation ceiling drawn as a reference line. Only the wholesale leg is comparable — the sim does not play the balancing market. | Built |
+| — | **Behaviour & timing** | — | *When does reality fall behind?* | — |
 | SVF-6 | Day by day | Graph | Simulation against fleet over time. | Built |
 | SVF-7 | Trading shape | Graph | Do real batteries move at the same hours? Mean net output by hour, discharge positive. Absent on a window with no usable per-hour fleet shape. | Built |
+| SVF-8 | Gap by market regime | Graph | On which regimes does reality fall furthest short? Runs on the same classifier tags as the Market regimes page. Absent when no day in the window carries a tag. | Changed |
+| — | **Site-level breakdown** | — | *Who closed the gap?* | — |
+| SVF-9 | Per-site vs the ceiling | Graph | Each site's £/MW/day split into the wholesale leg and the balancing leg, against the simulation ceiling drawn as a reference line. Only the wholesale leg is comparable — the sim does not play the balancing market. | Built |
 | SVF-10 | Work rate vs earnings | Graph | Every site plotted by cycles per day against £/MW/day, with the benchmark starred — does trading harder actually pay? | Built |
-| SVF-8 | Gap by day type | Graph | On which kinds of day does reality fall furthest short? Absent when no day in the window carries a tag. | Built |
+
+Rows are in screen order. The three group headings render on the page as labels
+above their rows, the same device the Daily summary uses for its three KPI groups.
 
 ## Alignment gap — does profit serve the grid?  ·  *Research*
 

@@ -45,7 +45,7 @@ OWNER = {
 }
 PAGE_NAMES = {
     "DAY": "Daily summary", "HIS": "Optimiser performance", "SYS": "GB system overview",
-    "FLT": "Fleet performance", "DTY": "Market regimes", "SVF": "Benchmark vs fleet",
+    "FLT": "Fleet performance", "DTY": "Market regimes", "SVF": "Execution gap",
     "ALN": "Alignment gap", "MTH": "Methodology",
 }
 
