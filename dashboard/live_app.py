@@ -837,11 +837,10 @@ def _page_day_types():
         return
 
     memberships = pd.DataFrame(membership_rows)
-    st.plotly_chart(chart_daytype_capture(memberships), width="stretch")
-
-    # Capture judges strategy fit with the opportunity normalised away; this
-    # pair puts the money and the wear back. Both aggregate the same membership
-    # rows, so a day counts under every tag it carries, exactly as above.
+    # Capture judges strategy fit with the opportunity normalised away; yield
+    # and wear put the money and the cycles back. They answer the same question
+    # from opposite ends, so they belong side by side. Both aggregate the same
+    # membership rows, so a day counts under every tag it carries.
     per_tag = memberships.groupby(["tag", "family"], as_index=False).agg(
         gbp_per_mw=("gbp_per_mw", "mean"),
         cycles=("cycles", "mean"),
@@ -849,7 +848,9 @@ def _page_day_types():
         da_gbp=("da_gbp", "sum"),
         intraday_gbp=("intraday_gbp", "sum"),
     )
-    st.plotly_chart(chart_daytype_yield_wear(per_tag), width="stretch")
+    left, right = st.columns(2)
+    left.plotly_chart(chart_daytype_capture(memberships), width="stretch")
+    right.plotly_chart(chart_daytype_yield_wear(per_tag), width="stretch")
 
     drivers_idx = sorted({d for d, _ in matrix_counts}) if matrix_counts else []
     price_cols = sorted({p for _, p in matrix_counts}) if matrix_counts else []
@@ -862,16 +863,20 @@ def _page_day_types():
     left.plotly_chart(chart_daytype_matrix(matrix), width="stretch")
     right.plotly_chart(chart_daytype_frequency(pd.DataFrame(membership_rows)), width="stretch")
 
-    st.plotly_chart(chart_daytype_profiles(pd.DataFrame(profile_rows)), width="stretch")
-
-    # Reliance is a share of the gross legs, so a tag whose two legs cancel to
-    # nothing has no meaningful split and is dropped rather than drawn at 50/50.
+    # Shape beside source: when the battery held charge, and which market it
+    # earned in. Reliance is a share of the gross legs, so a tag whose two legs
+    # cancel to nothing has no meaningful split and is dropped rather than
+    # drawn at 50/50.
     reliance = per_tag.assign(gross=per_tag["da_gbp"] + per_tag["intraday_gbp"])
     reliance = reliance[reliance["gross"] > 0]
+    shape_col, market_col = st.columns(2)
+    shape_col.plotly_chart(
+        chart_daytype_profiles(pd.DataFrame(profile_rows)), width="stretch"
+    )
     if reliance.empty:
-        st.info("No day type earned enough to split day-ahead from intraday.")
+        market_col.info("No regime earned enough to split day-ahead from intraday.")
     else:
-        st.plotly_chart(
+        market_col.plotly_chart(
             chart_daytype_market_reliance(
                 reliance.assign(
                     da_share=reliance["da_gbp"] / reliance["gross"],

@@ -110,7 +110,10 @@ Dropped: **Capture** (net PnL as a share of the day-ahead optimum) and **DA benc
 described the model against itself; the fleet group now answers the same question against
 reality instead.
 
-Rows are in screen order. The three panels at the foot of the page are fold-out expanders,
+Rows are in screen order, and the six graphs sit in three pairs: capture beside
+yield & wear (the same question normalised and absolute), the crossing matrix
+beside frequency, and the state-of-charge shape beside market reliance (when
+the battery held charge, and which market paid for it). The three panels at the foot of the page are fold-out expanders,
 closed by default: **Battery detail**, **System detail**, **Fleet this day**.
 
 ## Baseline optimiser performance — the whole window  ·  *Benchmark*
@@ -224,12 +227,12 @@ the two thresholds, so only clear-cut days earn either label.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| DTY-1 | Capture rate by day type | Graph | How close the optimiser got to the perfect-foresight ceiling on each kind of day — a distribution, with every day plotted, not one number per type. Capture normalises away how big the opportunity was, so this reads as strategy fit rather than "volatile days pay more". | Built |
-| DTY-6 | Yield & wear by day type | Graph | A bubble per tag: mean net PnL (£/MW/day) against mean cycles per day, sized by how many days carry the tag. The absolute reality DTY-1 normalises away — which days actually print money, and what they cost the battery. | Built |
+| DTY-1 | Capture rate by regime | Graph | How close the optimiser got to the perfect-foresight ceiling on each kind of day — a distribution, with every day plotted, not one number per type. Capture normalises away how big the opportunity was, so this reads as strategy fit rather than "volatile days pay more". | Built |
+| DTY-6 | Yield & wear by regime | Graph | A bubble per tag: mean net PnL (£/MW/day) against mean cycles per day, sized by how many days carry the tag. The absolute reality DTY-1 normalises away — which days actually print money, and what they cost the battery. | Built |
 | DTY-2 | Which tags travel together | Graph | Day counts where a fundamental crosses a price trait — `wind-led` against `negative-price`, `wind-drought` against `volatile`. The engine for finding regimes rather than declaring them. | Built |
 | DTY-3 | How common each type is | Graph | Frequency of each kind of day. | Built |
-| DTY-4 | Mean state of charge by price character | Graph | Average state of charge through the day for each price trait — `volatile`, `flat`, `negative-price`, `two-peak`, `single-peak`. Grouped by price trait only: fundamentals like `wind-led` are deliberately left out, because averaging them blurs distinct shapes. | Built |
-| DTY-7 | Market reliance by day type | Graph | For each tag, the share of gross earnings from the day-ahead auction versus intraday re-trading, ordered by intraday reliance. Shows which days let the optimiser lock its money in at auction and which force it to hunt in-day. | Built |
+| DTY-4 | Mean state of charge by price trait | Graph | Average state of charge through the day for each price trait — `volatile`, `flat`, `negative-price`, `two-peak`, `single-peak`. Grouped by price trait only: fundamentals like `wind-led` are deliberately left out, because averaging them blurs distinct shapes. | Built |
+| DTY-7 | Market reliance by regime | Graph | For each tag, the share of gross earnings from the day-ahead auction versus intraday re-trading, ordered by intraday reliance. Shows which days let the optimiser lock its money in at auction and which force it to hunt in-day. | Built |
 | DTY-5 | Days behind the tags | Table | Every day in the window with its tags, £/MW/day, capture and cycles, newest first. | Built |
 
 Rows are in screen order.

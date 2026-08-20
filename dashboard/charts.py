@@ -901,9 +901,12 @@ def chart_daytype_capture(df: pd.DataFrame) -> go.Figure:
     apply_theme(
         fig,
         height=max(DEFAULT_CHART_HEIGHT, 34 * len(order) + 120),
-        title="Capture rate by day-type — share of the perfect-foresight ceiling",
+        title="Capture rate by regime",
     )
-    fig.update_xaxes(title_text="Capture rate", tickformat=".0%")
+    fig.update_xaxes(
+        title_text="Capture rate — share of the perfect-foresight ceiling",
+        tickformat=".0%",
+    )
     fig.update_yaxes(categoryorder="array", categoryarray=order)
     return fig
 
@@ -936,7 +939,7 @@ def chart_daytype_frequency(df: pd.DataFrame) -> go.Figure:
     apply_theme(
         fig,
         height=max(HEIGHT_SM, 30 * len(counts) + 110),
-        title="Days per type in the window",
+        title="Days per regime in the window",
     )
     fig.update_layout(showlegend=False)
     fig.update_xaxes(title_text="Days tagged")
@@ -961,6 +964,11 @@ def chart_daytype_yield_wear(df: pd.DataFrame) -> go.Figure:
     # Area, not diameter, carries the day count: doubling the days should look
     # twice as big, which is what sizemode="area" gives.
     sizeref = 2.0 * float(df["days"].max()) / (38.0**2) if len(df) else 1.0
+    # The chart sits in a half-width column, where "top center" on every label
+    # stacks them into each other in whichever corner the tags cluster. Throwing
+    # each label outward, away from the middle of the field, spreads them into
+    # the padded space at the edges instead.
+    midpoint = (float(df["cycles"].max()) + float(df["cycles"].min())) / 2 if len(df) else 0.0
     for family in ("driver", "price"):
         sub = df[df["family"] == family]
         if sub.empty:
@@ -972,8 +980,11 @@ def chart_daytype_yield_wear(df: pd.DataFrame) -> go.Figure:
                 mode="markers+text",
                 name=FAMILY_NAMES[family],
                 text=sub["tag"],
-                textposition="top center",
-                textfont=dict(size=11, color=_INK),
+                textposition=[
+                    "middle right" if x > midpoint else "middle left"
+                    for x in sub["cycles"]
+                ],
+                textfont=dict(size=10, color=_INK),
                 marker=dict(
                     color=FAMILY_COLORS[family],
                     size=sub["days"],
@@ -992,11 +1003,20 @@ def chart_daytype_yield_wear(df: pd.DataFrame) -> go.Figure:
         )
     apply_theme(
         fig, height=DEFAULT_CHART_HEIGHT,
-        title="Yield vs wear by day type — what each kind of day pays, and costs",
+        title="Yield vs wear by regime",
     )
     fig.update_layout(hovermode="closest")
-    fig.update_xaxes(title_text="Mean cycles per day")
-    fig.update_yaxes(title_text="Mean net PnL (£/MW/day)")
+    # Padding on both axes so a label thrown outward, or a bubble at the top of
+    # the range, is not clipped by the plot frame.
+    fig.update_xaxes(title_text="Mean cycles per day", automargin=True)
+    fig.update_yaxes(title_text="Mean net PnL (£/MW/day)", automargin=True)
+    if len(df):
+        pad_x = (float(df["cycles"].max()) - float(df["cycles"].min())) * 0.22 or 0.05
+        pad_y = (float(df["gbp_per_mw"].max()) - float(df["gbp_per_mw"].min())) * 0.15 or 10.0
+        fig.update_xaxes(range=[df["cycles"].min() - pad_x, df["cycles"].max() + pad_x])
+        fig.update_yaxes(
+            range=[df["gbp_per_mw"].min() - pad_y, df["gbp_per_mw"].max() + pad_y]
+        )
     return fig
 
 
@@ -1030,7 +1050,7 @@ def chart_daytype_market_reliance(df: pd.DataFrame) -> go.Figure:
     apply_theme(
         fig,
         height=max(HEIGHT_SM, 30 * len(d) + 130),
-        title="Market reliance by day type — where the money was made",
+        title="Market reliance by regime",
     )
     fig.update_layout(barmode="stack", hovermode="y unified")
     fig.update_xaxes(title_text="Share of gross earnings", tickformat=".0%")
@@ -1063,7 +1083,7 @@ def chart_daytype_matrix(matrix: pd.DataFrame) -> go.Figure:
     apply_theme(
         fig,
         height=max(HEIGHT_SM, 34 * len(matrix.index) + 140),
-        title="Drivers × price character — day counts",
+        title="Fundamentals × price traits — day counts",
     )
     fig.update_xaxes(title_text="Price character", side="bottom")
     fig.update_yaxes(title_text="Driver")
@@ -1142,7 +1162,7 @@ def chart_daytype_profiles(
                 hovertemplate=label + "<br>Hour %{x}<br>%{y:,.2f}<extra></extra>",
             )
         )
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Mean daily profile by day-type")
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Mean daily profile by regime")
     fig.update_layout(hovermode="x unified")
     fig.update_xaxes(title_text="Hour of day", dtick=2)
     fig.update_yaxes(title_text=value_label)
