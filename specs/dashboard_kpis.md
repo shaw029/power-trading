@@ -262,6 +262,8 @@ Sidebar label: **Execution gap**.
 
 Rows are in screen order. The three group headings render on the page as labels
 above their rows, the same device the Daily summary uses for its three KPI groups.
+Within *Behaviour & timing*, SVF-7 and SVF-8 sit side by side — when the fleet
+moves, beside how much of the ceiling it caught on each kind of day.
 
 ## Alignment gap — does profit serve the grid?  ·  *Research*
 

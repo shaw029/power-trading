@@ -1405,7 +1405,6 @@ def _page_sim_vs_fleet():
         shape["sim"] = shape["hour"].map(
             lambda h: float(pd.Series(sim_hours.get(h, [0.0])).mean())
         )
-        st.plotly_chart(chart_shape_overlay(shape), width="stretch")
 
     labels = _day_labels(tuple(date_isos))
     fleet_by_day = dict(zip(daily["date"], daily["fleet"]))
@@ -1426,8 +1425,20 @@ def _page_sim_vs_fleet():
                 "days": len(tag_days),
             }
         )
+    # When the fleet moves, beside how much of the ceiling it caught on each
+    # kind of day: timing on the left, outcome on the right. Either can be
+    # absent, so each column carries its own empty state.
+    when_col, ratio_col = st.columns(2)
+    if shape is None:
+        when_col.info("No usable per-hour fleet shape in this window.")
+    else:
+        when_col.plotly_chart(chart_shape_overlay(shape), width="stretch")
     if ratio_rows:
-        st.plotly_chart(chart_daytype_ratio(pd.DataFrame(ratio_rows)), width="stretch")
+        ratio_col.plotly_chart(
+            chart_daytype_ratio(pd.DataFrame(ratio_rows)), width="stretch"
+        )
+    else:
+        ratio_col.info("No day in this window carries a regime tag.")
 
     # Site level last: the two headline questions are answered above, and this
     # is where you go to ask which operators closed the gap.

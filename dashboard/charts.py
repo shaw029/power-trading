@@ -1750,11 +1750,15 @@ def chart_shape_overlay(df: pd.DataFrame) -> go.Figure:
     apply_theme(
         fig,
         height=DEFAULT_CHART_HEIGHT,
-        title="When batteries move — mean net output by hour (discharge positive)",
+        title="When batteries move",
     )
     fig.update_layout(hovermode="x unified")
     fig.update_xaxes(title_text="Hour of day (UTC)", dtick=2)
-    fig.update_yaxes(title_text="Net output (share of nameplate)", tickformat=".0%")
+    # "discharge positive" moved off the title when this went half-width;
+    # the axis is where the sign convention belongs anyway.
+    fig.update_yaxes(
+        title_text="Net output (+ discharge, share of nameplate)", tickformat=".0%"
+    )
     return fig
 
 
@@ -1916,10 +1920,16 @@ def chart_daytype_ratio(df: pd.DataFrame) -> go.Figure:
     apply_theme(
         fig,
         height=max(HEIGHT_SM, 30 * len(d) + 110),
-        title="Realisation by day-type — fleet wholesale as a share of the sim",
+        title="Realisation by regime",
     )
     fig.update_layout(showlegend=False)
-    fig.update_xaxes(title_text="Fleet wholesale ÷ sim ceiling", tickformat=".0%")
+    # Outside labels need room past the longest bar, or the widest value is
+    # clipped by the plot frame — which is exactly the bar worth reading.
+    fig.update_xaxes(
+        title_text="Fleet wholesale ÷ sim ceiling",
+        tickformat=".0%",
+        range=[0, float(d["ratio"].max()) * 1.18],
+    )
     fig.update_yaxes(categoryorder="array", categoryarray=order)
     return fig
 
