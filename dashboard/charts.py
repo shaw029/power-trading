@@ -1134,30 +1134,47 @@ def chart_daytype_profiles(
     hour_col: str = "hour",
     value_col: str = "soc",
     daytype_col: str = "day_type",
-    value_label: str = "Mean SOC (%)",
+    value_label: str = "Mean SOC",
+    families: dict[str, str] | None = None,
+    value_tickformat: str | None = ".0%",
 ) -> go.Figure:
-    """Mean dispatch/SOC shape by hour-of-day, one line per day-type.
+    """Mean dispatch/SOC shape by hour-of-day, one line per regime.
 
-    Averages ``value_col`` (e.g. dispatch MW or SOC) over every day of each
-    day-type label, so the typical windy vs sunny vs calm profile across the
-    day can be compared side by side.
+    Averages ``value_col`` (e.g. dispatch MW or SOC) over every day carrying each
+    regime tag, so the typical wind-drought vs wind-led vs volatile shape can be
+    compared side by side.
+
+    ``families`` optionally maps each tag to ``"driver"`` or ``"price"``. When
+    given, fundamentals are drawn dashed and price traits solid. That matters
+    because the vocabulary now holds eleven tags against eight categorical
+    slots: a wide window can push labels into the shared overflow grey, and the
+    dash keeps two greys in different families apart. Tags are drawn in a
+    deterministic order — fundamentals first, then alphabetically — so a colour
+    belongs to a tag rather than to its rank in whatever window is on screen.
     """
     d = df.copy()
     profiles = d.groupby([daytype_col, hour_col])[value_col].mean().reset_index()
 
-    labels = [str(v) for v in profiles[daytype_col].unique()]
+    def _sort_key(label: str) -> tuple[int, str]:
+        family = (families or {}).get(label, "price")
+        return (0 if family == "driver" else 1, label)
+
+    labels = sorted((str(v) for v in profiles[daytype_col].unique()), key=_sort_key)
     palette = _palette_for(labels)
 
     fig = go.Figure()
     for label in labels:
         sub = profiles[profiles[daytype_col].astype(str) == label].sort_values(hour_col)
+        dashed = families is not None and families.get(label) == "driver"
         fig.add_trace(
             go.Scatter(
                 x=sub[hour_col].values,
                 y=sub[value_col].values,
                 mode="lines+markers",
                 name=label,
-                line=dict(color=palette[label], width=2),
+                line=dict(
+                    color=palette[label], width=2, dash="dash" if dashed else "solid"
+                ),
                 marker=dict(size=5),
                 hovertemplate=label + "<br>Hour %{x}<br>%{y:,.2f}<extra></extra>",
             )
@@ -1165,7 +1182,9 @@ def chart_daytype_profiles(
     apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Mean daily profile by regime")
     fig.update_layout(hovermode="x unified")
     fig.update_xaxes(title_text="Hour of day", dtick=2)
-    fig.update_yaxes(title_text=value_label)
+    # SOC arrives as a 0-1 fraction, so the axis formats it rather than the
+    # label claiming a percentage the numbers do not carry.
+    fig.update_yaxes(title_text=value_label, tickformat=value_tickformat)
     return fig
 
 

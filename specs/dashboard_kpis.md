@@ -231,7 +231,7 @@ the two thresholds, so only clear-cut days earn either label.
 | DTY-6 | Yield & wear by regime | Graph | A bubble per tag: mean net PnL (£/MW/day) against mean cycles per day, sized by how many days carry the tag. The absolute reality DTY-1 normalises away — which days actually print money, and what they cost the battery. | Built |
 | DTY-2 | Which tags travel together | Graph | Day counts where a fundamental crosses a price trait — `wind-led` against `negative-price`, `wind-drought` against `volatile`. The engine for finding regimes rather than declaring them. | Built |
 | DTY-3 | How common each type is | Graph | Frequency of each kind of day. | Built |
-| DTY-4 | Mean state of charge by price trait | Graph | Average state of charge through the day for each price trait — `volatile`, `flat`, `negative-price`, `two-peak`, `single-peak`. Grouped by price trait only: fundamentals like `wind-led` are deliberately left out, because averaging them blurs distinct shapes. | Built |
+| DTY-4 | Mean state of charge by regime | Graph | Average state of charge through the day for every regime, both families — fundamentals dashed, price traits solid. Same coverage as the market reliance chart beside it, so the pair reads as one: when the battery held charge, and which market paid for it. | Changed |
 | DTY-7 | Market reliance by regime | Graph | For each tag, the share of gross earnings from the day-ahead auction versus intraday re-trading, ordered by intraday reliance. Shows which days let the optimiser lock its money in at auction and which force it to hunt in-day. | Built |
 | DTY-5 | Days behind the tags | Table | Every day in the window with its tags, £/MW/day, capture and cycles, newest first. | Built |
 

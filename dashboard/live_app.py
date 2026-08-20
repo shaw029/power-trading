@@ -815,9 +815,12 @@ def _page_day_types():
             for p in price_tags or ["(none)"]:
                 key = (d, p)
                 matrix_counts[key] = matrix_counts.get(key, 0) + 1
-        # SOC shape is grouped by price trait only — that's what dispatch
-        # actually responds to; a wind-led average would blur distinct shapes.
-        for tag in price_tags or ["untagged"]:
+        # Every regime, both families — the same coverage the reliance chart
+        # has, so the two read as one pair. A fundamental's average does mix
+        # price characters, but that mixing is the question: whether a
+        # wind-drought day has a shape of its own is not answerable if only
+        # price traits are ever drawn.
+        for tag in labels or ["untagged"]:
             for i, entry in enumerate(dur_result.dispatch_log):
                 profile_rows.append(
                     {"hour": i % 24, "soc": entry["soc_after"], "day_type": tag}
@@ -870,8 +873,10 @@ def _page_day_types():
     reliance = per_tag.assign(gross=per_tag["da_gbp"] + per_tag["intraday_gbp"])
     reliance = reliance[reliance["gross"] > 0]
     shape_col, market_col = st.columns(2)
+    families = dict(zip(memberships["tag"], memberships["family"]))
     shape_col.plotly_chart(
-        chart_daytype_profiles(pd.DataFrame(profile_rows)), width="stretch"
+        chart_daytype_profiles(pd.DataFrame(profile_rows), families=families),
+        width="stretch",
     )
     if reliance.empty:
         market_col.info("No regime earned enough to split day-ahead from intraday.")
