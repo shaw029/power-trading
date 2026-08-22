@@ -1,0 +1,307 @@
+"""How much of the GB battery fleet the curated registry actually represents.
+
+:mod:`fleet.registry` analyses 23 sites. :mod:`fleet.census` reconstructs the
+population those 23 are drawn from. This module is the arithmetic between them,
+and it exists to replace an assumption with a measurement: every result the
+project computes on the registry is generalisable exactly as far as this number
+says it is, and no further.
+
+The structure follows the four-tier method the analysis brief sets out:
+
+**Tier 1 — coverage assessment.** :func:`coverage_table` returns one row per
+known battery site, whether the registry contains it, and if not, *why*. The
+reason matters more than the count: a site missing because it is 12 MW is a
+deliberate scope decision, while a site missing because nobody added it is an
+oversight, and the two support very different claims.
+
+**Tier 2 — representativeness.** :func:`representativeness` measures coverage
+three ways — by site count, by MW and by MWh. MW is the headline. Site count
+flatters any sample that picked large assets, which this one did by design.
+MWh is the most useful and the least available: durations are published only
+through Capacity Market agreements, and those link to a BM Unit for a minority
+of sites, so MWh coverage is reported over the subset where duration is known
+and labelled as such rather than extrapolated.
+
+**Tier 3 — characterising the gap.** :func:`gap_characterisation` compares
+included against excluded sites by size, owner, region and connection level.
+This is what converts a bare percentage into a defensible statement about
+*direction* of bias — which is the difference between "the registry contains 23
+sites" and "the registry captures X% of GB BM-registered battery MW but
+under-represents sub-50 MW and distribution-connected assets".
+
+**Scope, stated once.** The denominator is *BM-registered* batteries. Assets
+traded behind an aggregator, VLP or supplier portfolio are physically real but
+have no per-unit Elexon feed, so they can be neither dispatch-analysed nor
+counted here — they are outside both numerator and denominator, and every
+percentage below is a share of the BM-registered fleet, not of GB storage.
+:func:`headline_claim` says so in the sentence it produces.
+"""
+
+from __future__ import annotations
+
+import re
+from collections import Counter
+
+import pandas as pd
+
+from fleet import census
+
+#: A curated-registry inclusion criterion: sites below this are out of scope by
+#: design, not by accident. Mirrors ``fleet.registry``'s stated ~35 MW floor
+#: (its smallest member, Contego, is 34 MW).
+REGISTRY_SIZE_FLOOR_MW = 34.0
+
+#: A Capacity Market match is only believed when its stated MW is in this
+#: multiple of the BM Unit's declared export. CM connection capacity and Elexon
+#: declared capability differ legitimately — observed matches run from about
+#: 0.6x to 1.1x — but a name-token match to a wholly different site does not
+#: land anywhere near. "The Drove" (6 MW) matching "GR - Hightown Drove" (90 MW,
+#: 360 MWh) is the case this rejects: believed, it implies a 60-hour battery.
+CM_MW_AGREEMENT = (0.4, 2.5)
+
+#: Size bands for the Tier 3 comparison, in MW.
+SIZE_BANDS = [(0, 20), (20, 50), (50, 100), (100, 200), (200, 10_000)]
+
+
+def _size_band(mw: float) -> str:
+    for low, high in SIZE_BANDS:
+        if low <= mw < high:
+            return f"{low}-{high} MW" if high < 10_000 else f"{low}+ MW"
+    return "unknown"
+
+
+def _cm_lookup(cm: pd.DataFrame) -> tuple[dict, dict]:
+    """Index Capacity Market storage units by BMU root and distinctive token.
+
+    Two paths, because CM unit names are inconsistent: some *are* the BM Unit
+    root ("COALB1" for ``COALB-1``), most are project names ("Little Raith
+    ESS"). A token is only used for matching when it is distinctive — present
+    in at most three CM units — so a common word cannot marry two unrelated
+    sites. The most recent delivery year wins, so a site's duration reflects
+    its current agreement rather than a superseded one.
+    """
+    usable = cm[cm["cm_power_mw"].notna() & cm["duration_h"].notna()].copy()
+    usable = usable.sort_values("delivery_year")  # later rows overwrite earlier
+
+    token_counts: Counter = Counter()
+    tokens = [census.normalise_name(n) for n in usable["cm_unit_name"].fillna("")]
+    for tok in tokens:
+        token_counts.update(tok)
+
+    by_root: dict[str, dict] = {}
+    by_token: dict[str, dict] = {}
+    for (_, row), tok in zip(usable.iterrows(), tokens):
+        record = {
+            "cm_unit_name": row["cm_unit_name"],
+            "cm_power_mw": row["cm_power_mw"],
+            "duration_h": row["duration_h"],
+            "cm_capacity_mwh": row["cm_capacity_mwh"],
+            "registered_holder": row.get("registered_holder"),
+            "connection_level": row.get("connection_level"),
+            "delivery_year": row.get("delivery_year"),
+        }
+        normalised = re.sub(r"[^A-Z0-9]", "", str(row["cm_unit_name"]).upper())
+        for key in (normalised, re.sub(r"\d+$", "", normalised)):
+            if len(key) >= 4:
+                by_root[key] = record
+        for t in tok:
+            if len(t) >= 5 and token_counts[t] <= 3:
+                by_token[t] = record
+    return by_root, by_token
+
+
+def enrich_with_capacity_market(sites: pd.DataFrame, cm: pd.DataFrame) -> pd.DataFrame:
+    """Attach Capacity Market duration/MWh to census sites where it can be matched.
+
+    Adds ``capacity_mwh`` and ``mwh_source``. The curated registry's own
+    hand-verified MWh takes precedence where it exists, because it was checked
+    against the site rather than inferred from an agreement; the Capacity
+    Market fills in what it can behind that; the rest stay null and are counted
+    as unknown rather than guessed.
+    """
+    by_root, by_token = _cm_lookup(cm)
+    sites = sites.copy()
+
+    matched: list[dict | None] = []
+    for row in sites.itertuples():
+        root = row.asset_id.removeprefix("GB-BESS-")
+        record = by_root.get(root)
+        if record is None:
+            for token in census.normalise_name(row.site_name):
+                record = by_token.get(token)
+                if record is not None:
+                    break
+        matched.append(record)
+
+    # Reject a match whose stated power disagrees with the BM Unit's, and any
+    # that implies a duration no battery has. Both are name-collision symptoms,
+    # and an unmatched site is far less damaging than a wrong denominator.
+    low, high = CM_MW_AGREEMENT
+    checked: list[dict | None] = []
+    for record, declared in zip(matched, sites["declared_export_mw"]):
+        if record is None or not declared:
+            checked.append(None)
+            continue
+        ratio = record["cm_power_mw"] / declared
+        implied_h = record["cm_capacity_mwh"] / declared
+        if not (low <= ratio <= high) or implied_h > census.MAX_BATTERY_DURATION_H:
+            checked.append(None)
+            continue
+        checked.append(record)
+    matched = checked
+
+    sites["cm_unit_name"] = [m["cm_unit_name"] if m else None for m in matched]
+    sites["cm_power_mw"] = [m["cm_power_mw"] if m else float("nan") for m in matched]
+    sites["cm_duration_h"] = [m["duration_h"] if m else float("nan") for m in matched]
+    cm_mwh = pd.Series([m["cm_capacity_mwh"] if m else float("nan") for m in matched])
+
+    sites["capacity_mwh"] = sites["registry_capacity_mwh"].astype(float)
+    sites["mwh_source"] = pd.Series(
+        ["registry" if pd.notna(v) else None for v in sites["registry_capacity_mwh"]],
+        index=sites.index,
+    )
+    fill = sites["capacity_mwh"].isna() & cm_mwh.notna()
+    sites.loc[fill, "capacity_mwh"] = cm_mwh[fill].to_numpy()
+    sites.loc[fill, "mwh_source"] = "capacity_market"
+    return sites
+
+
+def coverage_table(refresh: bool = False) -> pd.DataFrame:
+    """Tier 1 — one row per known battery site, with the reason it is missing.
+
+    ``missing_reason`` is null for sites the registry contains. For the rest it
+    separates a scope decision from an omission:
+
+    ``below size floor``
+        Smaller than the registry's stated ~35 MW threshold, so excluded by
+        design.
+    ``not curated``
+        Meets every stated inclusion criterion and is simply absent — the
+        genuine gap, and the honest count of what the registry is missing.
+    """
+    sites = census.census_sites(refresh)
+    sites = enrich_with_capacity_market(sites, census.fetch_cm_storage(refresh))
+
+    sites["size_band"] = sites["declared_export_mw"].map(_size_band)
+    sites["missing_reason"] = None
+    absent = ~sites["in_registry"]
+    sites.loc[absent & (sites["declared_export_mw"] < REGISTRY_SIZE_FLOOR_MW), "missing_reason"] = (
+        "below size floor"
+    )
+    sites.loc[absent & (sites["declared_export_mw"] >= REGISTRY_SIZE_FLOOR_MW), "missing_reason"] = (
+        "not curated"
+    )
+    return sites
+
+
+def representativeness(table: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Tier 2 — registry coverage of the census by site count, MW and MWh.
+
+    Returns one row per basis with the numerator, denominator and percentage.
+    The MWh row is computed only over sites whose energy capacity is known from
+    a source, and reports that subset size, so it can never be mistaken for a
+    complete figure.
+    """
+    table = coverage_table() if table is None else table
+    included = table[table["in_registry"]]
+
+    known_mwh = table[table["capacity_mwh"].notna()]
+    known_mwh_included = known_mwh[known_mwh["in_registry"]]
+
+    rows = [
+        {
+            "basis": "sites",
+            "registry": float(len(included)),
+            "census": float(len(table)),
+            "coverage_pct": round(100.0 * len(included) / len(table), 1) if len(table) else 0.0,
+            "note": "every BM-registered battery site",
+        },
+        {
+            "basis": "MW (declared export)",
+            "registry": round(included["declared_export_mw"].sum(), 1),
+            "census": round(table["declared_export_mw"].sum(), 1),
+            "coverage_pct": round(
+                100.0 * included["declared_export_mw"].sum() / table["declared_export_mw"].sum(), 1
+            ),
+            "note": "the headline figure",
+        },
+        {
+            "basis": "MWh (where known)",
+            "registry": round(known_mwh_included["capacity_mwh"].sum(), 1),
+            "census": round(known_mwh["capacity_mwh"].sum(), 1),
+            "coverage_pct": round(
+                100.0 * known_mwh_included["capacity_mwh"].sum() / known_mwh["capacity_mwh"].sum(),
+                1,
+            )
+            if len(known_mwh)
+            else 0.0,
+            "note": (
+                f"duration known for {len(known_mwh_included)}/{len(included)} registry "
+                f"vs {len(known_mwh) - len(known_mwh_included)}/{len(table) - len(included)} "
+                f"other sites — biased upward, treat as a ceiling"
+            ),
+        },
+    ]
+    return pd.DataFrame(rows).set_index("basis")
+
+
+def gap_characterisation(table: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
+    """Tier 3 — how included sites differ from excluded ones.
+
+    Returns a breakdown per dimension (size band, connection level, region,
+    owner), each showing site count and MW split between in-registry and out.
+    The ``coverage_pct`` column within each dimension is what supports a claim
+    about the *direction* of the registry's bias rather than only its size.
+    """
+    table = coverage_table() if table is None else table
+    out: dict[str, pd.DataFrame] = {}
+
+    dimensions = {
+        "size_band": "size_band",
+        "connection_level": "connection_level",
+        "region": "gsp_group",
+        "owner": "lead_party",
+    }
+    for label, column in dimensions.items():
+        grouped = table.groupby(table[column].fillna("unknown"), dropna=False)
+        frame = pd.DataFrame(
+            {
+                "sites": grouped.size(),
+                "sites_in_registry": grouped["in_registry"].sum(),
+                "mw": grouped["declared_export_mw"].sum().round(1),
+                "mw_in_registry": grouped.apply(
+                    lambda g: g.loc[g["in_registry"], "declared_export_mw"].sum(),
+                    include_groups=False,
+                ).round(1),
+            }
+        )
+        frame["coverage_pct"] = (100.0 * frame["mw_in_registry"] / frame["mw"]).round(1)
+        out[label] = frame.sort_values("mw", ascending=False)
+
+    return out
+
+
+def headline_claim(table: pd.DataFrame | None = None) -> str:
+    """The single defensible sentence the coverage work exists to produce.
+
+    Stated as a share of the BM-registered fleet, with the direction of the
+    residual bias attached, because a percentage without a direction invites
+    exactly the criticism the analysis is trying to answer.
+    """
+    table = coverage_table() if table is None else table
+    stats = representativeness(table)
+    mw_pct = stats.loc["MW (declared export)", "coverage_pct"]
+
+    by_band = gap_characterisation(table)["size_band"]
+    weakest = by_band[by_band["mw"] > 0].sort_values("coverage_pct").head(2)
+    bands = " and ".join(str(i) for i in weakest.index)
+
+    n_sites = int(stats.loc["sites", "registry"])
+    n_census = int(stats.loc["sites", "census"])
+    return (
+        f"The registry's {n_sites} sites capture {mw_pct}% of GB BM-registered "
+        f"operational battery MW ({n_census} sites in total), and "
+        f"under-represent {bands} assets. Batteries traded behind aggregator, "
+        f"VLP or supplier portfolios have no per-unit settlement data and are "
+        f"outside this denominator entirely."
+    )
