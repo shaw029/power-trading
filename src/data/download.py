@@ -171,6 +171,32 @@ def download_elexon_dataset(dataset: str, start_date: str, end_date: str) -> Non
         current_date = next_date
 
 
+def _files_in_range(
+    files: list[str], dataset: str, start_date: str, end_date: str, margin_days: int = 1
+) -> list[str]:
+    """Subset of cache files whose embedded date falls in the requested window.
+
+    Returns an empty list when no filename carries a parseable date, so the
+    caller can fall back to reading everything rather than silently returning
+    nothing.
+    """
+    first = datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=margin_days)
+    last = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=margin_days)
+
+    selected = []
+    for path in files:
+        match = re.search(rf"{re.escape(dataset)}_(\d{{8}})_page_", os.path.basename(path))
+        if not match:
+            return []
+        try:
+            stamp = datetime.strptime(match.group(1), "%Y%m%d")
+        except ValueError:
+            return []
+        if first <= stamp <= last:
+            selected.append(path)
+    return selected
+
+
 def read_elexon_dataset(dataset: str, start_date: str, end_date: str) -> pd.DataFrame:
     """
     Read cached Elexon dataset JSON files and normalize them into a DataFrame.
@@ -182,6 +208,23 @@ def read_elexon_dataset(dataset: str, start_date: str, end_date: str) -> pd.Data
     files = sorted(glob.glob(os.path.join(dataset_dir, f"{dataset}_*_page_*.json")))
     if not files:
         raise ValueError(f"No cached raw files found for dataset {dataset}")
+
+    # Read only the day-files the caller asked for. Each cache filename carries
+    # its own download date, so the range can be selected before any JSON is
+    # parsed rather than by loading everything and filtering records afterwards.
+    #
+    # This is the dashboard's hot path: it calls this once per rendered day, so
+    # parsing the whole cache each time costs O(days cached x days shown) and
+    # degrades as the cache grows -- a deployment that has been up for months
+    # gets slower at rendering the same 60 days. Selecting first makes the cost
+    # depend on the window requested, not on how much history happens to be on
+    # disk. A one-day margin either side covers records that spill past their
+    # chunk boundary (a UTC-stamped file holding the start of the next
+    # settlement day); the exact record-level filter below is unchanged, so the
+    # frame returned is identical.
+    window = _files_in_range(files, dataset, start_date, end_date, margin_days=1)
+    if window:
+        files = window
 
     all_records = []
     for filepath in files:
@@ -272,6 +315,88 @@ def download_neso_ndfd_daily(start_date: str, end_date: str) -> None:
             logger.error(f"Error downloading NESO_NDFD {date_iso}: {e}")
 
         current_date += timedelta(days=1)
+
+
+def download_neso_ndfd_range(start_date: str, end_date: str, chunk_days: int = 31) -> None:
+    """Backfill NESO NDFD over a long window in chunks, not one call per day.
+
+    :func:`download_neso_ndfd_daily` issues one SQL request per settlement day,
+    which is the right shape for a rolling live fetch but the wrong shape for a
+    three-year backfill: the whole resource is only tens of thousands of rows,
+    so a thousand serial round trips spend all their time on latency. This
+    fetches a month at a time and fans the rows back out into exactly the same
+    per-day cache files, so :func:`read_neso_ndfd` and every existing caller are
+    unaffected.
+
+    Chunks whose days are already cached are skipped, and a chunk that fails is
+    logged and stepped over rather than sinking the run — the day-file cache
+    makes a re-run incremental.
+    """
+    logger.info(f"Backfilling NESO NDFD from {start_date} to {end_date}")
+
+    current_date = datetime.strptime(start_date, "%Y-%m-%d")
+    end_datetime = datetime.strptime(end_date, "%Y-%m-%d")
+
+    while current_date <= end_datetime:
+        chunk_end = min(current_date + timedelta(days=chunk_days - 1), end_datetime)
+        span = [current_date + timedelta(days=i) for i in range((chunk_end - current_date).days + 1)]
+
+        if all(_chunk_has_raw_files("NESO_NDFD", day.strftime("%Y%m%d")) for day in span):
+            logger.info(
+                f"Skipping NESO_NDFD {current_date:%Y-%m-%d}..{chunk_end:%Y-%m-%d} (all cached)"
+            )
+            current_date = chunk_end + timedelta(days=1)
+            continue
+
+        from_iso = current_date.strftime("%Y-%m-%d")
+        to_iso = chunk_end.strftime("%Y-%m-%d")
+        _validate_neso_query_inputs(NESO_NDFD_RESOURCE_ID, from_iso)
+        _validate_neso_query_inputs(NESO_NDFD_RESOURCE_ID, to_iso)
+
+        try:
+            by_day: dict[str, list[dict]] = {}
+            offset = 0
+            limit = 50000
+            while True:
+                query = (
+                    f'SELECT * FROM "{NESO_NDFD_RESOURCE_ID}" '
+                    f"WHERE \"TARGETDATE\" >= '{from_iso}' AND \"TARGETDATE\" <= '{to_iso}' "
+                    f'ORDER BY "_id" LIMIT {limit} OFFSET {offset}'
+                )
+                response = requests.get(NESO_BASE_URL, params={"sql": query}, timeout=120)
+                response.raise_for_status()
+                data = response.json()
+
+                if not data.get("success"):
+                    raise ValueError(f"NESO API error: {data.get('error', 'Unknown error')}")
+
+                records = data.get("result", {}).get("records", [])
+                if not records:
+                    break
+
+                for record in records:
+                    target = str(record.get("TARGETDATE", ""))[:10]
+                    if target:
+                        by_day.setdefault(target, []).append(record)
+
+                offset += limit
+
+            for target, day_records in sorted(by_day.items()):
+                date_str = target.replace("-", "")
+                if _chunk_has_raw_files("NESO_NDFD", date_str):
+                    continue
+                _save_raw_json(
+                    "NESO_NDFD",
+                    f"NESO_NDFD_{date_str}_page_1.json",
+                    {"result": {"records": day_records}},
+                )
+
+            logger.info(f"NESO_NDFD {from_iso}..{to_iso}: {len(by_day)} days cached")
+
+        except Exception as e:
+            logger.error(f"Error backfilling NESO_NDFD {from_iso}..{to_iso}: {e}")
+
+        current_date = chunk_end + timedelta(days=1)
 
 
 def read_neso_ndfd() -> pd.DataFrame:
