@@ -77,6 +77,36 @@ from live.assets import (  # noqa: E402
 from live.settle import settle_day  # noqa: E402
 from src.bess.bess_asset import BESSAsset  # noqa: E402
 
+SCOPE = """
+This dashboard is the **presentation tier** of a two-tier project. It is built to be
+read at a glance and to stay responsive on free hosting, which sets what it can show.
+
+| | **This dashboard** | **Research notebooks** |
+|---|---|---|
+| Purpose | Present and communicate | Detailed research |
+| Battery fleet | 23 curated sites, 2,761 MW | Full census — 90 BM-registered sites, 6,348 MW |
+| Window | Rolling 60 days | 2023-10-01 onward (~1,050 days) |
+| Revenue streams | Wholesale proxy + Balancing Mechanism | Adds per-unit ancillary (response and reserve) |
+| Data | Fetched live, cached per day | Complete day-file archive, backfilled to 100% |
+
+**Neither tier is a cut-down of the other — they answer different questions.** The
+dashboard shows what the GB market is doing now, for a curated cross-section chosen to
+span optimisers and regions. The notebooks establish what is true of the fleet as a
+whole, which needs a population and a multi-year window no interactive app can carry.
+
+**What that means when reading these numbers.** The 23 sites here are a sample, and its
+size is measured rather than assumed: they are **45.5% of GB BM-registered battery MW**,
+weighted toward large transmission-connected assets (70% coverage above 200 MW, 14% in
+the 20-50 MW band). Figures on this dashboard describe that segment well and should not
+be read as describing the whole GB fleet. The census behind that number, and the bias
+analysis, are in `notebooks/06_fleet_coverage_census.ipynb`; the split itself is recorded
+in `DATA_ARCHITECTURE.md`.
+
+*Coverage figures are a July 2026 snapshot computed in the notebook. This page states
+them rather than recomputing them — keeping the census out of the dashboard's process is
+what keeps this tier light.*
+"""
+
 METHODOLOGY = """
 A **transparent simulation** — no real money, broker or orders. Every figure is
 the settlement engine run over published market data.
@@ -916,11 +946,14 @@ public Elexon per-unit data.
   values each unit's Physical Notification at the half-hourly MID price
   (actual traded prices are private). BM revenue is Elexon's indicative
   per-unit bid/offer cashflows (`EBOCF`), summed as published.
-- **Excluded (by design)** — ancillary services (Dynamic Containment etc.),
-  capacity market and private PPAs. Per-unit revenue in those markets isn't in
-  Elexon's free feeds — ancillary contracts sit in NESO's EAC data, and traded
-  PPA prices are private — so this dashboard deliberately scopes to the two
-  streams it can estimate from one source.
+- **Excluded here (by design)** — ancillary services, capacity market and
+  private PPAs. Ancillary revenue *is* obtainable per unit from NESO's auction
+  results, and the research notebooks price it, but its history is fragmented
+  across three publishing eras with real gaps — folding that into a live
+  rolling view would mislead more than it informs. This tier scopes to the two
+  streams it can estimate consistently from one source every day; the full
+  stack is in the notebooks. Traded PPA prices are private and out of reach of
+  either tier.
 - **Ancillary-tilted sites can read *negative*, not just low** — energy bought
   to hold state of charge for an ancillary contract is costed at MID here,
   while the availability payment that motivated it is invisible. Sites cycling
@@ -930,8 +963,12 @@ public Elexon per-unit data.
 - **Site selection** — sites qualify by having their own registered BM Units
   (the per-unit data only exists for those), being grid-scale (~35 MW+), and
   being operational as of the July 2026 snapshot. The list is a curated
-  cross-section of optimisers and regions, not a census of GB batteries;
-  assets traded behind aggregator/VLP units can't be tracked at site level.
+  cross-section of optimisers and regions, **not** a census — and the gap is
+  measured, not guessed: these 23 sites are **45.5% of GB BM-registered
+  battery MW** across a census of 90 sites, over-weighting large
+  transmission-connected assets. Batteries traded behind aggregator/VLP units
+  have no per-unit feed at all and sit outside even that denominator. See
+  Scope, above.
 - **Metadata** — optimiser, region and approximate MWh are a hand-curated
   snapshot and can go stale; cycle counts are indicative.
 """
@@ -1478,6 +1515,14 @@ def _page_fleet():
     _page_header(
         "Real GB fleet performance",
         f"{start} → {end} · {tags} · estimated performance of real grid-scale batteries",
+    )
+    # Stated on the page itself, not only under Methodology: this is the figure
+    # a viewer needs in order to read the numbers below correctly, and it is the
+    # first thing an informed reader will ask for.
+    st.caption(
+        "23 curated sites — a measured **45.5% of GB BM-registered battery MW**, "
+        "weighted toward large transmission-connected assets. A cross-section, not "
+        "a census; see Methodology → Scope."
     )
     # Nothing on this page carries from one day to the next, so only the
     # filtered window is fetched — per-BMU streams are the heaviest feed in
@@ -2161,6 +2206,9 @@ GLOSSARY = """
 
 def _page_methodology():
     _page_header("Methodology", "What these numbers are — and what they are not")
+    st.subheader("Scope — this dashboard and the research behind it")
+    st.markdown(SCOPE)
+    st.divider()
     left, right = st.columns(2, gap="large")
     with left:
         st.subheader("Benchmark battery")

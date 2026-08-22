@@ -98,6 +98,115 @@ rm -rf data/raw/FLEET_BOALF/             # per-BMU accepted bid-offer levels (fl
 
 > **Live-dashboard-only feeds:** two datasets are fetched only by the live benchmark (`dashboard/live_app.py`), not the historical pipeline. **LoLP / De-rated Margin** comes from Elexon's `forecast/system/loss-of-load` endpoint (keyless, not under `/datasets/`); the raw cache keeps every forecast-horizon print (12/8/4/2/1 h ahead) per settlement period, and `process_lolpdrm` reduces to the latest print (`lolp`, `drm_mw`). **Capacity Market Notices** come from the NESO GB CMN register (`gbcmn.nationalenergyso.com/api/notifications`); the `types[]` filter is mandatory (1 = issued, 4 = expiry/cancellation), and since the register is not day-partitioned the snapshot is cached under the *fetch* date (`CMN/CMN_<today>.json`) — at most one network hit per day.
 
+## Asset registers (fleet census)
+
+Five register sources answer a different question from the time-series feeds above: not *what
+happened*, but *which assets exist*. They are not day-partitioned, so each is cached once per
+**fetch** date under `data/raw/REGISTERS/` — at most one network round per source per day.
+
+| Source | Endpoint | What it contributes |
+|---|---|---|
+| Elexon BMU reference | `/reference/bmunits/all` | The BM Unit universe: IDs, lead party, declared import/export capability, GSP group |
+| NESO Capacity Market register | CKAN `25a5fa2e-…` | Explicit `Storage` technology **with duration** — the only free source of GB battery MWh |
+| NESO TEC register | CKAN `17becbab-…` | Transmission-connected storage projects, connected MW, connection date |
+| NESO Embedded register | CKAN `68b6f3a1-…` | The same for distribution-connected projects |
+| NESO EAC results by unit | CKAN `a63ab354-…` | Explicit `Batteries` technology type per response/reserve participant |
+
+> **Elexon publishes no battery fuel type.** 2,470 of 3,055 BM Units carry `fuelType: null` and
+> not one row says "battery", so the population cannot be downloaded — `fleet/census.py`
+> constructs it. A unit qualifies when it is physical (not a supplier portfolio or
+> interconnector), carries no conflicting fuel label, and declares import and export capability
+> **symmetrically**. Symmetry is the discriminating condition: all 47 BM Units of the curated
+> registry fall in [0.96, 1.14], while a generator with a site load sits two orders of magnitude
+> below (Derwent Cogeneration 0.01, Cleve Hill Solar 0.01, Kilgallioch wind 0.23). The Capacity
+> Market, connection and auction sources grade *confidence*; they do not decide the verdict,
+> because their name matching is too loose to carry a headline number.
+
+## Ancillary service revenue (per unit)
+
+Frequency response and reserve have historically been the dominant GB battery revenue stream,
+so wholesale plus BM cashflow is a knowingly incomplete stack. `fleet/ancillary.py` adds the
+third stream at unit level. It joins with no fuzzy matching: NESO names the winning unit by its
+National Grid BM Unit name (`KILSB-5`, `CLAYB-1`), which is what `fleet.census` already keys on.
+
+| Source | CKAN resource | Period | Services |
+|---|---|---|---|
+| DC, DR & DM Results By Unit | `ddc4afde-…` | 2021-09-16 → 2023-11-02 | Response (DC/DR/DM) |
+| Balancing-Reserve Results By Unit | `5d8e47be-…` | 2024-03-12 → 2025-10-29 | Balancing Reserve |
+| Response-Reserve Results By Unit (EAC) | `a63ab354-…` | 2026-03-31 → present | Response, Quick and Slow Reserve |
+
+> **The history is fragmented and must be reported as such.** NESO replaced its auction platform
+> twice, leaving real gaps (2023-12 → 2024-02 and 2025-11 → 2026-02 within the analysis window),
+> and the eras cover *different services*. A month with no data is not a month of zero revenue,
+> and two months that both have data are not comparable if their service sets differ — the
+> 2024-03 → 2025-10 stretch carries only Balancing Reserve, so reading its £0.3m/month against
+> the £7.8m/month of the DC era shows a collapse that is purely an artefact of publication.
+> `coverage_by_month` and `comparable_windows` exist to refuse both mistakes; only rows sharing
+> a `comparable_group` are like-for-like.
+
+> **Half of the revenue is not earned by a site.** `classify_units` labels each winning unit as
+> a census site, a VLP/supplier route (Elexon `bmUnitType` V or S), an aggregator house code, or
+> unknown. Over the most recent full-stack window, £27.3m went to aggregator portfolios and only
+> £13.7m (26%) to physical BM-registered sites. Those units are correctly *outside* the site
+> census rather than missing from it, and attributing their earnings to a site would invent an
+> asset. Block length is read from each record's own timestamps (4-hour EFA blocks under the old
+> schema, 30 minutes under the auction platforms) rather than assumed.
+
+## Populations: which batteries a fetch is for
+
+Every per-BMU fetch takes a `fleet.population.Population`, defaulting to the curated
+registry so the live dashboard is unaffected:
+
+```bash
+# Curated 23 sites / 47 BM Units — what the dashboard reads (the default)
+python scripts/backfill_market_data.py --start 2023-10-01
+
+# Full BM-registered census, 90 sites / 127 BM Units — what the notebooks read
+python scripts/backfill_market_data.py --population census --start 2023-10-01
+python scripts/build_stress_store.py --population census --start 2023-10-01
+```
+
+A census run fetches **only the per-BMU feeds** (`FLEET_PN`, `FLEET_BOALF`,
+`FLEET_EBOCF`, `FLEET_MELS`, `FLEET_MILS`). Prices, system state and forecasts are
+market-wide and identical whichever fleet is studied, so they are never re-fetched.
+
+> **Populations never share a cache.** A day-file holds exactly the BM Units it was
+> fetched for, so the census writes `data/raw/FLEET_PN_CENSUS/` and the stress store
+> writes `data/processed/stress_study_census/`. If they shared a directory, the dashboard
+> would parse 2.6x the records it needs on every page load, and a coverage report could
+> not tell whether a day had been fetched for 47 units or 127.
+
+## Coverage and backfill
+
+`src/data/coverage.py` reports, per feed per day, what the caches actually contain. Use it
+before quoting any windowed statistic — an analysis window is only as trustworthy as its
+thinnest feed:
+
+```python
+import datetime as dt
+from src.data import coverage
+coverage.coverage_summary(dt.date(2023, 10, 1), dt.date(2026, 8, 19))
+```
+
+`scripts/backfill_market_data.py` fills whatever that table says is missing. It fetches only
+absent days, records a failing day rather than aborting, and prints coverage before and after:
+
+```bash
+python scripts/backfill_market_data.py --report-only          # what is missing
+python scripts/backfill_market_data.py --start 2023-10-01     # fill it
+python scripts/backfill_market_data.py --feeds MID,WINDFOR    # one or two feeds
+```
+
+> **`NORDPOOL_DA` cannot be backfilled.** The Nord Pool portal serves a rolling ~65-day window,
+> so it is deliberately excluded from the default feed list — asking would log a thousand
+> failures. For historical GB day-ahead-adjacent prices use `MID`, whose `N2EXMIDP` and
+> `APXMIDP` data providers cover the full archive.
+
+> **NDFD backfills as a range, not day by day.** The whole NESO demand-forecast resource is only
+> tens of thousands of rows, so `download_neso_ndfd_range` fetches a month per call and fans the
+> rows out into the same per-day cache files `download_neso_ndfd_daily` writes. Existing readers
+> are unaffected.
+
 The raw data directory defaults to `data/raw/`. Override via `.env` to point at a renamed folder:
 ```
 RAW_DATA_DIR=data/raw_2018
