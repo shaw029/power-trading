@@ -60,7 +60,10 @@ def _prints(date):
     return pd.concat(rows, ignore_index=True)
 
 
-def _profile(date):
+def _profile(date, population=None):
+    """A per-BMU feed. These take the population being studied; the market-wide
+    feeds (system, LoLP) do not, which is the distinction ``PER_BMU_FEEDS``
+    draws in the builder."""
     times = pd.date_range(f"{date.isoformat()}T00:00:00Z", periods=48, freq="30min")
     return pd.DataFrame({"site": "Pillswood", "time": times, "mw": 10.0})
 

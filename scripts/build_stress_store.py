@@ -43,6 +43,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from fleet import fetch_fleet  # noqa: E402
+from fleet.population import REGISTRY, Population, census_population  # noqa: E402
 from fleet import performance as fleet_perf  # noqa: E402
 from live import fetch_live, resilience  # noqa: E402
 from src.data.download import (  # noqa: E402
@@ -55,6 +56,20 @@ from src.data.preprocess import process_imbalance_price  # noqa: E402
 logger = logging.getLogger(__name__)
 
 DEFAULT_STORE = REPO_ROOT / "data" / "processed" / "stress_study"
+
+
+def store_for(population: Population, base: Path = DEFAULT_STORE) -> Path:
+    """Where a population's store lives.
+
+    Separate directories, for the same reason the raw caches are separate: a
+    store holds site rows for exactly the population it was built from, and a
+    census store silently overwriting the curated one would change what the
+    curated notebooks mean without changing a line of their code.
+    """
+    return base if not population.cache_suffix else Path(
+        f"{base}{population.cache_suffix.lower()}"
+    )
+
 
 # Tables written to the store. ``sbp``/``cmn`` are assembled once for the whole
 # window rather than per day, so they are not in DAY_FEEDS below.
@@ -110,24 +125,38 @@ def _require(profile: pd.DataFrame, what: str) -> pd.DataFrame:
     return profile
 
 
-def _day_pn(date: dt.date) -> pd.DataFrame:
-    return _require(fleet_perf.site_profile(fetch_fleet.fetch_fleet_pn(date)), "PN")
-
-
-def _day_mels(date: dt.date) -> pd.DataFrame:
+def _day_pn(date: dt.date, population: Population = REGISTRY) -> pd.DataFrame:
     return _require(
-        fleet_perf.site_limit_profile(fetch_fleet.fetch_fleet_mels(date)), "MELS"
+        fleet_perf.site_profile(
+            fetch_fleet.fetch_fleet_pn(date, population), population
+        ),
+        "PN",
     )
 
 
-def _day_mils(date: dt.date) -> pd.DataFrame:
+def _day_mels(date: dt.date, population: Population = REGISTRY) -> pd.DataFrame:
     return _require(
-        fleet_perf.site_limit_profile(fetch_fleet.fetch_fleet_mils(date)), "MILS"
+        fleet_perf.site_limit_profile(
+            fetch_fleet.fetch_fleet_mels(date, population), population
+        ),
+        "MELS",
     )
 
+
+def _day_mils(date: dt.date, population: Population = REGISTRY) -> pd.DataFrame:
+    return _require(
+        fleet_perf.site_limit_profile(
+            fetch_fleet.fetch_fleet_mils(date, population), population
+        ),
+        "MILS",
+    )
+
+
+#: Feeds whose content depends on which batteries are being studied.
+PER_BMU_FEEDS = ("pn", "mels", "mils")
 
 # Per-day feeds: table name → (fetch function, parquet table).
-DAY_FEEDS: dict[str, tuple[Callable[[dt.date], pd.DataFrame], str]] = {
+DAY_FEEDS: dict[str, tuple[Callable[..., pd.DataFrame], str]] = {
     "system": (_day_system, "system"),
     "lolpdrm": (_day_lolpdrm_prints, "lolpdrm_prints"),
     "pn": (_day_pn, "fleet_pn"),
@@ -207,6 +236,7 @@ def build_store(
     force: bool = False,
     progress_every: int = 25,
     log: Callable[[str], None] = print,
+    population: Population = REGISTRY,
 ) -> dict:
     """Fetch every feed over ``days`` and write the tidy store.
 
@@ -229,7 +259,11 @@ def build_store(
         row: dict = {"date": date.isoformat()}
         for feed, (fetch, _table) in DAY_FEEDS.items():
             try:
-                frame = fetch(date)
+                # Per-BMU feeds take the population; the market-wide ones
+                # (system state, LoLP) are identical whichever fleet is studied.
+                frame = (
+                    fetch(date, population) if feed in PER_BMU_FEEDS else fetch(date)
+                )
                 parts[feed].append(frame)
                 row[feed] = True
             except Exception as exc:  # one bad feed never stops the build
@@ -302,15 +336,31 @@ def main() -> None:
         default=(dt.date.today() - dt.timedelta(days=1)).isoformat(),
         help="Last settlement day (inclusive)",
     )
-    parser.add_argument("--store", default=str(DEFAULT_STORE))
+    parser.add_argument("--store", default=None)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--population",
+        choices=("registry", "census"),
+        default="registry",
+        help=(
+            "Which battery population to build the store from. 'registry' is the "
+            "curated 23 sites; 'census' is every BM-registered battery. Each "
+            "population writes its own store directory."
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+    population = REGISTRY if args.population == "registry" else census_population()
+    store = Path(args.store) if args.store else store_for(population)
     days = window_days(
         dt.date.fromisoformat(args.start), dt.date.fromisoformat(args.end)
     )
-    build_store(days, Path(args.store), force=args.force)
+    print(
+        f"Population '{population.name}': {len(population)} sites, "
+        f"{len(population.bmu_ids())} BM Units → {store}"
+    )
+    build_store(days, store, force=args.force, population=population)
 
 
 if __name__ == "__main__":

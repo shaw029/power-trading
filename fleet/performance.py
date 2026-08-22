@@ -20,7 +20,7 @@ estimate is comparable.
 
 import pandas as pd
 
-from fleet.registry import FLEET, bmu_to_site
+from fleet.population import REGISTRY, Population
 
 # MID is published on a half-hourly grid; PN spans are floored onto it.
 _MID_FREQ = "30min"
@@ -58,12 +58,25 @@ def _capture_spread(total_gbp, discharge_mwh):
     return pd.to_numeric(total_gbp, errors="coerce") / throughput.where(throughput > 0)
 
 
+#: Duration label for a site whose energy capacity is not published anywhere.
+UNKNOWN_DURATION = "unknown"
+
+
 def duration_label(power_mw: float, capacity_mwh: float) -> str:
     """Battery hours bucket, e.g. ``"2h"``.
 
     Rounded to the nearest whole hour because ``capacity_mwh`` is approximate
     nameplate (Capenhurst's 107 MWh / 100 MW is a 1h battery, not a 1.07h one).
+
+    Returns :data:`UNKNOWN_DURATION` when energy capacity is unknown. Every site
+    in the curated registry has a hand-checked figure, but across the full
+    BM-registered census duration is published only through Capacity Market
+    agreements and is missing for about half the fleet. Labelling those honestly
+    keeps them in MW-based results — where they are perfectly valid — while
+    making them impossible to sum into a duration bucket by accident.
     """
+    if capacity_mwh != capacity_mwh or not capacity_mwh or not power_mw:
+        return UNKNOWN_DURATION
     return f"{max(1, round(capacity_mwh / power_mw))}h"
 
 
@@ -102,6 +115,7 @@ def day_site_metrics(
     cashflows: dict[str, list[dict]],
     mid_prices: pd.DataFrame,
     boalf_records: list[dict] | None = None,
+    population: Population = REGISTRY,
 ) -> pd.DataFrame:
     """Per-site metrics for one settlement day.
 
@@ -110,14 +124,14 @@ def day_site_metrics(
     on the day (not yet commissioned, data not published) are omitted rather
     than reported as zero.
     """
-    site_of = bmu_to_site()
+    site_of = population.bmu_to_site()
     # Throughput is measured on physical delivery -- the notified position
     # corrected by Balancing Mechanism acceptances -- because for GB batteries
     # accepted volume runs at roughly the size of the notified one. Revenue
     # still prices the notified position at MID, with the acceptances paid
     # separately through the BM cashflows, so neither side double-counts.
     physical = (
-        site_physical_profile(pn_records, boalf_records)
+        site_physical_profile(pn_records, boalf_records, population)
         if boalf_records is not None
         else None
     )
@@ -138,7 +152,7 @@ def day_site_metrics(
     offer = _cashflow_totals(cashflows.get("offer", []))
 
     rows = []
-    for site in FLEET:
+    for site in population.sites:
         ids = list(site.bmu_ids)
         site_pn = pn[pn["bmUnit"].isin(ids)] if not pn.empty else pn
         bm_bid = float(bid.reindex(ids).sum())
@@ -183,7 +197,9 @@ def day_site_metrics(
     return pd.DataFrame(rows)
 
 
-def site_profile(pn_records: list[dict]) -> pd.DataFrame:
+def site_profile(
+    pn_records: list[dict], population: Population = REGISTRY
+) -> pd.DataFrame:
     """Net output per fleet site per half-hour, in MW (positive = discharge).
 
     Each PN span's energy is assigned to the half-hour it starts in (the same
@@ -191,7 +207,7 @@ def site_profile(pn_records: list[dict]) -> pd.DataFrame:
     little energy one slot early — fine for shape comparison, do not use this
     for settlement. One row per (site, time) with any activity.
     """
-    site_of = bmu_to_site()
+    site_of = population.bmu_to_site()
     pn = _pn_frame(pn_records)
     pn = pn[pn["bmUnit"].isin(site_of)]
     if pn.empty:
@@ -248,9 +264,11 @@ def _paint_profile(
     )["mw"].sum()
 
 
-def _span_frame(records: list[dict], order_cols: list[str]) -> pd.DataFrame:
+def _span_frame(
+    records: list[dict], order_cols: list[str], population: Population = REGISTRY
+) -> pd.DataFrame:
     """Common preparation for the irregular-span feeds (MELS, MILS, BOALF)."""
-    site_of = bmu_to_site()
+    site_of = population.bmu_to_site()
     df = pd.DataFrame(records)
     if df.empty or "bmUnit" not in df.columns:
         return pd.DataFrame()
@@ -269,7 +287,9 @@ def _span_frame(records: list[dict], order_cols: list[str]) -> pd.DataFrame:
 
 
 def site_physical_profile(
-    pn_records: list[dict], boalf_records: list[dict]
+    pn_records: list[dict],
+    boalf_records: list[dict],
+    population: Population = REGISTRY,
 ) -> pd.DataFrame:
     """Physical delivery per site per half-hour: PN overwritten by acceptances.
 
@@ -285,18 +305,20 @@ def site_physical_profile(
     thirty-minute period. Overlaying on the minute grid keeps the rest of the
     period at the notified level, which is what actually happened.
     """
-    pn_df = _span_frame(pn_records, ["timeFrom"])
-    boalf_df = _span_frame(boalf_records, ["acceptanceTime", "acceptanceNumber"])
+    pn_df = _span_frame(pn_records, ["timeFrom"], population)
+    boalf_df = _span_frame(boalf_records, ["acceptanceTime", "acceptanceNumber"], population)
     if pn_df.empty:
         return (
-            _paint_profile(boalf_df, ["acceptanceTime", "acceptanceNumber"], bmu_to_site())
+            _paint_profile(
+                boalf_df, ["acceptanceTime", "acceptanceNumber"], population.bmu_to_site()
+            )
             if not boalf_df.empty
             else pd.DataFrame(columns=["site", "time", "mw"])
         )
     if boalf_df.empty:
-        return site_profile(pn_records)
+        return site_profile(pn_records, population)
 
-    site_of = bmu_to_site()
+    site_of = population.bmu_to_site()
     layers = [(pn_df, ["timeFrom"]), (boalf_df, ["acceptanceTime", "acceptanceNumber"])]
     parts = []
     for bmu in sorted(set(pn_df["bmUnit"]) | set(boalf_df["bmUnit"])):
@@ -333,17 +355,21 @@ def site_physical_profile(
     )["mw"].sum()
 
 
-def site_limit_profile(records: list[dict]) -> pd.DataFrame:
+def site_limit_profile(
+    records: list[dict], population: Population = REGISTRY
+) -> pd.DataFrame:
     """Effective declared limit per fleet site per half-hour, in MW.
 
     Works for MELS (export limits, levels ≥ 0) and MILS (import limits,
     levels ≤ 0). Redeclarations cut settlement periods into overlapping
     sub-spans, resolved in notification order; see :func:`_paint_profile`.
     """
-    df = _span_frame(records, ["notificationTime", "notificationSequence"])
+    df = _span_frame(records, ["notificationTime", "notificationSequence"], population)
     if df.empty:
         return pd.DataFrame(columns=["site", "time", "mw"])
-    return _paint_profile(df, ["notificationTime", "notificationSequence"], bmu_to_site())
+    return _paint_profile(
+        df, ["notificationTime", "notificationSequence"], population.bmu_to_site()
+    )
 
 
 def filter_daily(

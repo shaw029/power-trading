@@ -22,7 +22,7 @@ from typing import Any, cast
 import pandas as pd
 import requests
 
-from fleet.registry import all_bmu_ids
+from fleet.population import REGISTRY, Population
 from src.data.download import fetch_market_index_price
 from src.data.preprocess import process_market_index_price
 from src.utils.config import ELEXON_BASE_URL, RAW_DATA_DIR
@@ -44,6 +44,17 @@ _PN_WINDOW_PAD = pd.Timedelta(hours=2)
 
 def _cache_path(subdir: str, date: dt.date) -> str:
     return os.path.join(RAW_DATA_DIR, subdir, f"{subdir}_{date.isoformat()}.json")
+
+
+def _dir_for(subdir: str, population: Population) -> str:
+    """Cache directory for a feed under a given population.
+
+    A day-file holds exactly the BM Units it was fetched for, so populations get
+    separate directories rather than sharing one. The curated registry carries an
+    empty suffix, which keeps its existing caches — and the dashboard reading
+    them — completely untouched.
+    """
+    return f"{subdir}{population.cache_suffix}"
 
 
 def _read_cache(subdir: str, date: dt.date) -> Any:
@@ -70,13 +81,16 @@ def _get_json(url: str, params: list[tuple[str, str]] | None = None):
     return response.json()
 
 
-def _fetch_day_stream(dataset: str, subdir: str, date: dt.date) -> list[dict]:
+def _fetch_day_stream(
+    dataset: str, subdir: str, date: dt.date, population: Population = REGISTRY
+) -> list[dict]:
     """One settlement day of a per-BMU Elexon ``/datasets/<X>/stream`` feed.
 
     Queries a ±2h-padded UTC window for every fleet BMU, filters back to
     ``settlementDate == date``, and day-file caches non-empty results under
     ``subdir``.
     """
+    subdir = _dir_for(subdir, population)
     cached = _read_cache(subdir, date)
     if cached is not None:
         return cast(list[dict], cached)
@@ -87,7 +101,7 @@ def _fetch_day_stream(dataset: str, subdir: str, date: dt.date) -> list[dict]:
         ("from", start.strftime("%Y-%m-%dT%H:%MZ")),
         ("to", end.strftime("%Y-%m-%dT%H:%MZ")),
     ]
-    params += [("bmUnit", bmu) for bmu in all_bmu_ids()]
+    params += [("bmUnit", bmu) for bmu in population.bmu_ids()]
 
     url = f"{ELEXON_BASE_URL.rstrip('/')}/datasets/{dataset}/stream"
     records = _get_json(url, params)
@@ -97,17 +111,17 @@ def _fetch_day_stream(dataset: str, subdir: str, date: dt.date) -> list[dict]:
     return records
 
 
-def fetch_fleet_pn(date: dt.date) -> list[dict]:
+def fetch_fleet_pn(date: dt.date, population: Population = REGISTRY) -> list[dict]:
     """Physical Notification records for every fleet BMU on one settlement day.
 
     Returns the raw Elexon ``PN`` stream records (one per BMU per settlement
     period, with ``levelFrom``/``levelTo`` MW and a UTC ``timeFrom``/``timeTo``
     span), filtered to ``settlementDate == date``.
     """
-    return _fetch_day_stream("PN", _PN_DIR, date)
+    return _fetch_day_stream("PN", _PN_DIR, date, population)
 
 
-def fetch_fleet_mels(date: dt.date) -> list[dict]:
+def fetch_fleet_mels(date: dt.date, population: Population = REGISTRY) -> list[dict]:
     """Maximum Export Limit records for every fleet BMU on one settlement day.
 
     Raw Elexon ``MELS`` stream records: declared export capability in MW
@@ -117,20 +131,22 @@ def fetch_fleet_mels(date: dt.date) -> list[dict]:
     half-hourly grid is :func:`fleet.performance.site_limit_profile`'s job,
     not this fetcher's.
     """
-    return _fetch_day_stream("MELS", _MELS_DIR, date)
+    return _fetch_day_stream("MELS", _MELS_DIR, date, population)
 
 
-def fetch_fleet_mils(date: dt.date) -> list[dict]:
+def fetch_fleet_mils(date: dt.date, population: Population = REGISTRY) -> list[dict]:
     """Maximum Import Limit records for every fleet BMU on one settlement day.
 
     Raw Elexon ``MILS`` stream records: declared import capability in MW
     (``levelFrom``/``levelTo`` ≤ 0, i.e. charge headroom). Same irregular-span
     shape as MELS; see :func:`fetch_fleet_mels`.
     """
-    return _fetch_day_stream("MILS", _MILS_DIR, date)
+    return _fetch_day_stream("MILS", _MILS_DIR, date, population)
 
 
-def fetch_fleet_bm_cashflows(date: dt.date) -> dict[str, list[dict]]:
+def fetch_fleet_bm_cashflows(
+    date: dt.date, population: Population = REGISTRY
+) -> dict[str, list[dict]]:
     """Indicative BM cashflow records (£) for every fleet BMU on one day.
 
     Elexon's ``EBOCF`` dataset already prices each unit's accepted bids and
@@ -138,12 +154,13 @@ def fetch_fleet_bm_cashflows(date: dt.date) -> dict[str, list[dict]]:
     ``{"bid": [...], "offer": [...]}`` with one record per BMU per settlement
     period, each carrying a ``bidOfferPairCashflows`` mapping.
     """
-    cached = _read_cache(_CASHFLOW_DIR, date)
+    cashflow_dir = _dir_for(_CASHFLOW_DIR, population)
+    cached = _read_cache(cashflow_dir, date)
     if cached is not None:
         return cast(dict[str, list[dict]], cached)
 
     base = f"{ELEXON_BASE_URL.rstrip('/')}/balancing/settlement/indicative/cashflows/all"
-    params = [("bmUnit", bmu) for bmu in all_bmu_ids()]
+    params = [("bmUnit", bmu) for bmu in population.bmu_ids()]
 
     payload: dict[str, list[dict]] = {}
     for direction in ("bid", "offer"):
@@ -151,7 +168,7 @@ def fetch_fleet_bm_cashflows(date: dt.date) -> dict[str, list[dict]]:
         payload[direction] = body.get("data", []) if isinstance(body, dict) else []
 
     if payload["bid"] or payload["offer"]:
-        _write_cache(_CASHFLOW_DIR, date, payload)
+        _write_cache(cashflow_dir, date, payload)
     return payload
 
 
@@ -169,7 +186,7 @@ def fetch_day_mid_prices(date: dt.date) -> pd.DataFrame:
     )
 
 
-def fetch_fleet_boalf(date: dt.date) -> list[dict]:
+def fetch_fleet_boalf(date: dt.date, population: Population = REGISTRY) -> list[dict]:
     """Accepted bid-offer levels for every fleet BMU on one settlement day.
 
     A Balancing Mechanism acceptance instructs a unit away from its Physical
@@ -182,4 +199,4 @@ def fetch_fleet_boalf(date: dt.date) -> list[dict]:
     ``acceptanceTime``/``acceptanceNumber`` which order overlapping
     acceptances; :func:`fleet.performance.site_physical_profile` resolves them.
     """
-    return _fetch_day_stream("BOALF", _BOALF_DIR, date)
+    return _fetch_day_stream("BOALF", _BOALF_DIR, date, population)
