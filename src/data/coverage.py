@@ -67,6 +67,18 @@ FEEDS: dict[str, Feed] = {
     # --- forecasts ----------------------------------------------------
     "WINDFOR": Feed("WINDFOR", "WINDFOR", "Wind generation forecast"),
     "NESO_NDFD": Feed("NESO_NDFD", "NESO_NDFD", "National demand forecast (day-ahead)"),
+    # --- historical-only feeds ---------------------------------------
+    # ENTSO-E served GB until Brexit ended the obligation, so these cover the
+    # 2017-18 backtest window and nothing after it. They are registered here so
+    # an audit of that window reports them rather than silently skipping them.
+    "ENTSOE_DA": Feed(
+        "ENTSOE_DA", "entsoe_day_ahead_price", "Day-ahead price (ENTSO-E, pre-Brexit)"
+    ),
+    "ENTSOE_DEMAND": Feed(
+        "ENTSOE_DEMAND",
+        "entsoe_demand_forecast",
+        "Demand forecast (ENTSO-E; only the 2017 period uses it)",
+    ),
     # --- per-BMU fleet feeds -----------------------------------------
     "FLEET_PN": Feed("FLEET_PN", "FLEET_PN", "Physical Notifications", per_bmu=True),
     "FLEET_BOALF": Feed("FLEET_BOALF", "FLEET_BOALF", "Accepted bid-offer levels", per_bmu=True),
