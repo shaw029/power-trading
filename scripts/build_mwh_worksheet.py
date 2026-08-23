@@ -167,9 +167,30 @@ def _match_repd(
 
 
 def build(path: Path = WORKSHEET, refresh: bool = False) -> pd.DataFrame:
-    """Write (or extend) the worksheet. Filled rows are never overwritten."""
+    """Write (or extend) the worksheet. Filled rows are never overwritten.
+
+    Two kinds of row. **fill** — the site has no energy capacity from any
+    source. **verify** — it has one from the Capacity Market, which is worth
+    replacing where an operator publishes a physical figure.
+
+    That second kind exists because the Capacity Market number answers a
+    different question. Its MW is what the operator entered into the auction,
+    averaging 86% of Elexon's declared capability and as little as half of it;
+    its duration is a band the operator chose to bid into, and bidding a longer
+    band means a firmer obligation under stress, so there is a standing reason
+    to bid short. Both effects push the same way. Across the census, Capacity
+    Market sites imply a median 1.32 hours where hand-verified and
+    operator-published sites both imply about 2.
+
+    The cost is not abstract: Lakeside's capacity agreement gives 149.85 MWh
+    against the operator's 200, which overstates its cycling by a third — and
+    cycles per day is what decides whether a site's inferred state of charge is
+    usable at all. Registry rows are never listed, being hand-checked against
+    the site and already the highest precedence.
+    """
     table = coverage.coverage_table(refresh)
-    missing = table[table["capacity_mwh"].isna()].copy()
+    needs_work = table[table["mwh_source"].isna() | table["mwh_source"].eq("capacity_market")]
+    missing = needs_work.copy()
 
     try:
         repd = fetch_repd_batteries()
@@ -183,7 +204,9 @@ def build(path: Path = WORKSHEET, refresh: bool = False) -> pd.DataFrame:
 
     rows = []
     for site in missing.itertuples():
+        has_cm = site.mwh_source == "capacity_market"
         row = {
+            "task": "verify" if has_cm else "fill",
             "asset_id": site.asset_id,
             "site_name": site.site_name,
             "lead_party": site.lead_party,
@@ -191,6 +214,14 @@ def build(path: Path = WORKSHEET, refresh: bool = False) -> pd.DataFrame:
             "declared_export_mw": round(float(site.declared_export_mw), 1),
             "connection_level": site.connection_level,
             "in_registry": bool(site.in_registry),
+            # What is already held, so a researcher can see what they are
+            # checking against rather than filling blind.
+            "current_mwh": round(float(site.capacity_mwh), 1) if has_cm else None,
+            "current_source": site.mwh_source if has_cm else None,
+            "current_implied_h": (
+                round(float(site.capacity_mwh) / float(site.declared_export_mw), 2)
+                if has_cm and site.declared_export_mw else None
+            ),
         }
         row.update(_match_repd(site.site_name, site.declared_export_mw, repd, distinctive))
         row.update({c: None for c in ENTRY_COLUMNS})
@@ -216,8 +247,10 @@ def main() -> None:
     sheet = build()
     todo = int(sheet["capacity_mwh"].isna().sum())
     with_lead = int(sheet.get("repd_site", pd.Series(dtype=object)).notna().sum())
+    tasks = sheet["task"].value_counts().to_dict() if "task" in sheet else {}
     print(f"\n{WORKSHEET}")
-    print(f"  {len(sheet)} sites, {todo} still to fill")
+    print(f"  {len(sheet)} sites, {todo} still to do "
+          f"({tasks.get('fill', 0)} fill, {tasks.get('verify', 0)} verify a Capacity Market figure)")
     print(f"  {with_lead} have a REPD lead (operator, MW, commissioning date, postcode)")
     print(f"  fill: {', '.join(ENTRY_COLUMNS)}")
     print(f"  source_type must be one of: {', '.join(SOURCE_TYPES)}")

@@ -227,6 +227,36 @@ gigabyte. So the notebooks take the census and the dashboard keeps the registry 
 and because the dashboard states its own coverage on the page, a reader is never
 left thinking the light tier is the complete one.
 
+### Physical capacity beats contracted capacity, where both exist
+
+Energy capacity arrives from three places and they are not measuring the same
+thing. The curated registry's figures were checked against the site. An operator
+publishes a physical nameplate. The Capacity Market states a duration band the
+operator *chose to bid into*, against a MW figure it *chose to register*.
+
+Both Capacity Market choices push the same way. Its MW averages 86% of Elexon's
+declared capability and is sometimes half of it — Brentwood and Berkeley each
+register 49.9 MW against 104 MW declared. Its duration comes in bands of 1.0,
+1.5 and 2.0 hours, and bidding a longer band means a firmer delivery obligation
+under stress, so there is a standing reason to bid short. Across the census,
+Capacity Market sites imply a median 1.32 hours where hand-verified and
+operator-published sites both imply about 2.
+
+The cost is measurable. Lakeside's agreement gives 149.85 MWh against the
+operator's published 200, and over 702 days of dispatch that overstates its
+cycling by a third — from 0.74 to 0.99 cycles per day, either side of a 0.3
+threshold that decides whether a site's inferred state of charge is used at all.
+
+So precedence is registry, then operator, then Capacity Market, because every
+metric the project computes from energy capacity — cycles, state of charge,
+MWh coverage — is asking what the battery can physically hold. The Capacity
+Market figure is a proxy used because it is available, not because it is right
+for that question; it would be the correct figure for capacity-market revenue,
+which is not priced here because the clearing prices are not published by NESO.
+
+Leaving it alone was not the neutral option. It preserved an understatement of
+known direction and known size on nineteen sites.
+
 ### Only cross-referenced assets enter the analysis population
 
 `census_sites()` defaults to the `registry` and `corroborated` grades and drops
