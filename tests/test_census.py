@@ -318,3 +318,26 @@ def test_worksheet_accepts_agreement_between_independent_sources(tmp_path):
         _worksheet(tmp_path, declared_export_mw=57.0, capacity_mwh=138.0, duration_h=2.4)
     )
     assert len(accepted) == 1
+
+
+def test_a_self_consistent_figure_is_flagged_when_the_duration_is_unlike_the_fleet(tmp_path):
+    """The agreement check goes circular if the duration is derived from the MWh.
+
+    Wolverhampton West was recorded first at 2.4 h against 310 MWh (rejected as
+    disagreeing) and then at 5.5 h (agreeing, because 310/56 is 5.5). The same
+    figure underneath, now unfalsifiable by comparison — so a second check asks
+    whether GB batteries have this duration at all, and flags rather than
+    rejects, since longer batteries do exist.
+    """
+    sheet = coverage.load_energy_worksheet(
+        _worksheet(tmp_path, declared_export_mw=56.0, capacity_mwh=310.0, duration_h=5.5)
+    )
+    assert len(sheet) == 1, "a plausible-looking outlier still loads"
+    assert bool(sheet["mwh_needs_review"].iloc[0]) is True
+
+
+def test_an_ordinary_duration_is_not_flagged(tmp_path):
+    sheet = coverage.load_energy_worksheet(
+        _worksheet(tmp_path, declared_export_mw=57.0, capacity_mwh=138.0, duration_h=2.4)
+    )
+    assert bool(sheet["mwh_needs_review"].iloc[0]) is False

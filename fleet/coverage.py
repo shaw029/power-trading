@@ -76,6 +76,23 @@ WORKSHEET_SOURCE_TYPES = (
 #: five-and-a-half-hour battery.
 DURATION_AGREEMENT = 0.25
 
+#: Implied duration above which a row is loaded but flagged for review.
+#:
+#: The agreement check above compares a row's implied duration against the one
+#: the researcher recorded, which catches a figure describing a different asset
+#: — but only while the two are derived independently. Record the duration *from*
+#: the MWh and the comparison becomes circular and always passes. Wolverhampton
+#: West did exactly that between two revisions: 310 MWh first recorded at 2.4 h
+#: (rejected), then at 5.5 h (accepted), with the same figure underneath.
+#:
+#: So a second check is needed that does not consult the researcher at all, and
+#: asks instead whether GB batteries have this duration. Every priced census
+#: site sits at or below 2.48 h and none exceeds 3. Four hours is set well clear
+#: of that, since genuinely longer batteries are being built and this must flag
+#: rather than reject: NESO's register does list units at 5.5 h. A flag says
+#: "cite this one precisely", not "this is wrong".
+DURATION_REVIEW_H = 4.0
+
 #: A curated-registry inclusion criterion: sites below this are out of scope by
 #: design, not by accident. Mirrors ``fleet.registry``'s stated ~35 MW floor
 #: (its smallest member, Contego, is 34 MW).
@@ -238,6 +255,20 @@ def load_energy_worksheet(path: Path | None = None) -> pd.DataFrame:
     disagreement = (implied - stated).abs() / stated.replace(0, pd.NA)
     ok &= disagreement.isna() | (disagreement <= DURATION_AGREEMENT)
 
+    flagged = implied > DURATION_REVIEW_H
+    for row in filled[ok & flagged].itertuples():
+        logger.warning(
+            "Worksheet row for %s (%s) needs review: %.0f MWh over %.1f MW declared "
+            "implies %.1f h, longer than any priced census site. Self-consistent with "
+            "the duration recorded, so the agreement check cannot judge it — confirm "
+            "the figure covers this BM Unit and not the wider project.",
+            row.asset_id, getattr(row, "site_name", "?"),
+            getattr(row, "capacity_mwh", float("nan")),
+            getattr(row, "declared_export_mw", float("nan")),
+            getattr(row, "capacity_mwh", float("nan"))
+            / (getattr(row, "declared_export_mw", float("nan")) or float("nan")),
+        )
+
     for row in filled[~ok].itertuples():
         imp = getattr(row, "capacity_mwh", float("nan")) / (
             getattr(row, "declared_export_mw", float("nan")) or float("nan")
@@ -251,7 +282,9 @@ def load_energy_worksheet(path: Path | None = None) -> pd.DataFrame:
             getattr(row, "declared_export_mw", float("nan")),
             imp, getattr(row, "duration_h", "?"),
         )
-    return filled[ok]
+    out = filled[ok].copy()
+    out["mwh_needs_review"] = (out["capacity_mwh"] / declared[ok]) > DURATION_REVIEW_H
+    return out
 
 
 def apply_energy_worksheet(sites: pd.DataFrame, path: Path | None = None) -> pd.DataFrame:
@@ -282,6 +315,7 @@ def apply_energy_worksheet(sites: pd.DataFrame, path: Path | None = None) -> pd.
         sites.at[i, "capacity_mwh"] = float(row["capacity_mwh"])
         sites.at[i, "mwh_source"] = str(row["source_type"])
         sites.at[i, "mwh_source_url"] = row.get("source_url")
+        sites.at[i, "mwh_needs_review"] = bool(row.get("mwh_needs_review", False))
     return sites
 
 
