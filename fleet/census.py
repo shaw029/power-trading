@@ -447,7 +447,19 @@ def battery_bmus(refresh: bool = False) -> pd.DataFrame:
     return ref
 
 
-def census_sites(refresh: bool = False) -> pd.DataFrame:
+#: Confidence grades accepted into the analysis population by default.
+#: ``signature_only`` is excluded: those units pass the physical test with no
+#: independent source agreeing, and every one of them so far has been a false
+#: positive — the Isle of Man interconnector (symmetric by construction, as any
+#: interconnector is), a hydro station's demand unit, and a gas site. The grade
+#: was built so a result could be quoted for cross-referenced assets alone; this
+#: makes that the default rather than an option nobody takes.
+ANALYSIS_CONFIDENCE = ("registry", "corroborated")
+
+
+def census_sites(
+    refresh: bool = False, confidence: tuple[str, ...] = ANALYSIS_CONFIDENCE
+) -> pd.DataFrame:
     """The census, aggregated from BM Units to physical sites.
 
     One row per ``asset_id`` — the persistent key — carrying the site's BM
@@ -455,12 +467,19 @@ def census_sites(refresh: bool = False) -> pd.DataFrame:
     registry covers it. This is the frame every statistic in
     :mod:`fleet.coverage` is computed from.
 
+    ``confidence`` selects which grades qualify, defaulting to
+    :data:`ANALYSIS_CONFIDENCE`. Pass ``None`` to keep every unit the physical
+    rule accepted, including the uncorroborated ones — useful for auditing the
+    rule itself, and wrong for anything quoted.
+
     Declared export MW is summed across the site's units because a multi-unit
     site splits its nameplate between them; declared import is summed the same
     way and kept, since the asymmetry between them is itself diagnostic.
     """
     units = battery_bmus(refresh)
     units = units[units["is_battery"]].copy()
+    if confidence is not None:
+        units = units[units["confidence"].isin(confidence)]
 
     grouped = units.groupby("asset_id", sort=False)
     sites = pd.DataFrame(

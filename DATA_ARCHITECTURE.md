@@ -24,7 +24,7 @@ written once and read at either depth. **A metric is never removed to make the d
 lighter** — the dashboard simply asks the same function for less.
 
 The rule that keeps this honest: **the dashboard never claims the notebook's scope.** It
-states its own coverage on the page (45.5% of GB BM-registered battery MW) and points at
+states its own coverage on the page (46.4% of GB BM-registered battery MW) and points at
 the notebook for the rest, so a light tier never reads as a complete one.
 
 ## Why this came up
@@ -60,7 +60,7 @@ specific holes:
 The population is a parameter, carried by `fleet.population.Population`: a set of
 sites, the BM Units they own, and the cache suffix their day-files are written
 under. Two exist — `REGISTRY` (the curated 23 sites / 47 BM Units) and
-`census_population()` (90 sites / 127 BM Units).
+`census_population()` (87 sites / 124 BM Units).
 
 `REGISTRY` is the **default argument of every fetcher and every metric**, so the
 dashboard gets it without asking and its behaviour is unchanged by construction.
@@ -170,14 +170,14 @@ Over the July 2026 snapshot:
 
 | Basis | Registry | Census | Coverage |
 |---|---|---|---|
-| Sites | 23 | 90 | 25.6% |
-| **MW (declared export)** | **2,891** | **6,348** | **45.5%** |
+| Sites | 23 | 87 | 26.4% |
+| **MW (declared export)** | **2,891** | **6,234** | **46.4%** |
 | MWh (where known) | 5,179 | 6,391 | 81.0% ⚠ |
 
 ⚠ Duration is known for 23/23 registry sites but only 19/67 others, so the MWh
 row is biased upward and is a ceiling, not an estimate.
 
-The registry captures **45.5% of GB BM-registered operational battery MW**, and
+The registry captures **46.4% of GB BM-registered operational battery MW**, and
 the bias has a clear direction: coverage is 70% of 200 MW+ assets but 14% of
 20–50 MW and 0% below 20 MW, and 54% of transmission-connected MW against 28%
 of distribution-connected. Batteries traded behind aggregator, VLP or supplier
@@ -227,6 +227,22 @@ gigabyte. So the notebooks take the census and the dashboard keeps the registry 
 and because the dashboard states its own coverage on the page, a reader is never
 left thinking the light tier is the complete one.
 
+### Only cross-referenced assets enter the analysis population
+
+`census_sites()` defaults to the `registry` and `corroborated` grades and drops
+`signature_only` — units that pass the physical test with no independent source
+agreeing. All three such units turned out to be false positives: ENRON MANX (the
+Isle of Man interconnector — symmetric by construction, as any interconnector
+is), a hydro station's demand unit, and a gas site.
+
+The confidence grade existed from the start; making it the default took a longer
+window to justify. Across 2023-26 the three sites were 1.8% of census MW and
+changed nothing. Extended to 2018, when only seven census sites existed, the
+interconnector's constant 22 MW import dominated the fleet's net position and
+produced quarters where the fleet appeared never to discharge into scarcity at
+all. A sample small enough to be moved by one wrong member is a sample where
+"corroborated by an independent source" has to be a requirement, not a label.
+
 ### Metadata is not uniform across the census
 
 The census is identified from Elexon reference data, so its *power* is as sound
@@ -234,7 +250,7 @@ as the registry's. Its other metadata is not, and the difference matters
 per-metric rather than globally:
 
 - **MW-normalised metrics** (£/MW/day, MW per MW online, availability factor)
-  are valid across all 90 sites — declared export capability comes from Elexon.
+  are valid across all 87 sites — declared export capability comes from Elexon.
 - **MWh-normalised metrics** (cycles per day, inferred state of charge) are valid
   for the 42 sites whose duration is published through a Capacity Market
   agreement. The notebooks compute them over that subset and say so on the page.
