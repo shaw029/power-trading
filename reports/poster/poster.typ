@@ -94,25 +94,34 @@
 // ─── Three columns ───────────────────────────────────────────────────────────
 #columns(3, gutter: 20mm)[
 
-#section("1 · The Research Problem & Coverage Gap", da-blue)
+#section("1 · The Problem, and the Fleet to Measure It", da-blue)
 
 Grid-scale batteries optimise for arbitrage, but market signals do not always
-align with system stress. Previous studies relied on a curated 23-site registry
-capturing only #metric[46.4%] of operational capacity.
+align with system stress. Measuring that gap at fleet level needs a fleet — and
+no public census of GB batteries exists, because Elexon labels no BM Unit a
+battery.
 
-We reconstructed an #metric[87-site census] of #metric[124 BM Units], totalling
-#metric[6,234 MW].
-Physical energy capacity (MWh) was hierarchically sourced to prevent a
-#metric[~34% duration understatement] caused by Capacity Market de-rating.
+So we built one: #metric[87 sites], #metric[124 BM Units], #metric[6,234 MW],
+found by declared import matching declared export and corroborated against four
+public registers. A hand-curated sample of 23 sites covers #metric[46%] of it.
+Energy capacity is taken in precedence order — registry, then operator
+disclosure, then Capacity Market — as the last understates duration by
+#metric[about a third].
 
 #panel("nb06_fig2_coverage_by_basis.svg")[
-  Fig 1 — Registry coverage of the census by site count, MW and MWh. MW is the
-  headline; site count flatters a sample that deliberately picked large assets.
+  Fig 1 — What the curated sample covers of the census we built. MW is the
+  measure that matters; the sample skews to large, transmission-connected sites.
 ]
 
-#panel("nb06_fig3_where_missing_mw_sits.svg")[
-  Fig 2 — Where the missing MW sits. Coverage falls away with site size and off
-  the transmission network.
+#v(1mm)
+#text(size: 21pt)[
+  *And the alignment gap is not one number.* It is cheap to mandate on the days the system
+  is comfortable and dear on the days it is not.
+]
+
+#panel("nb04_fig3_alignment_by_regime.svg")[
+  Fig 2 — Cost of full alignment by day type. Hollow bars rest on fewer than ten
+  days and are indicative only.
 ]
 
 #colbreak()
@@ -174,9 +183,9 @@ ancillary pound reaches a site at all.
 
 ]
 
-#v(4mm)
+#v(2mm)
 #line(length: 100%, stroke: 3pt + rule-grey)
-#v(4mm)
+#v(2mm)
 
 // A footer band, because the three columns leave the lower third of an A0
 // empty and a reviewer reads the limitations before the conclusions.
