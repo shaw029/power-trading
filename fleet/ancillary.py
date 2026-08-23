@@ -48,6 +48,7 @@ Nothing here is imported by the live dashboard — this is full-profile only.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import os
 import re
@@ -74,9 +75,27 @@ class AncillarySource:
     name: str
     resource_id: str
     #: Column names in this table's own schema: unit, service, volume, price,
-    #: block start, block end, technology.
-    columns: tuple[str, str, str, str, str, str, str]
+    #: block start, block end.
+    columns: tuple[str, str, str, str, str, str]
     era: str
+    #: Column carrying a technology label, where the table has one. Sources
+    #: without it cannot be filtered to batteries server-side, so their rows are
+    #: kept only where the unit resolves to a census site — see
+    #: :data:`SITE_ATTRIBUTED_ONLY`.
+    technology: str | None = None
+    #: Column carrying settled revenue directly. NESO states it for the
+    #: Dynamic Containment masterdata, and a published figure beats
+    #: reconstructing one from volume, price and block length.
+    revenue: str | None = None
+    #: Restrict to accepted bids, for tables that also list rejected ones.
+    accepted_filter: str | None = None
+
+
+#: Sources with no technology column contribute only revenue that resolves to a
+#: census site. Their fleet-wide totals would otherwise include gas, DSR and
+#: everything else in the same auction, which would corrupt the unattributed
+#: buckets rather than fill them.
+SITE_ATTRIBUTED_ONLY = "site-attributed only (source has no technology label)"
 
 
 #: The three per-unit tables, oldest first. Their periods do not overlap and do
@@ -92,9 +111,37 @@ SOURCES: tuple[AncillarySource, ...] = (
             "Clearing Price",
             "Delivery Start",
             "Delivery End",
-            "Technology Type",
         ),
         era="DC/DR/DM (2021-09 → 2023-11)",
+        technology="Technology Type",
+    ),
+    AncillarySource(
+        name="ffr_phase2",
+        resource_id="15d7fa42-1c8d-4a79-86f8-890cf9228794",
+        columns=(
+            "Unit Name",
+            "Service",
+            "Cleared Volume",
+            "Clearing Price",
+            "Delivery Start",
+            "Delivery End",
+        ),
+        era="FFR Phase 2 (2019-12 → 2020-04)",
+    ),
+    AncillarySource(
+        name="dc_masterdata",
+        resource_id="0b8dbc3c-e05e-44a4-b855-7dd1aa079c68",
+        columns=(
+            "Response Unit",
+            "Market Name",
+            "Volume Accepted",
+            "Availability Fee",
+            "Delivery Start UTC",
+            "Delivery End UTC",
+        ),
+        era="Dynamic Containment masterdata (2020-10 → 2021-09)",
+        revenue="Total Cost",
+        accepted_filter="Accepted/Rejected",
     ),
     AncillarySource(
         name="balancing_reserve",
@@ -106,9 +153,9 @@ SOURCES: tuple[AncillarySource, ...] = (
             "clearingPrice",
             "deliveryStart",
             "deliveryEnd",
-            "technologyType",
         ),
         era="Balancing Reserve (2024-03 → 2025-10)",
+        technology="technologyType",
     ),
     AncillarySource(
         name="eac_response_reserve",
@@ -120,9 +167,9 @@ SOURCES: tuple[AncillarySource, ...] = (
             "clearingPrice",
             "deliveryStart",
             "deliveryEnd",
-            "technologyType",
         ),
         era="EAC Response/Reserve (2026-03 → present)",
+        technology="technologyType",
     ),
 )
 
@@ -154,22 +201,114 @@ def _sql_paged(sql_without_limit: str) -> list[dict]:
         offset += len(page)
 
 
+def _cached_json(name: str, builder, refresh: bool = False):
+    """Fetch ``name`` at most once per day, alongside the ancillary parquet."""
+    path = os.path.join(_CACHE_DIR, f"{name}_{dt.date.today().isoformat()}.json")
+    if not refresh and os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as fp:
+            return json.load(fp)
+    payload = builder()
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fp:
+        json.dump(payload, fp)
+    return payload
+
+
+#: Unit names that say battery outright, for tables that carry no technology
+#: label. ``DBESS-22`` is unmistakable and appears in no labelled table.
+_BATTERY_UNIT_RE = re.compile(r"BESS|BATT", re.I)
+
+
+def battery_units(refresh: bool = False) -> set[str]:
+    """Every auction unit known to be a battery, however that is known.
+
+    NESO labels technology in its newer results tables and not in its older
+    ones, so the older eras cannot be filtered server-side. This assembles the
+    answer from the tables that *do* label it, and is the reason FFR Phase 2 and
+    the Dynamic Containment masterdata can contribute battery revenue rather
+    than the whole auction's.
+
+    Three signals, unioned:
+
+    * the unit is labelled ``Batteries`` in a technology-labelled table — NESO's
+      own word, and the strongest;
+    * its name says so (``DBESS-22``), which catches units that never appear in
+      a labelled table;
+    * it resolves to a site in the census, which catches BM-named units whose
+      auction alias never carried a label.
+
+    Anything outside the union is left out. The cost is under-counting a
+    battery that never identified itself anywhere; the alternative is counting
+    gas and DSR as battery revenue, which is worse in a study about batteries.
+    """
+
+    def build() -> list[str]:
+        names: set[str] = set()
+        for source in SOURCES:
+            if not source.technology:
+                continue
+            unit = source.columns[0]
+            sql = (
+                f'SELECT DISTINCT "{unit}" AS u FROM "{source.resource_id}" '
+                f"WHERE {_BATTERY_PREDICATE.format(col=source.technology)}"
+            )
+            names.update(str(r.get("u", "")).strip() for r in _sql_paged(sql))
+        names.discard("")
+        return sorted(names)
+
+    labelled = set(_cached_json("battery_units", build, refresh))
+    census_roots = {
+        a.removeprefix("GB-BESS-") for a in census.census_sites(refresh)["asset_id"]
+    }
+    return labelled | {r for r in census_roots}
+
+
+def _is_battery(units: pd.Series, known: set[str]) -> pd.Series:
+    """Battery test for a table with no technology column."""
+    text = units.astype(str).str.strip()
+    return (
+        text.isin(known)
+        | text.str.contains(_BATTERY_UNIT_RE)
+        | text.map(lambda u: census.bmu_root(u) in known)
+    )
+
+
 def _fetch_source(source: AncillarySource) -> pd.DataFrame:
     """Battery rows of one source, normalised to the common schema.
 
-    Only the seven columns the analysis needs are selected, and the battery
-    filter runs server-side, so a table of a million rows transfers as the
-    hundred thousand that matter.
+    Only the columns the analysis needs are selected, and where the table
+    carries a technology label the battery filter runs server-side, so a table
+    of a million rows transfers as the hundred thousand that matter.
+
+    The older tables — FFR Phase 2 and the Dynamic Containment masterdata —
+    have no technology column. They are fetched whole and marked
+    ``site_attributed_only``, because their fleet-wide totals would otherwise
+    fold in gas, DSR and every other technology bidding into the same auction.
     """
-    unit, service, volume, price, start, end, technology = source.columns
-    projection = ", ".join(f'"{c}"' for c in source.columns)
-    sql = (
-        f"SELECT {projection} FROM \"{source.resource_id}\" "
-        f"WHERE {_BATTERY_PREDICATE.format(col=technology)}"
-    )
-    frame = pd.DataFrame(_sql_paged(sql))
+    unit, service, volume, price, start, end = source.columns
+    wanted = list(source.columns)
+    for extra in (source.technology, source.revenue, source.accepted_filter):
+        if extra:
+            wanted.append(extra)
+
+    projection = ", ".join(f'"{c}"' for c in dict.fromkeys(wanted))
+    where = []
+    if source.technology:
+        where.append(_BATTERY_PREDICATE.format(col=source.technology))
+    if source.accepted_filter:
+        where.append(f"\"{source.accepted_filter}\" ILIKE 'accepted'")
+    clause = f" WHERE {' AND '.join(where)}" if where else ""
+
+    frame = pd.DataFrame(_sql_paged(f'SELECT {projection} FROM "{source.resource_id}"{clause}'))
     if frame.empty:
         return frame
+
+    # A table with no technology column arrives carrying every technology in its
+    # auction, so the battery test is applied here instead of in the query.
+    if source.technology is None:
+        frame = frame[_is_battery(frame[unit], battery_units())]
+        if frame.empty:
+            return frame
 
     out = pd.DataFrame(
         {
@@ -181,8 +320,14 @@ def _fetch_source(source: AncillarySource) -> pd.DataFrame:
             "block_end": pd.to_datetime(frame[end], utc=True, errors="coerce"),
         }
     )
+    out["stated_revenue_gbp"] = (
+        pd.to_numeric(frame[source.revenue], errors="coerce")
+        if source.revenue
+        else float("nan")
+    )
     out["source"] = source.name
     out["era"] = source.era
+    out["site_attributed_only"] = source.technology is None
     return out.dropna(subset=["block_start", "block_end"])
 
 
@@ -217,9 +362,11 @@ def fetch_all(refresh: bool = False) -> pd.DataFrame:
         # blocks), so it is read off each record rather than assumed.
         hours = (combined["block_end"] - combined["block_start"]).dt.total_seconds() / 3600.0
         combined["block_hours"] = hours
-        combined["revenue_gbp"] = (
-            combined["volume_mw"] * combined["price_gbp_mw_h"] * hours
-        )
+        # NESO states settled revenue outright for the Dynamic Containment
+        # masterdata. A published figure beats one reconstructed from volume,
+        # price and block length, so it is preferred where it exists.
+        derived = combined["volume_mw"] * combined["price_gbp_mw_h"] * hours
+        combined["revenue_gbp"] = combined["stated_revenue_gbp"].fillna(derived)
         combined["date"] = combined["block_start"].dt.date
         combined["asset_id"] = [
             None if _HOUSE_CODE_RE.match(u) else census.asset_id(u)
@@ -255,7 +402,9 @@ def site_daily_revenue(
 
     grouped = (
         frame.groupby(
-            ["asset_id", "unit", "date", "service", "source", "era"], dropna=False
+            ["asset_id", "unit", "date", "service", "source", "era",
+             "site_attributed_only"],
+            dropna=False,
         )
         .agg(
             revenue_gbp=("revenue_gbp", "sum"),
@@ -268,6 +417,13 @@ def site_daily_revenue(
     # Carried on the frame so no caller has to remember that half of ancillary
     # revenue is earned by units which are not sites.
     grouped["unit_class"] = classify_units(grouped["unit"], refresh=refresh)
+
+    # Sources with no technology label cover every technology in their auction,
+    # so only their census-site rows are meaningful; anything else they carry is
+    # some other plant and must not land in the unattributed buckets.
+    drop = grouped["site_attributed_only"] & (grouped["unit_class"] != "census site")
+    if drop.any():
+        grouped = grouped[~drop]
     return grouped.sort_values(["date", "revenue_gbp"], ascending=[True, False])
 
 
