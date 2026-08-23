@@ -39,12 +39,27 @@ percentage below is a share of the BM-registered fleet, not of GB storage.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
+from pathlib import Path
 
 import pandas as pd
 
 from fleet import census
+
+logger = logging.getLogger(__name__)
+
+#: Hand-researched energy capacities, built by ``scripts/build_mwh_worksheet.py``
+#: and filled from what operators publish. Optional — everything works without
+#: it, with fewer sites priced.
+ENERGY_WORKSHEET = (
+    Path(__file__).resolve().parents[1] / "data" / "reference" / "battery_energy_capacity.xlsx"
+)
+
+#: Accepted values of the worksheet's ``source_type``. A figure's standing
+#: travels with it rather than being asserted once in a caption.
+WORKSHEET_SOURCE_TYPES = ("operator", "press_release", "planning", "other")
 
 #: A curated-registry inclusion criterion: sites below this are out of scope by
 #: design, not by accident. Mirrors ``fleet.registry``'s stated ~35 MW floor
@@ -166,6 +181,81 @@ def enrich_with_capacity_market(sites: pd.DataFrame, cm: pd.DataFrame) -> pd.Dat
     return sites
 
 
+def load_energy_worksheet(path: Path | None = None) -> pd.DataFrame:
+    """Hand-researched energy capacities, with the provenance of each.
+
+    Returns an empty frame when the worksheet is absent, so the census works
+    unchanged without it — the sheet adds sites that can be priced, it is never
+    load-bearing.
+
+    Rows are validated rather than trusted. A figure needs a positive MWh, a
+    recognised ``source_type`` and a ``source_url``, and must imply a duration a
+    battery could actually have; anything failing is dropped with a warning. The
+    citation requirement is the point of the exercise. A number read off a
+    developer's page and a number settled through a capacity agreement are
+    different kinds of claim, and the analysis is allowed to say which it has
+    only if the sheet records it.
+    """
+    path = path or ENERGY_WORKSHEET
+    if not path.exists():
+        return pd.DataFrame(columns=["asset_id", "capacity_mwh", "source_type", "source_url"])
+
+    sheet = pd.read_excel(path)
+    sheet["capacity_mwh"] = pd.to_numeric(sheet.get("capacity_mwh"), errors="coerce")
+    filled = sheet[sheet["capacity_mwh"].notna()].copy()
+    if filled.empty:
+        return filled
+
+    ok = filled["capacity_mwh"] > 0
+    ok &= filled.get("source_type", pd.Series(dtype=object)).isin(WORKSHEET_SOURCE_TYPES)
+    ok &= filled.get("source_url", pd.Series(dtype=object)).astype(str).str.strip().ne("")
+    ok &= filled.get("source_url", pd.Series(dtype=object)).notna()
+
+    declared = pd.to_numeric(filled.get("declared_export_mw"), errors="coerce")
+    implied = filled["capacity_mwh"] / declared.replace(0, pd.NA)
+    ok &= implied.isna() | (implied <= census.MAX_BATTERY_DURATION_H)
+
+    for row in filled[~ok].itertuples():
+        logger.warning(
+            "Worksheet row rejected for %s: needs a positive MWh, a source_type in %s, "
+            "a source_url, and a plausible implied duration",
+            row.asset_id,
+            WORKSHEET_SOURCE_TYPES,
+        )
+    return filled[ok]
+
+
+def apply_energy_worksheet(sites: pd.DataFrame, path: Path | None = None) -> pd.DataFrame:
+    """Fill energy capacity from the worksheet, recording where each came from.
+
+    Precedence is registry, then worksheet, then Capacity Market. The registry's
+    figures were checked against the site itself. A worksheet figure carries a
+    citation and a read date, and is usually the operator's own nameplate. The
+    Capacity Market's duration is a contractual band — 1h, 1.5h, 2h — so it is
+    the coarsest of the three and yields to a specific published figure.
+    """
+    worksheet = load_energy_worksheet(path)
+    if worksheet.empty:
+        return sites
+
+    sites = sites.copy()
+    by_asset = worksheet.set_index("asset_id")
+    for column in ("capacity_mwh", "mwh_source"):
+        if column not in sites:
+            sites[column] = None
+
+    for i, asset in sites["asset_id"].items():
+        if asset not in by_asset.index:
+            continue
+        if sites.at[i, "mwh_source"] == "registry":
+            continue
+        row = by_asset.loc[asset]
+        sites.at[i, "capacity_mwh"] = float(row["capacity_mwh"])
+        sites.at[i, "mwh_source"] = str(row["source_type"])
+        sites.at[i, "mwh_source_url"] = row.get("source_url")
+    return sites
+
+
 def coverage_table(refresh: bool = False) -> pd.DataFrame:
     """Tier 1 — one row per known battery site, with the reason it is missing.
 
@@ -181,6 +271,7 @@ def coverage_table(refresh: bool = False) -> pd.DataFrame:
     """
     sites = census.census_sites(refresh)
     sites = enrich_with_capacity_market(sites, census.fetch_cm_storage(refresh))
+    sites = apply_energy_worksheet(sites)
 
     sites["size_band"] = sites["declared_export_mw"].map(_size_band)
     sites["missing_reason"] = None

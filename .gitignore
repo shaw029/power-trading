@@ -10,6 +10,13 @@ __pycache__/
 /data/
 /artifacts/
 
+# ...except hand-researched reference data, which is the one thing here no
+# pipeline can recreate. The energy-capacity worksheet is read off operator
+# pages and press releases by a person; losing it to a gitignore would mean
+# doing that work twice.
+!/data/reference/
+!/data/reference/**
+
 # Local config — gitignored; *.example files are the committed templates
 .env
 .env.local

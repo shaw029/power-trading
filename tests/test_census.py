@@ -245,3 +245,54 @@ def test_unknown_duration_is_labelled_not_crashed():
     assert duration_label(50.0, 100.0) == "2h"
     assert duration_label(50.0, float("nan")) == UNKNOWN_DURATION
     assert duration_label(50.0, 0.0) == UNKNOWN_DURATION
+
+
+def _worksheet(tmp_path, **overrides):
+    row = {
+        "asset_id": "GB-BESS-AAAA", "site_name": "A BESS", "declared_export_mw": 50.0,
+        "capacity_mwh": 110.0, "duration_h": 2.2, "source_type": "operator",
+        "source_url": "https://operator.example/projects/a", "read_on": "2026-08-23",
+        "notes": None,
+    }
+    row.update(overrides)
+    path = tmp_path / "sheet.xlsx"
+    pd.DataFrame([row]).to_excel(path, index=False)
+    return path
+
+
+def test_worksheet_value_carries_its_provenance(tmp_path):
+    """A figure read off an operator's page must not look like a settled one."""
+    sites = pd.DataFrame({
+        "asset_id": ["GB-BESS-AAAA"], "capacity_mwh": [float("nan")],
+        "mwh_source": [None], "declared_export_mw": [50.0],
+    })
+    out = coverage.apply_energy_worksheet(sites, _worksheet(tmp_path))
+    assert out["capacity_mwh"].iloc[0] == pytest.approx(110.0)
+    assert out["mwh_source"].iloc[0] == "operator"
+    assert out["mwh_source_url"].iloc[0].startswith("https://")
+
+
+def test_worksheet_does_not_override_the_hand_verified_registry(tmp_path):
+    sites = pd.DataFrame({
+        "asset_id": ["GB-BESS-AAAA"], "capacity_mwh": [200.0],
+        "mwh_source": ["registry"], "declared_export_mw": [50.0],
+    })
+    out = coverage.apply_energy_worksheet(sites, _worksheet(tmp_path))
+    assert out["capacity_mwh"].iloc[0] == pytest.approx(200.0)
+    assert out["mwh_source"].iloc[0] == "registry"
+
+
+def test_worksheet_row_without_a_citation_is_rejected(tmp_path):
+    """The citation is the point: an uncited figure is not evidence."""
+    assert coverage.load_energy_worksheet(_worksheet(tmp_path, source_url=None)).empty
+    assert coverage.load_energy_worksheet(_worksheet(tmp_path, source_type="hearsay")).empty
+
+
+def test_worksheet_row_implying_an_impossible_duration_is_rejected(tmp_path):
+    """50 MW with 600 MWh is a 12-hour battery — a typo, not a discovery."""
+    assert coverage.load_energy_worksheet(_worksheet(tmp_path, capacity_mwh=600.0)).empty
+
+
+def test_absent_worksheet_is_not_an_error(tmp_path):
+    """The sheet adds sites that can be priced; it is never load-bearing."""
+    assert coverage.load_energy_worksheet(tmp_path / "nope.xlsx").empty
