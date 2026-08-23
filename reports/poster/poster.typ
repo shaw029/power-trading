@@ -124,11 +124,16 @@ A purely profit-optimised #metric[50 MW / 2 h] reference battery captures
 #metric[~£50/MW/day], sacrificing #metric[47%] of Day-Ahead value.
 
 Pure arbitrage inherently leaves #metric[22% (595 MWh)] of potential
-stress-hour energy undelivered.
+stress-hour energy undelivered — and not because it mistimes the peak. Mean
+discharge peaks at #metric[19:00], exactly when stress does. The battery simply
+empties: #metric[88%] charged at 17:00, at its #metric[10%] floor by 21:00 with
+the system still tight #metric[59%] of the time.
 
-#panel("nb04_fig1_exemplar_day.svg")[
-  Fig 3 — Exemplar day: profit-optimal dispatch discharging into evening stress
-  and charging through midday surplus.
+#panel("nb04_fig2_diurnal_mismatch.svg")[
+  Fig 3 — The mean day across all 34 days containing a stress hour. Discharge
+  peaks at the same hour as stress, so the gap is not one of timing. It is
+  duration: the battery reaches its floor by 21:00 while the system is still
+  tight 59% of the time.
 ]
 
 #panel("nb04_fig2_value_vs_stress_energy.svg")[
