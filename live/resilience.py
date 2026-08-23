@@ -149,7 +149,10 @@ def readiness_at_stress(soc_before: pd.Series, stress: pd.Series) -> float | Non
     aligned = stress.reindex(soc_before.index)
     if aligned.isna().all():
         return None
-    aligned = aligned.fillna(False)
+    # Reindexing a boolean Series introduces NaN and promotes it to object.
+    # Filling then downcasting back is deprecated, so the missing periods are
+    # named False as part of the cast instead.
+    aligned = aligned.astype("boolean").fillna(False).astype(bool)
     onset = aligned & ~aligned.shift(1, fill_value=False)
     values = soc_before[onset]
     return float(values.mean()) if len(values) else None
