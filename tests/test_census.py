@@ -296,3 +296,25 @@ def test_worksheet_row_implying_an_impossible_duration_is_rejected(tmp_path):
 def test_absent_worksheet_is_not_an_error(tmp_path):
     """The sheet adds sites that can be priced; it is never load-bearing."""
     assert coverage.load_energy_worksheet(tmp_path / "nope.xlsx").empty
+
+
+def test_worksheet_rejects_a_project_figure_on_a_bm_unit_row(tmp_path):
+    """The operator's project boundary is not the BM Unit boundary.
+
+    Wolverhampton West publishes 310 MWh at 2.4 hours — a 129 MW project —
+    against a 56 MW BM Unit. Declared MW and published MWh come from
+    independent places, so their agreement is corroboration and their
+    disagreement means one of them is describing a different asset.
+    """
+    rejected = coverage.load_energy_worksheet(
+        _worksheet(tmp_path, declared_export_mw=56.0, capacity_mwh=310.0, duration_h=2.4)
+    )
+    assert rejected.empty
+
+
+def test_worksheet_accepts_agreement_between_independent_sources(tmp_path):
+    """57 MW declared with 138 MWh published implies 2.42 h against 2.4 recorded."""
+    accepted = coverage.load_energy_worksheet(
+        _worksheet(tmp_path, declared_export_mw=57.0, capacity_mwh=138.0, duration_h=2.4)
+    )
+    assert len(accepted) == 1

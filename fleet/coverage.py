@@ -59,7 +59,22 @@ ENERGY_WORKSHEET = (
 
 #: Accepted values of the worksheet's ``source_type``. A figure's standing
 #: travels with it rather than being asserted once in a caption.
-WORKSHEET_SOURCE_TYPES = ("operator", "press_release", "planning", "other")
+WORKSHEET_SOURCE_TYPES = (
+    "operator", "corporate", "press_release", "planning", "other"
+)
+
+#: How far a worksheet row's implied duration (MWh ÷ declared MW) may sit from
+#: the duration the researcher recorded before the row is rejected.
+#:
+#: This is the check that makes operator-published capacity usable rather than
+#: merely plausible. Declared MW comes from Elexon and the MWh from the
+#: operator, so agreement between them is genuine corroboration from
+#: independent places. Disagreement is almost always a boundary problem: the
+#: operator quotes a project, a portfolio or a phase, and the BM Unit is only
+#: part of it. Wolverhampton West publishes 310 MWh at 2.4 hours, implying a
+#: 129 MW project, against a 56 MW BM Unit — believed, it would make the site a
+#: five-and-a-half-hour battery.
+DURATION_AGREEMENT = 0.25
 
 #: A curated-registry inclusion criterion: sites below this are out of scope by
 #: design, not by accident. Mirrors ``fleet.registry``'s stated ~35 MW floor
@@ -215,12 +230,26 @@ def load_energy_worksheet(path: Path | None = None) -> pd.DataFrame:
     implied = filled["capacity_mwh"] / declared.replace(0, pd.NA)
     ok &= implied.isna() | (implied <= census.MAX_BATTERY_DURATION_H)
 
+    # The published MWh must agree with the duration the researcher recorded,
+    # given Elexon's declared MW. Two independent sources agreeing is what makes
+    # the figure evidence; disagreeing, one of them is describing a different
+    # asset boundary and neither can be attributed to this BM Unit.
+    stated = pd.to_numeric(filled.get("duration_h"), errors="coerce")
+    disagreement = (implied - stated).abs() / stated.replace(0, pd.NA)
+    ok &= disagreement.isna() | (disagreement <= DURATION_AGREEMENT)
+
     for row in filled[~ok].itertuples():
+        imp = getattr(row, "capacity_mwh", float("nan")) / (
+            getattr(row, "declared_export_mw", float("nan")) or float("nan")
+        )
         logger.warning(
-            "Worksheet row rejected for %s: needs a positive MWh, a source_type in %s, "
-            "a source_url, and a plausible implied duration",
-            row.asset_id,
-            WORKSHEET_SOURCE_TYPES,
+            "Worksheet row rejected for %s (%s): %.0f MWh over %.1f MW declared implies "
+            "%.2f h against %s h recorded — check whether the published figure covers "
+            "the whole project rather than this BM Unit",
+            row.asset_id, getattr(row, "site_name", "?"),
+            getattr(row, "capacity_mwh", float("nan")),
+            getattr(row, "declared_export_mw", float("nan")),
+            imp, getattr(row, "duration_h", "?"),
         )
     return filled[ok]
 
