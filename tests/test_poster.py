@@ -7,6 +7,7 @@ rely on, without asserting anything about how a figure looks.
 """
 
 import matplotlib
+import pytest
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -60,3 +61,62 @@ def test_png_is_opaque_and_vectors_are_transparent(tmp_path):
     with Image.open(tmp_path / "demo.png") as img:
         alpha = img.convert("RGBA").getchannel("A")
         assert alpha.getextrema() == (255, 255), "PNG should not be transparent"
+
+
+def test_text_is_enlarged_for_export_and_restored_after(tmp_path):
+    """A notebook figure carries 9-10pt labels, which vanish at poster size.
+
+    Scaling text rather than the figure keeps the layout the notebook already
+    balanced. Restoring afterwards matters because a cell typically shows the
+    figure after saving it, and it should not suddenly render at poster type.
+    """
+    import matplotlib.text
+
+    fig = _figure()
+    fig.axes[0].set_title("title")
+    before = [t.get_fontsize() for t in fig.findobj(matplotlib.text.Text)]
+
+    poster.save_poster_fig(fig, "demo", tmp_path, text_scale=2.0)
+    after = [t.get_fontsize() for t in fig.findobj(matplotlib.text.Text)]
+    plt.close(fig)
+
+    assert after == before, "figure left at poster type sizes"
+
+
+def test_scale_of_one_leaves_a_print_ready_figure_alone(tmp_path):
+    fig = _figure()
+    written = poster.save_poster_fig(fig, "demo", tmp_path, text_scale=1.0)
+    plt.close(fig)
+    assert len(written) == 3
+
+
+def test_legend_anchored_below_the_axes_moves_with_the_text(tmp_path):
+    """Clearance under an axis was measured at the original type size.
+
+    A legend at ``bbox_to_anchor=(1.0, -0.32)`` sits just below the tick labels.
+    Double the type and the two grow into each other, and the layout engine will
+    not intervene because an explicit anchor is an instruction, not a
+    preference. The anchor has to move by the same factor — and be put back.
+    """
+    fig = _figure()
+    ax = fig.axes[0]
+    ax.legend(["series"], loc="lower right", bbox_to_anchor=(1.0, -0.32))
+
+    poster.save_poster_fig(fig, "demo", tmp_path, text_scale=2.0)
+    restored = ax.get_legend().get_bbox_to_anchor()._bbox.bounds
+    plt.close(fig)
+
+    assert restored[1] == pytest.approx(-0.32), "anchor left at poster offset"
+
+
+def test_legend_inside_the_axes_is_left_alone(tmp_path):
+    """Only anchors outside the axes collide; an inside one must not move."""
+    fig = _figure()
+    ax = fig.axes[0]
+    ax.legend(["series"], loc="upper left", bbox_to_anchor=(0.02, 0.98))
+
+    poster.save_poster_fig(fig, "demo", tmp_path, text_scale=2.0)
+    y = ax.get_legend().get_bbox_to_anchor()._bbox.bounds[1]
+    plt.close(fig)
+
+    assert y == pytest.approx(0.98)
