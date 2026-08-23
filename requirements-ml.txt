@@ -11,3 +11,4 @@ seaborn
 shap
 debugpy
 pytest
+qrcode

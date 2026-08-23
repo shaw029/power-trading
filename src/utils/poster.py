@@ -186,3 +186,72 @@ def save_poster_fig(
     for ax, title in restore_titles:
         ax.set_title(title)
     return written
+
+
+#: What the poster's QR code points a reader at. The live dashboard is the
+#: landing page rather than the repository, because someone standing at a
+#: poster has a phone and thirty seconds: a running dashboard rewards that,
+#: a source tree does not. The repo is named in text beside the code for
+#: anyone who wants it.
+POSTER_QR_URL = "https://github.com/shaw029/power-trading"
+
+#: Error correction level. QR spec levels are L/M/Q/H at roughly 7/15/25/30%
+#: recoverable. A poster is read under glare, at an angle, sometimes creased
+#: at the fold, so this takes the second-highest rather than the default.
+QR_ERROR_CORRECTION = "Q"
+
+#: Modules of quiet zone. The QR spec requires 4; less and scanners fail to
+#: find the code against a busy background.
+QR_BORDER = 4
+
+
+def save_qr(
+    url: str = POSTER_QR_URL,
+    name: str = "repo_qr",
+    directory: Path | None = None,
+) -> list[Path]:
+    """Write the poster's QR code as SVG and PNG. Returns the paths written.
+
+    Kept in code rather than committed as an image so the encoded URL is
+    reviewable — a QR on a printed poster is unreadable to its author, and a
+    wrong one is discovered by a stranger with a phone, not by us.
+
+    The SVG is what the poster places; the PNG is for slides. No PDF, because
+    unlike the figures this is never opened in a vector editor.
+    """
+    import qrcode
+    from qrcode.constants import (
+        ERROR_CORRECT_H,
+        ERROR_CORRECT_L,
+        ERROR_CORRECT_M,
+        ERROR_CORRECT_Q,
+    )
+    from qrcode.image.svg import SvgPathImage
+
+    levels = {
+        "L": ERROR_CORRECT_L,
+        "M": ERROR_CORRECT_M,
+        "Q": ERROR_CORRECT_Q,
+        "H": ERROR_CORRECT_H,
+    }
+    directory = directory or POSTER_FIG_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+
+    code = qrcode.QRCode(
+        error_correction=levels[QR_ERROR_CORRECTION],
+        border=QR_BORDER,
+    )
+    code.add_data(url)
+    code.make(fit=True)
+
+    written = []
+    svg_path = directory / f"{name}.svg"
+    code.make_image(image_factory=SvgPathImage).save(str(svg_path))
+    written.append(svg_path)
+
+    png_path = directory / f"{name}.png"
+    # box_size is in pixels per module; 20 puts a typical 33-module code at
+    # about 800px, enough for a slide without being a large file.
+    code.make_image(fill_color="black", back_color="white").save(str(png_path))
+    written.append(png_path)
+    return written

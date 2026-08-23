@@ -147,3 +147,62 @@ def test_a_title_without_a_figure_number_is_untouched(tmp_path):
     poster.save_poster_fig(fig, "demo", tmp_path)
     assert ax.get_title() == "What a site earns"
     plt.close(fig)
+
+
+def _dark_modules(svg_text):
+    """The set of dark module coordinates an SVG QR actually draws."""
+    import re
+
+    return {
+        (round(float(x)), round(float(y)))
+        for x, y in re.findall(r"M\s*([\d.]+)\s*,?\s*([\d.]+)", svg_text)
+    }
+
+
+def test_qr_encodes_the_url_it_claims_to(tmp_path):
+    """The whole reason the QR is generated rather than committed.
+
+    Nobody proofreads a QR code. This rebuilds the expected matrix from the
+    URL and compares it against what was written, so a silently wrong link
+    fails here rather than in someone's phone at the poster board.
+    """
+    qrcode = pytest.importorskip("qrcode")
+    url = "https://example.invalid/dashboard"
+    svg, png = poster.save_qr(url=url, name="qr", directory=tmp_path)
+
+    code = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_Q,
+        border=poster.QR_BORDER,
+    )
+    code.add_data(url)
+    code.make(fit=True)
+    expected = {
+        (x + poster.QR_BORDER, y + poster.QR_BORDER)
+        for y, row in enumerate(code.modules)
+        for x, dark in enumerate(row)
+        if dark
+    }
+
+    assert _dark_modules(svg.read_text()) == expected
+    assert png.exists()
+
+
+def test_qr_for_a_different_url_is_a_different_code(tmp_path):
+    """Guards against the encoder being handed a constant by accident."""
+    pytest.importorskip("qrcode")
+    a, _ = poster.save_qr(url="https://example.invalid/a", name="a",
+                          directory=tmp_path)
+    b, _ = poster.save_qr(url="https://example.invalid/b", name="b",
+                          directory=tmp_path)
+    assert _dark_modules(a.read_text()) != _dark_modules(b.read_text())
+
+
+def test_qr_keeps_the_quiet_zone_the_spec_requires(tmp_path):
+    """Scanners need >= 4 modules of margin to find the code on a busy page."""
+    pytest.importorskip("qrcode")
+    svg, _ = poster.save_qr(url="https://example.invalid", name="qr",
+                            directory=tmp_path)
+    modules = _dark_modules(svg.read_text())
+    assert min(x for x, _ in modules) >= poster.QR_BORDER
+    assert min(y for _, y in modules) >= poster.QR_BORDER
+    assert poster.QR_BORDER >= 4

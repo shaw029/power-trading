@@ -103,14 +103,16 @@ battery.
 
 So we built one: #metric[87 sites], #metric[124 BM Units], #metric[6,234 MW],
 found by declared import matching declared export and corroborated against four
-public registers. A hand-curated sample of 23 sites covers #metric[46%] of it.
-Energy capacity is taken in precedence order — registry, then operator
-disclosure, then Capacity Market — as the last understates duration by
-#metric[about a third].
+public registers. Sections 2–4 all measure this population.
 
-#panel("nb06_fig2_coverage_by_basis.svg")[
-  Fig 1 — What the curated sample covers of the census we built. MW is the
-  measure that matters; the sample skews to large, transmission-connected sites.
+Energy capacity is barely published. For #metric[24 sites] we read it by hand
+off operator pages, each with its URL and read date. #metric[18] rest on
+Capacity Market filings, which understate duration by #metric[a third], and
+#metric[22] have none.
+
+#panel("nb06_fig1_census_composition.svg")[
+  Fig 1 — What the census contains. Seven sites hold a third of the fleet's MW,
+  while the distribution-connected half of the fleet holds under a third of it.
 ]
 
 #v(1mm)
