@@ -120,3 +120,30 @@ def test_legend_inside_the_axes_is_left_alone(tmp_path):
     plt.close(fig)
 
     assert y == pytest.approx(0.98)
+
+
+def test_notebook_figure_numbers_are_dropped_for_the_poster(tmp_path):
+    """A notebook numbers figures in its sequence; a poster in reading order.
+
+    Both are right and they disagree, so a panel titled "Figure 4" sitting under
+    a caption reading "Fig 5" makes the reader resolve a contradiction. The
+    panel gives up its number, and gets it back afterwards.
+    """
+    fig = _figure()
+    ax = fig.axes[0]
+    ax.set_title("Figure 4 — fleet response by system state")
+
+    poster.save_poster_fig(fig, "demo", tmp_path)
+    restored = ax.get_title()
+    plt.close(fig)
+
+    assert restored == "Figure 4 — fleet response by system state"
+
+
+def test_a_title_without_a_figure_number_is_untouched(tmp_path):
+    fig = _figure()
+    ax = fig.axes[0]
+    ax.set_title("What a site earns")
+    poster.save_poster_fig(fig, "demo", tmp_path)
+    assert ax.get_title() == "What a site earns"
+    plt.close(fig)
