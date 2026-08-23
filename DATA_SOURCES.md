@@ -161,7 +161,7 @@ registry so the live dashboard is unaffected:
 # Curated 23 sites / 47 BM Units — what the dashboard reads (the default)
 python scripts/backfill_market_data.py --start 2023-10-01
 
-# Full BM-registered census, 90 sites / 127 BM Units — what the notebooks read
+# Full BM-registered census, 87 sites / 124 BM Units — what the notebooks read
 python scripts/backfill_market_data.py --population census --start 2023-10-01
 python scripts/build_stress_store.py --population census --start 2023-10-01
 ```

@@ -305,7 +305,7 @@ It hosts for free on **Streamlit Community Cloud**:
 ## Stress Response Study (notebook 05)
 
 `notebooks/05_stress_response_study.ipynb` measures what the **real** GB battery fleet did
-under **operator-grade** scarcity signals over three winters — a separate question from the
+under **operator-grade** scarcity signals over eight winters — a separate question from the
 live benchmark's priced alignment gap, and on a much longer window because it uses no
 subscription price feed.
 
