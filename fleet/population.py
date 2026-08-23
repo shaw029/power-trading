@@ -16,8 +16,8 @@ as an argument. Two exist:
     therefore always gets this one.
 
 ``census_population()``
-    Every BM-registered battery :mod:`fleet.census` can identify — 90 sites /
-    127 BM Units. The research tier's population. Its metadata is machine-derived
+    Every BM-registered battery :mod:`fleet.census` can identify — 87 sites /
+    124 BM Units. The research tier's population. Its metadata is machine-derived
     rather than hand-checked, which matters for some metrics and not others; see
     the note on that function.
 

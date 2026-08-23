@@ -172,10 +172,12 @@ Over the July 2026 snapshot:
 |---|---|---|---|
 | Sites | 23 | 87 | 26.4% |
 | **MW (declared export)** | **2,891** | **6,234** | **46.4%** |
-| MWh (where known) | 5,179 | 6,391 | 81.0% ⚠ |
+| MWh (where known) | 5,179 | 10,013 | 51.7% ⚠ |
 
-⚠ Duration is known for 23/23 registry sites but only 19/67 others, so the MWh
-row is biased upward and is a ceiling, not an estimate.
+⚠ Still biased upward — every registry site has a known capacity and 42 of 64
+others do — but far less than when it read 81%. Each non-registry site priced
+from an operator disclosure drags it toward the MW figure, which is where it
+belongs; see `data/reference/battery_energy_capacity.xlsx`.
 
 The registry captures **46.4% of GB BM-registered operational battery MW**, and
 the bias has a clear direction: coverage is 70% of 200 MW+ assets but 14% of
@@ -282,8 +284,9 @@ per-metric rather than globally:
 - **MW-normalised metrics** (£/MW/day, MW per MW online, availability factor)
   are valid across all 87 sites — declared export capability comes from Elexon.
 - **MWh-normalised metrics** (cycles per day, inferred state of charge) are valid
-  for the 42 sites whose duration is published through a Capacity Market
-  agreement. The notebooks compute them over that subset and say so on the page.
+  for the 65 sites whose duration is known — registry, operator disclosure, or
+  a Capacity Market agreement. The notebooks compute them over that subset and
+  say so on the page.
   Assuming a duration would put a fabricated denominator under a headline number.
 - **Optimiser and region** fall back to BM Unit lead party and GSP group, which
   are the trading party and (for transmission units) null respectively.
