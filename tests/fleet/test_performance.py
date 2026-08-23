@@ -482,3 +482,38 @@ def test_day_site_metrics_reports_notified_alongside_delivered():
     # Delivered is the accepted level; notified is what the unit had planned.
     assert row["discharge_mwh"] == pytest.approx(25.0)
     assert row["discharge_mwh_pn"] == pytest.approx(5.0)
+
+
+def test_battery_era_start_finds_the_repurposed_connection_point():
+    """A connection point reused from another technology must not be back-counted.
+
+    Fiddler's Ferry was a coal station until March 2020; its BM Units now belong
+    to a battery on the same site, so a 2026 census reaching back to 2018 sees
+    the coal plant wearing the battery's identity.
+    """
+    times = pd.date_range("2018-01-01", periods=6, freq="30min", tz="UTC")
+    profile = pd.DataFrame({
+        "site": ["Repurposed"] * 6,
+        "time": times,
+        # Coal-era output, then plausible battery output at the same site.
+        "mw": [1385.0, 900.0, 40.0, -38.0, 41.0, -20.0],
+    })
+    era = performance.battery_era_start(profile, {"Repurposed": 41.0})
+    assert era == {"Repurposed": times[1]}
+
+
+def test_battery_era_start_ignores_ordinary_declared_drift():
+    """Declared capability routinely exceeds curated nameplate by 10-20%."""
+    times = pd.date_range("2024-01-01", periods=3, freq="30min", tz="UTC")
+    profile = pd.DataFrame({
+        "site": ["Drifty"] * 3,
+        "time": times,
+        "mw": [49.0, -48.0, 45.0],          # 1.2x a 40 MW plate — not repurposing
+    })
+    assert performance.battery_era_start(profile, {"Drifty": 40.0}) == {}
+
+
+def test_battery_era_start_is_silent_when_nothing_violates():
+    times = pd.date_range("2024-01-01", periods=2, freq="30min", tz="UTC")
+    profile = pd.DataFrame({"site": ["Fine", "Fine"], "time": times, "mw": [10.0, -10.0]})
+    assert performance.battery_era_start(profile, {"Fine": 50.0}) == {}

@@ -372,6 +372,50 @@ def site_limit_profile(
     )
 
 
+#: A site exporting more than twice its nameplate is not that site. Batteries
+#: cannot do it, so the reading belongs to whatever plant held the BM Unit
+#: before. Declared capability drifts against curated nameplate by 10-20%
+#: routinely — Pivot Power Kemsley reads 1.2x — so the threshold sits well
+#: clear of drift and only catches physical impossibility.
+REPURPOSING_MULTIPLE = 2.0
+
+
+def battery_era_start(
+    profile: pd.DataFrame,
+    nameplate: dict[str, float],
+    multiple: float = REPURPOSING_MULTIPLE,
+) -> dict[str, pd.Timestamp]:
+    """Per site, the first moment its output is consistent with being a battery.
+
+    Connection points get reused. Fiddler's Ferry was a coal station until March
+    2020; its BM Units now belong to a battery on the same site, and a census
+    taken in 2026 inherits those IDs. Reach back far enough and the "battery"
+    exports 1,385 MW against a 41 MW nameplate — the coal plant, wearing the
+    battery's identity.
+
+    This is the counterpart to :func:`fleet.census.asset_id`. The asset ID is
+    stable across *owner* and *name* changes, which is what makes it the right
+    key; it cannot distinguish a change of *technology* at the same connection
+    point, because nothing in the identifier does. So the physics is used
+    instead: the era starts after the last period the site did something no
+    battery could.
+
+    Returns ``{site: first valid timestamp}``, omitting sites that never
+    violate — the overwhelming majority, so the correction stays targeted.
+    """
+    if profile.empty:
+        return {}
+    frame = profile.copy()
+    frame["_plate"] = frame["site"].map(nameplate)
+    impossible = frame[frame["mw"].abs() > frame["_plate"] * multiple]
+    if impossible.empty:
+        return {}
+    return {
+        site: group["time"].max()
+        for site, group in impossible.groupby("site")
+    }
+
+
 def filter_daily(
     daily: pd.DataFrame,
     start: str | None = None,
