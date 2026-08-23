@@ -7,15 +7,16 @@ __pycache__/
 .coverage
 
 # Data and artifacts — all generated/downloaded; recreated by the pipeline
-/data/
+# Excluding the *contents* rather than the directory itself, because git will
+# not descend into an excluded directory and so cannot re-include anything
+# inside one — "/data/" would make the negation below silently do nothing.
+/data/*
 /artifacts/
 
-# ...except hand-researched reference data, which is the one thing here no
-# pipeline can recreate. The energy-capacity worksheet is read off operator
-# pages and press releases by a person; losing it to a gitignore would mean
-# doing that work twice.
+# ...except hand-researched reference data, the one thing here no pipeline can
+# recreate. The energy-capacity worksheet is read off operator pages and press
+# releases by a person; losing it to a gitignore would mean doing that twice.
 !/data/reference/
-!/data/reference/**
 
 # Local config — gitignored; *.example files are the committed templates
 .env
