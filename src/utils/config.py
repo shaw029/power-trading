@@ -13,13 +13,34 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
+
+def parse_env_file(text: str) -> dict[str, str]:
+    """Parse ``.env`` contents into a mapping, the way python-dotenv would.
+
+    Split out from the loader below so it can be tested without a real file
+    on disk. The quote handling is the point: shell convention allows
+    ``KEY="value"``, and a loader that keeps the quotes sends them onward —
+    an API then answers 401, which reads exactly like an expired credential.
+    """
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        val = val.strip()
+        # Only a *matching* pair is a quote. A lone leading quote may belong to
+        # the secret, so leave it rather than silently eating a character.
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+            val = val[1:-1]
+        values[key.strip()] = val
+    return values
+
+
 _env_file = PROJECT_ROOT / ".env"
 if _env_file.exists():
-    for _line in _env_file.read_text().splitlines():
-        _line = _line.strip()
-        if _line and not _line.startswith("#") and "=" in _line:
-            _key, _, _val = _line.partition("=")
-            os.environ.setdefault(_key.strip(), _val.strip())
+    for _key, _val in parse_env_file(_env_file.read_text()).items():
+        os.environ.setdefault(_key, _val)
 
 # ============================================================================
 # CONFIGURATION

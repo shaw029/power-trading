@@ -2,7 +2,14 @@
 
 import pytest
 
-from src.utils.config import validate_config, get_periods, get_sources, _BESS_DEFAULTS
+from src.utils.config import (
+    PROJECT_ROOT,
+    validate_config,
+    get_periods,
+    get_sources,
+    parse_env_file,
+    _BESS_DEFAULTS,
+)
 
 _MINIMAL_DATA = {
     "data": {
@@ -179,3 +186,43 @@ class TestDataSources:
         }
         with pytest.raises(ValueError, match="wind_source"):
             validate_config({"strategy_type": "virtual", "data": data})
+
+
+def test_env_values_have_surrounding_quotes_stripped():
+    """A quoted secret must not reach an API with its quotes attached.
+
+    Shell convention allows ENTSOE_API_KEY="uuid"; python-dotenv strips the
+    quotes and the hand-rolled loader here did not, so the key was sent as
+    '"uuid"' and every request answered 401 — indistinguishable from an
+    expired credential.
+    """
+    parsed = parse_env_file(
+        'DOUBLE_QUOTED="abc-123"\n'
+        "SINGLE_QUOTED='def-456'\n"
+        "BARE=ghi-789\n"
+        'MISMATCHED="jkl\n'
+        "# COMMENTED=nope\n"
+        "\n"
+        "NOT_AN_ASSIGNMENT\n"
+    )
+    assert parsed["DOUBLE_QUOTED"] == "abc-123"
+    assert parsed["SINGLE_QUOTED"] == "def-456"
+    assert parsed["BARE"] == "ghi-789"
+    # A lone leading quote is not a quoted value; leave it rather than eating
+    # a character that might belong to the secret.
+    assert parsed["MISMATCHED"] == '"jkl'
+    assert "COMMENTED" not in parsed
+    assert "NOT_AN_ASSIGNMENT" not in parsed
+
+
+def test_the_real_env_file_yields_a_usable_entsoe_key():
+    """Guards the specific breakage: the archive stopped at 2019-01-02 because
+    the key was quoted in .env and reached ENTSO-E with its quotes."""
+    env = PROJECT_ROOT / ".env"
+    if not env.exists():
+        pytest.skip("no .env in this checkout")
+    key = parse_env_file(env.read_text()).get("ENTSOE_API_KEY", "")
+    if not key:
+        pytest.skip("no ENTSOE_API_KEY configured")
+    assert not key.startswith(('"', "'"))
+    assert not key.endswith(('"', "'"))
