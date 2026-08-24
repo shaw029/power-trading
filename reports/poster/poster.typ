@@ -110,7 +110,7 @@ Energy capacity is barely published: #metric[24 sites] read by hand off operator
 pages with URL and read date, #metric[18] from Capacity Market filings, and
 #metric[22] with none.
 
-#panel("nb06_fig1_census_composition.svg", ratio: 92%)[
+#panel("nb06_fig1_census_composition.svg", ratio: 87%)[
   Fig 1 — What the census contains. Seven sites hold a third of the fleet's MW,
   while the distribution-connected half of the fleet holds under a third of it.
 ]
@@ -157,14 +157,14 @@ Sweeping a blended objective prices that duration. The profit schedule delivers
 #metric[£4.31/MW/day]. A further #metric[£88] buys none — only the rule never
 to discharge off-flag.
 
-#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 79%)[
+#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 75%)[
   Fig 2 — The mean day across all 34 days containing a stress hour. Discharge
   peaks at the same hour as stress, so the gap is not one of timing. It is
   duration: the battery reaches its floor by 21:00 while the system is still
   tight 59% of the time.
 ]
 
-#panel("nb04_fig_alignment_frontier.svg", ratio: 79%)[
+#panel("nb04_fig_alignment_frontier.svg", ratio: 75%)[
   Fig 3 — The whole trade-off, not its two endpoints. Day-ahead value sacrificed
   against stress delivery, sweeping the weight on system value. The dashed tail
   spends more and buys no stress energy.
@@ -178,15 +178,17 @@ Measured against operator-grade scarcity (De-Rated Margin #metric[< 1 GW]), the
 GB fleet performs well, discharging in #metric[95%] of periods. It delivers
 #metric[+0.051 MW per MW online], against a #metric[+0.003 MW/MW] baseline.
 
-Cycle-filtered state-of-charge inference shows the fleet enters sub-1 GW events
-with a robust #metric[64%] capacity — and unlike the reference battery, it does
-not empty: across #metric[418] scarcity events it still holds #metric[73–88%] of
-its onset energy four hours in. Declared duration does not explain this
-(#metric[r = +0.05] across 53 sites).
+The fleet arrives ready and does not empty. Charge rises from #metric[61%] six
+hours out to #metric[66%] an hour before onset, and across #metric[418] events
+only #metric[9%] of event time is spent below #metric[23%] charge.
 
-#panel("nb05_fig_event_depletion.svg", ratio: 85%)[
-  Fig 4 — Energy held through a scarcity event, by event length, with bootstrap
-  intervals. The fleet sustains where the 2 h reference battery hits its floor.
+Its shortfall is dispatch, not duration: #metric[51%] of usable energy is still
+held at the deepest point of the average event. Declared duration does not
+predict response either (#metric[r = +0.05] across 53 sites).
+
+#panel("nb05_fig_gap_decomposition.svg", ratio: 88%)[
+  Fig 4 — Readiness into the event, and which of the three gaps binds. For the
+  modelled 2 h battery it is duration. For the real fleet it is dispatch.
 ]
 
 #section("4 · The Full Revenue Stack", mid-amber)
@@ -196,15 +198,32 @@ rise from #metric[£18] to #metric[£224/MW/day] while median stress coverage
 stays flat at #metric[0.22–0.25]. The headline correlation of −0.24 is a line
 through noise.
 
-Ancillary services do lift earnings — #metric[£7.23m] landed on census sites in
-60 days — but only #metric[27%] of the ancillary pound reaches a named site.
-Participation is a plausible contributor to the fleet's scarcity response, not
-an identified cause.
+Ancillary services do lift earnings — #metric[£7.23m] in 60 days — but only
+#metric[27%] of the pound reaches a named site. Participation is a plausible
+contributor to the fleet's response, not an identified cause.
 
-#panel("nb04_fig5_revenue_stack.svg", ratio: 84%)[
-  Fig 5 — The third stream lifts a site's median earnings from £122 to £150 per
-  MW per day. Most of the pound, though, is collected by portfolios that name a
-  trading unit rather than an asset.
+#panel("nb04_fig5_revenue_stack.svg", ratio: 79%)[
+  Fig 5 — The third stream lifts median earnings from £122 to £150 per MW per
+  day, but most of the pound is collected by portfolios naming a trading unit.
+]
+
+#v(3mm)
+#block(
+  width: 100%,
+  fill: mid-amber.lighten(90%),
+  stroke: (left: 5pt + mid-amber),
+  inset: (x: 6mm, y: 4mm),
+  radius: 2pt,
+)[
+  #text(size: 20pt, weight: "bold", fill: ink)[What this implies]
+  #v(1mm)
+  #text(size: 19pt)[
+    GB prices already find the scarcity peak; what they do not procure is
+    sustained delivery, and that costs #metric[£4.31/MW/day], not £50. The
+    question is not whether batteries respond but whether the market buys the
+    right *duration* of response — reserve priced in hours rather than MW,
+    readiness payments, energy co-optimised with ancillary services.
+  ]
 ]
 
 ]
@@ -240,6 +259,12 @@ an identified cause.
   trading unit, not an asset. It is quantified and attributed to nobody.
 - *Duration is declared, not metered* — energy capacity for a third of the
   census rests on operator disclosure rather than a register.
+- *£4.31/MW/day is a private opportunity cost*, not a social one. It excludes
+  avoided balancing cost, unserved energy, reserve procurement and peaker
+  operation — the benefit side is unvalued here.
+- *Rare samples are exhibits, not statistics.* Capacity Market Notices
+  (#metric[n=13]) and DRM < 1 GW (#metric[n=39]) carry nothing like the weight
+  of tiers with thousands of periods.
 ]
 
 #colbreak()
