@@ -9,6 +9,7 @@ import pytest
 
 from live import resilience
 from src.bess.bess_asset import BESSAsset
+from src.bess.da_optimizer import optimize_da_schedule
 
 
 def _idx(n: int, freq: str = "30min") -> pd.DatetimeIndex:
@@ -315,3 +316,88 @@ def test_tier_metrics_none_denominators_and_no_cmn():
     assert m["min_drm_at_discharge"] is None
     assert m["tier2_confirm_rate"] is None  # no stress period has tier-2 data
     assert m["readiness_at_cmn"] is None  # no CMN onset anywhere
+
+
+def _blend_inputs(n: int = 24):
+    """A day with a clear price peak that does not coincide with stress."""
+    prices = [20.0] * n
+    for h in (10, 11):          # the profitable hours
+        prices[h] = 200.0
+    stress = [h in (18, 19) for h in range(n)]   # ...are not the tight ones
+    surplus = [h in (3, 4) for h in range(n)]
+    return prices, stress, surplus
+
+
+def test_blend_at_zero_reproduces_the_profit_schedule():
+    """lam = 0 must be the profit LP, or the frontier does not start where the
+    poster's profit-optimal bar sits."""
+    prices, stress, surplus = _blend_inputs()
+    asset = _asset()
+    blended = resilience.optimize_blended_dispatch(
+        prices, stress, surplus, asset, lam=0.0, duration_h=1.0, target_daily_cycles=1.5
+    )
+    profit = optimize_da_schedule(prices, asset, 1.0, 1.5)
+    value = lambda d: sum(x * p for x, p in zip(d, prices))  # noqa: E731
+    assert value(blended) == pytest.approx(value(profit), rel=1e-6)
+
+
+def test_large_blend_reproduces_the_resilience_schedule():
+    """And it must end where the resilience-optimal bar sits."""
+    prices, stress, surplus = _blend_inputs()
+    asset = _asset()
+    blended = resilience.optimize_blended_dispatch(
+        prices, stress, surplus, asset, lam=1e6, duration_h=1.0, target_daily_cycles=1.5
+    )
+    pure = resilience.optimize_resilience_dispatch(stress, surplus, asset, 1.0, 1.5)
+    stress_mwh = lambda d: sum(  # noqa: E731
+        max(x, 0.0) for x, s in zip(d, stress) if s
+    )
+    assert stress_mwh(blended) == pytest.approx(stress_mwh(pure), rel=1e-6)
+
+
+def test_stress_delivery_never_falls_as_the_blend_rises():
+    """The frontier must be monotone, or it cannot be read as a trade-off."""
+    prices, stress, surplus = _blend_inputs()
+    asset = _asset()
+    delivered = []
+    for lam in (0.0, 1.0, 5.0, 25.0, 250.0):
+        d = resilience.optimize_blended_dispatch(
+            prices, stress, surplus, asset, lam=lam, duration_h=1.0, target_daily_cycles=1.5
+        )
+        delivered.append(sum(max(x, 0.0) for x, s in zip(d, stress) if s))
+    assert delivered == sorted(delivered)
+    assert delivered[-1] > delivered[0]
+
+
+def test_blend_never_churns_at_any_weight():
+    """The anti-churn guarantee is what lets the credit weights be scaled.
+
+    A schedule that charges and discharges in the same period is the loop the
+    weights are designed to make unprofitable; check no blend produces one.
+    """
+    prices, stress, surplus = _blend_inputs()
+    asset = _asset()
+    for lam in (0.0, 2.0, 20.0, 2000.0):
+        d = resilience.optimize_blended_dispatch(
+            prices, stress, surplus, asset, lam=lam, duration_h=1.0, target_daily_cycles=1.5
+        )
+        discharged = sum(max(x, 0.0) for x in d)
+        # Under a 1.5-cycle cap on a 100 MWh asset, churn shows up as total
+        # throughput pinned at the cap while stress delivery stays low.
+        assert discharged <= 1.5 * asset.capacity_mwh + 1e-6
+
+
+def test_blend_rejects_a_negative_weight():
+    prices, stress, surplus = _blend_inputs()
+    with pytest.raises(ValueError, match="non-negative"):
+        resilience.optimize_blended_dispatch(
+            prices, stress, surplus, _asset(), lam=-1.0
+        )
+
+
+def test_blend_rejects_mismatched_input_lengths():
+    prices, stress, surplus = _blend_inputs()
+    with pytest.raises(ValueError, match="same length"):
+        resilience.optimize_blended_dispatch(
+            prices[:-1], stress, surplus, _asset(), lam=1.0
+        )

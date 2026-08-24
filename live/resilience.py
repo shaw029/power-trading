@@ -369,6 +369,109 @@ def optimize_resilience_dispatch(
     return [discharge[h].varValue - charge[h].varValue for h in periods]
 
 
+#: Weights on the system-value term. Kept identical to the pure-resilience LP
+#: so the anti-churn argument in ``optimize_resilience_dispatch`` carries over
+#: unchanged at every blend: lambda scales the whole credit term and so cannot
+#: change the sign of any internal charge/discharge loop.
+W_STRESS, W_SURPLUS, W_BLOCK, TIE_BREAK = 2.0, 1.0, 2.0, 1e-3
+
+
+def optimize_blended_dispatch(
+    day_ahead_prices: list[float],
+    stress: list[bool],
+    surplus: list[bool],
+    asset: BESSAsset,
+    lam: float,
+    duration_h: float = 1.0,
+    target_daily_cycles: float | None = None,
+) -> list[float]:
+    """Dispatch maximising DA value plus ``lam`` times system credit.
+
+    The two endpoints of the alignment gap are the two ends of a curve, not a
+    binary choice: ``lam = 0`` is the profit-optimal schedule and a large
+    ``lam`` reproduces the resilience-optimal one. Sweeping it answers the
+    question a system operator actually faces — how much stress delivery does
+    the *first* pound of forgone market value buy?
+
+    ``lam`` is priced in pounds per unit of system credit, so it is directly
+    comparable with the day-ahead spread: at ``lam`` far above the spread the
+    price term stops mattering and the schedule collapses onto the resilience
+    optimum.
+
+    The credit term keeps the exact relative weights of the pure-resilience LP
+    — discharge in stress ``+2``, discharge off-flag ``-2``, charge in surplus
+    ``+1``, charge during stress ``-2`` — because those weights are what make
+    every churn loop strictly unprofitable. Scaling them together by ``lam``
+    preserves that guarantee for any blend.
+    """
+    n = len(stress)
+    if not (len(day_ahead_prices) == len(surplus) == n):
+        raise ValueError("prices, stress and surplus must be the same length")
+    if lam < 0:
+        raise ValueError(f"lam must be non-negative, got {lam}")
+    periods = range(n)
+    prob = pulp.LpProblem("Blended_Dispatch", pulp.LpMaximize)
+
+    charge = [pulp.LpVariable(f"c_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
+    discharge = [pulp.LpVariable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
+    min_soc = asset.min_soc_pct * asset.capacity_mwh
+    max_soc = asset.max_soc_pct * asset.capacity_mwh
+    soc = [pulp.LpVariable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)]
+
+    def _credit_discharge(h: int) -> float:
+        return W_STRESS if stress[h] else -W_BLOCK
+
+    def _credit_charge(h: int) -> float:
+        if surplus[h]:
+            return W_SURPLUS
+        return -W_BLOCK if stress[h] else -TIE_BREAK
+
+    # Market value carries the same degradation charge the profit LP applies,
+    # so lam = 0 reproduces that schedule rather than a cheaper lookalike.
+    prob += pulp.lpSum(
+        (discharge[h] - charge[h]) * day_ahead_prices[h] * duration_h
+        - (discharge[h] + charge[h]) * asset.degradation_cost_per_mwh * duration_h
+        + lam * (
+            discharge[h] * duration_h * _credit_discharge(h)
+            + charge[h] * duration_h * _credit_charge(h)
+        )
+        for h in periods
+    )
+
+    prob += soc[0] == asset.capacity_mwh * asset.initial_soc_pct
+    for h in periods:
+        prob += (
+            soc[h + 1]
+            == soc[h]
+            - discharge[h] * duration_h / asset.discharge_efficiency
+            + charge[h] * duration_h * asset.charge_efficiency
+        )
+    if target_daily_cycles is not None:
+        prob += (
+            pulp.lpSum(discharge[h] * duration_h for h in periods)
+            <= target_daily_cycles * asset.capacity_mwh
+        )
+
+    try:
+        import highspy  # noqa: F401
+
+        solver = pulp.HiGHS(msg=0)
+    except ImportError:
+        solver = pulp.PULP_CBC_CMD(msg=0)
+
+    try:
+        status = prob.solve(solver)
+    except pulp.PulpSolverError:
+        logger.warning("Blended LP failed (lam=%s); returning idle dispatch", lam)
+        return [0.0] * n
+    if pulp.LpStatus[status] != "Optimal":
+        logger.warning("Blended LP non-optimal (%s, lam=%s); returning idle dispatch",
+                       pulp.LpStatus[status], lam)
+        return [0.0] * n
+
+    return [discharge[h].varValue - charge[h].varValue for h in periods]
+
+
 def alignment_gap(
     arb_dispatch_mw: list[float],
     day_ahead_prices: list[float],
