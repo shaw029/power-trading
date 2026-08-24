@@ -78,15 +78,15 @@
   radius: 2pt,
 )[
   #text(size: 24pt, weight: "bold", fill: ink)[
-    Merchant batteries already deliver #text(fill: cost-red)[79%] of the
-    scarcity energy any schedule can achieve. Buying the rest costs
-    #text(fill: cost-red)[£4/MW/day] — not the #text(fill: cost-red)[£50]
-    a two-way comparison implies.
+    Prices find the scarcity peak. What they do not buy is the
+    #text(fill: cost-red)[duration] — and no price fixes that: a 6 h battery
+    delivers #text(fill: cost-red)[88%] of the achievable scarcity energy for
+    nothing, more than a 2 h battery reaches at #text(fill: cost-red)[any] cost.
   ]
   #v(2mm)
   #text(size: 19pt, fill: ink.lighten(20%))[
-    Prices find the scarcity peak. What they do not buy is the duration — and
-    that turns out to be cheap.
+    Paying a 2 h battery to align buys 8 points of stress delivery. Giving it
+    more energy buys 52. The gap is procurement, not incentives.
   ]
 ]
 
@@ -140,7 +140,7 @@ pages with URL and read date, #metric[18] from Capacity Market filings, and
 
 #colbreak()
 
-#section("2 · The Gap Is Duration, and It Is Cheap", cost-red)
+#section("2 · The Gap Is Duration, Not Incentives", cost-red)
 
 A profit-optimised #metric[50 MW / 2 h] battery delivers #metric[22%]
 #text(size: 17pt)[(13–32%)] less stress-period energy than the same battery run
@@ -148,14 +148,18 @@ on a system-value objective — #metric[595 of 2,662 MWh]. That
 counterfactual is our own objective, not a NESO instruction.
 
 The shortfall is not mistimed. Mean discharge peaks at #metric[19:00], exactly
-when stress does. The battery empties: #metric[88%] charged at 17:00, at its
-#metric[10%] floor by 21:00 while the system is still tight #metric[59%] of the
-time. The gap is duration, not timing.
+when stress does — the battery simply empties, reaching its #metric[10%] floor
+by 21:00 while the system is still tight #metric[59%] of the time.
 
-Sweeping a blended objective prices that duration. The profit schedule delivers
-#metric[79%] of the achievable stress energy for nothing, and all of it costs
-#metric[£4.31/MW/day]. A further #metric[£88] buys none — only the rule never
-to discharge off-flag.
+Sweeping a blended objective prices that duration. For the 2 h asset the profit
+schedule already delivers #metric[79%] #text(size: 17pt)[(69–88%)] of what it
+can ever deliver, and the rest costs #metric[£4.31/MW/day]
+#text(size: 17pt)[(£2.56–6.38)].
+
+But the ceiling itself is set by energy, not by incentives. Re-solving at 1, 2,
+4 and 6 h: a #metric[6 h] battery delivers #metric[88%] of the achievable
+scarcity energy at zero cost, where a #metric[2 h] battery tops out at
+#metric[43%] however much value it gives up.
 
 #panel("nb04_fig2_diurnal_mismatch.svg", ratio: 75%)[
   Fig 2 — The mean day across all 34 days containing a stress hour. Discharge
@@ -164,10 +168,10 @@ to discharge off-flag.
   tight 59% of the time.
 ]
 
-#panel("nb04_fig_alignment_frontier.svg", ratio: 75%)[
-  Fig 3 — The whole trade-off, not its two endpoints. Day-ahead value sacrificed
-  against stress delivery, sweeping the weight on system value. The dashed tail
-  spends more and buys no stress energy.
+#panel("nb04_fig_duration_frontier.svg", ratio: 80%)[
+  Fig 3 — The frontier is a family. Each curve sweeps the weight on system value
+  for one duration; the dot is the profit schedule. Moving up beats moving right.
+  Capital cost of the extra energy is not modelled.
 ]
 
 #colbreak()
@@ -175,8 +179,9 @@ to discharge off-flag.
 #section("3 · Real Fleet Performance Under Stress", discharge)
 
 Measured against operator-grade scarcity (De-Rated Margin #metric[< 1 GW]), the
-GB fleet performs well, discharging in #metric[95%] of periods. It delivers
-#metric[+0.051 MW per MW online], against a #metric[+0.003 MW/MW] baseline.
+GB fleet discharges in #metric[95%] of periods, delivering
+#metric[+0.051 MW per MW online] against a #metric[+0.003] baseline. That mean
+hides a tail: #metric[11%] of site-periods run above half of nameplate.
 
 The fleet arrives ready and does not empty. Charge rises from #metric[61%] six
 hours out to #metric[66%] an hour before onset, and across #metric[418] events
@@ -218,11 +223,10 @@ contributor to the fleet's response, not an identified cause.
   #text(size: 20pt, weight: "bold", fill: ink)[What this implies]
   #v(1mm)
   #text(size: 19pt)[
-    GB prices already find the scarcity peak; what they do not procure is
-    sustained delivery, and that costs #metric[£4.31/MW/day], not £50. The
-    question is not whether batteries respond but whether the market buys the
-    right *duration* of response — reserve priced in hours rather than MW,
-    readiness payments, energy co-optimised with ancillary services.
+    The gap is not a behaviour problem. A merchant 2 h battery already does
+    most of what a system-optimal one would, and paying it to do the rest is
+    cheap but capped. What GB buys is MW; what scarcity needs is MWh — reserve
+    priced in hours rather than megawatts, and duration-weighted capacity.
   ]
 ]
 
@@ -279,6 +283,8 @@ contributor to the fleet's response, not an identified cause.
 - *Why a winter?* Operator scarcity does not occur in a GB summer — margin never
   falls below #metric[5.1 GW]. 2019–20 is also the last priceable one: no GB
   day-ahead price is published after the single market ended.
+- *Where the stress line is drawn* barely matters: at the top 5%, 10% and 15%
+  of residual load the gap is #metric[22–23%].
 - *Bootstrap over days:* cost #metric[£37–63/MW/day].
 ]
 
