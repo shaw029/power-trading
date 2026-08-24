@@ -110,7 +110,7 @@ Energy capacity is barely published: #metric[24 sites] read by hand off operator
 pages with URL and read date, #metric[18] from Capacity Market filings, and
 #metric[22] with none.
 
-#panel("nb06_fig1_census_composition.svg")[
+#panel("nb06_fig1_census_composition.svg", ratio: 92%)[
   Fig 1 — What the census contains. Seven sites hold a third of the fleet's MW,
   while the distribution-connected half of the fleet holds under a third of it.
 ]
@@ -134,7 +134,7 @@ pages with URL and read date, #metric[18] from Capacity Market filings, and
   *Revenue stack* · 60 days, recent EAC · sites with attributable awards \
   #text(fill: ink.lighten(35%))[Whether earnings track scarcity coverage]
 
-  *Robustness* · Q1 2018 and winter 2018–19 · reference battery \
+  *Robustness* · Q1 2018 and winter 2019–20 · reference battery \
   #text(fill: ink.lighten(35%))[A different season, price archive and stress rule]
 ]
 
@@ -157,14 +157,14 @@ Sweeping a blended objective prices that duration. The profit schedule delivers
 #metric[£4.31/MW/day]. A further #metric[£88] buys none — only the rule never
 to discharge off-flag.
 
-#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 86%)[
+#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 79%)[
   Fig 2 — The mean day across all 34 days containing a stress hour. Discharge
   peaks at the same hour as stress, so the gap is not one of timing. It is
   duration: the battery reaches its floor by 21:00 while the system is still
   tight 59% of the time.
 ]
 
-#panel("nb04_fig_alignment_frontier.svg", ratio: 84%)[
+#panel("nb04_fig_alignment_frontier.svg", ratio: 79%)[
   Fig 3 — The whole trade-off, not its two endpoints. Day-ahead value sacrificed
   against stress delivery, sweeping the weight on system value. The dashed tail
   spends more and buys no stress energy.
@@ -184,7 +184,7 @@ not empty: across #metric[418] scarcity events it still holds #metric[73–88%] 
 its onset energy four hours in. Declared duration does not explain this
 (#metric[r = +0.05] across 53 sites).
 
-#panel("nb05_fig_event_depletion.svg", ratio: 92%)[
+#panel("nb05_fig_event_depletion.svg", ratio: 85%)[
   Fig 4 — Energy held through a scarcity event, by event length, with bootstrap
   intervals. The fleet sustains where the 2 h reference battery hits its floor.
 ]
@@ -201,7 +201,7 @@ Ancillary services do lift earnings — #metric[£7.23m] landed on census sites 
 Participation is a plausible contributor to the fleet's scarcity response, not
 an identified cause.
 
-#panel("nb04_fig5_revenue_stack.svg", ratio: 90%)[
+#panel("nb04_fig5_revenue_stack.svg", ratio: 84%)[
   Fig 5 — The third stream lifts a site's median earnings from £122 to £150 per
   MW per day. Most of the pound, though, is collected by portfolios that name a
   trading unit rather than an asset.
@@ -247,15 +247,14 @@ an identified cause.
 #text(size: 21pt, weight: "bold", fill: ink)[Robustness]
 #v(2mm)
 #text(size: 17pt)[
-- *Four definitions of stress, one winter window.* Cost lands in
-  #metric[£42–47/MW/day] and the delivery gap in #metric[10–17%] whether stress
-  means residual load, LoLP, derated margin or a 3 GW threshold — spanning 147
-  qualifying periods down to 7.
-- *Why a winter?* Operator scarcity does not occur in a GB summer: across the
-  main window derated margin never falls below #metric[5.1 GW] and LoLP peaks at
-  #metric[4e-06]. That is why two definitions exist.
-- *Bootstrap over days:* cost #metric[£37–63], value share #metric[39–55%],
-  delivery gap #metric[13–32%].
+- *Four definitions, one severe winter.* On winter 2019–20 (margin to
+  #metric[213 MW], LoLP #metric[0.371]) the gap lands in #metric[20–24%], cost
+  in #metric[£31–38/MW/day], across definitions spanning #metric[364] periods
+  down to #metric[21]. The summer's #metric[22%] sits inside it.
+- *Why a winter?* Operator scarcity does not occur in a GB summer — margin never
+  falls below #metric[5.1 GW]. 2019–20 is also the last priceable one: no GB
+  day-ahead price is published after the single market ended.
+- *Bootstrap over days:* cost #metric[£37–63/MW/day].
 ]
 
 #colbreak()
@@ -267,7 +266,7 @@ an identified cause.
   text(size: 16pt)[
     *Elexon* BMRS / Insights 2018–2026 · *NESO Data Portal* — Capacity Market
     register and notices, TEC and Embedded registers, per-unit auction results
-    across all five eras · *PV_Live* · *ENTSO-E* (2018 day-ahead) · *Nord Pool
+    across all five eras · *PV_Live* · *ENTSO-E* (2018 and 2019–20 day-ahead) · *Nord Pool
     N2EX* · *operator disclosures* for energy capacity, each carrying its source
     and read date.
   ],
