@@ -924,7 +924,15 @@ def _page_day_types():
         for tag in labels or ["untagged"]:
             for i, entry in enumerate(dur_result.dispatch_log):
                 profile_rows.append(
-                    {"hour": i % 24, "soc": entry["soc_after"], "day_type": tag}
+                    {
+                        "hour": i % 24,
+                        "soc": entry["soc_after"],
+                        # What the re-optimiser moved away from the locked
+                        # day-ahead schedule in this hour. Same loop, because
+                        # the dispatch log already carries both legs.
+                        "deviation": entry["final_mw"] - entry["da_mw"],
+                        "day_type": tag,
+                    }
                 )
         table_rows.append(
             {
@@ -975,9 +983,9 @@ def _page_day_types():
     reliance = reliance[reliance["gross"] > 0]
     shape_col, market_col = st.columns(2)
     families = dict(zip(memberships["tag"], memberships["family"]))
+    profiles_df = pd.DataFrame(profile_rows)
     shape_col.plotly_chart(
-        chart_daytype_profiles(pd.DataFrame(profile_rows), families=families),
-        width="stretch",
+        chart_daytype_profiles(profiles_df, families=families), width="stretch"
     )
     if reliance.empty:
         market_col.info("No regime earned enough to split day-ahead from intraday.")
@@ -991,6 +999,20 @@ def _page_day_types():
             ),
             width="stretch",
         )
+
+    # Reliance says how much of the money came from intraday; this says when
+    # the re-optimiser went looking for it. Same rows, a different column.
+    st.plotly_chart(
+        chart_daytype_profiles(
+            profiles_df,
+            value_col="deviation",
+            value_label="Mean deviation from the DA schedule (MW)",
+            value_tickformat=None,
+            families=families,
+            title="Intraday re-optimisation by hour — when the plan was rewritten",
+        ),
+        width="stretch",
+    )
 
     st.markdown("#### Days behind the tags")
     table = pd.DataFrame(table_rows).sort_values("date", ascending=False).rename(

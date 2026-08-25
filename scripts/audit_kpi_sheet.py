@@ -10,8 +10,15 @@ Two counting traps it avoids, both of which produced wrong answers by hand:
   column slot with an em dash, so ``.metric(`` overcounts. Tiles are counted as
   distinct column slots *within a page function*, which is also why the count
   cannot be done with one file-wide grep — ``cols[0]`` appears on every page.
-* **Chart calls are not charts.** A fallback can draw the same builder twice on
-  one page, so builders are counted distinctly.
+* **Charts are counted as renders, not builders.** A parameterised builder can
+  legitimately draw two different charts on one page — the regimes page draws
+  the state-of-charge profile and the intraday-deviation profile from the same
+  function — and the sheet lists what a reader sees, so ``st.plotly_chart``
+  calls are what match it. The case this gets wrong is the mirror image: a
+  fallback drawing the *same* builder in two mutually exclusive branches, which
+  a reader only ever sees once. No page does that today, and if one starts this
+  audit will flag it, which is the right moment for a human to decide whether
+  the sheet wants one row or two.
 
 Run it after touching either file::
 
@@ -70,7 +77,7 @@ def _code_counts() -> dict[str, collections.Counter]:
         counts[page] = collections.Counter(
             {
                 "Number": len(slots) + bare,
-                "Graph": len(set(re.findall(r"chart_[a-z_]+", body))),
+                "Graph": len(re.findall(r"plotly_chart\(", body)),
                 "Table": len(re.findall(r"\.dataframe\(", body)),
                 "Download": len(re.findall(r"download_button\(", body)),
             }

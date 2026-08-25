@@ -218,11 +218,9 @@ def test_regimes_page_renders_the_two_family_charts(app):
 
     assert not at.exception
     titles = [c.proto.spec for c in at.get("plotly_chart")]
-    # Six charts: capture, yield/wear, crossing matrix, frequency, SOC
-    # profiles, market reliance. The last two are the new pair, and the
-    # reliance chart is the one that can degrade to an info box, so its
-    # presence proves the gross-earnings branch held.
-    assert len(at.get("plotly_chart")) == 6, titles
+    # Seven: capture, yield/wear, crossing matrix, frequency, SOC profiles,
+    # market reliance, and the intraday-deviation profile.
+    assert len(at.get("plotly_chart")) == 7, titles
 
 
 def test_system_page_renders_price_and_stress_kpis(app):

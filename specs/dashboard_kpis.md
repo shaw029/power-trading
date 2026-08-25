@@ -233,6 +233,7 @@ the two thresholds, so only clear-cut days earn either label.
 | DTY-3 | How common each type is | Graph | Frequency of each kind of day. | Built |
 | DTY-4 | Mean state of charge by regime | Graph | Average state of charge through the day for every regime, both families — fundamentals dashed, price traits solid. Same coverage as the market reliance chart beside it, so the pair reads as one: when the battery held charge, and which market paid for it. | Changed |
 | DTY-7 | Market reliance by regime | Graph | For each tag, the share of gross earnings from the day-ahead auction versus intraday re-trading, ordered by intraday reliance. Shows which days let the optimiser lock its money in at auction and which force it to hunt in-day. | Built |
+| DTY-8 | Intraday re-optimisation by hour | Graph | Mean deviation from the locked day-ahead schedule by hour, one line per regime. DTY-7 says how much of the money came from intraday; this says when the re-optimiser went looking for it — on wind-led days it pulls 25 MW out of 09:00 and puts it back at 13:00. | Built |
 | DTY-5 | Days behind the tags | Table | Every day in the window with its tags, £/MW/day, capture and cycles, newest first. | Built |
 
 Rows are in screen order.

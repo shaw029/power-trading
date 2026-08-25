@@ -1138,6 +1138,7 @@ def chart_daytype_profiles(
     value_label: str = "Mean SOC",
     families: dict[str, str] | None = None,
     value_tickformat: str | None = ".0%",
+    title: str = "Mean daily profile by regime",
 ) -> go.Figure:
     """Mean dispatch/SOC shape by hour-of-day, one line per regime.
 
@@ -1180,7 +1181,7 @@ def chart_daytype_profiles(
                 hovertemplate=label + "<br>Hour %{x}<br>%{y:,.2f}<extra></extra>",
             )
         )
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Mean daily profile by regime")
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
     fig.update_layout(hovermode="x unified")
     fig.update_xaxes(title_text="Hour of day", dtick=2)
     # SOC arrives as a 0-1 fraction, so the axis formats it rather than the

@@ -61,7 +61,7 @@ The 2018 out-of-sample backtest. Much of this became the benchmark pages.
 | SOC distribution over time of day | Partly | Market regimes shows mean SOC **by regime**, not a distribution over all days |
 | Dispatch efficiency — committed vs actual | Partly | The plan-vs-realised chart shows the gap; the scalar efficiency ratio is not reported |
 | Intraday re-optimisation footprint | Partly | Reported as *Avg intraday improvement* and *Market reliance by regime*, not as a footprint chart |
-| Re-optimisation deviation by hour of day | Partly | Visible inside the plan-vs-realised chart, not as its own view |
+| Re-optimisation deviation by hour of day | **Yes** | Market regimes — *Intraday re-optimisation by hour*, promoted from this notebook and cut by regime, which the notebook does not do |
 | Equity curve | No | Builder exists (`chart_equity_curve`) but no live page uses it — a 60-day cumulative line said little |
 | Drawdown / daily PnL distribution | No | Risk framing belongs to a strategy tear sheet, not a market view |
 | Degradation vs gross revenue, cumulative | No | Degradation appears as one bar of the PnL bridge instead |
@@ -109,7 +109,7 @@ a longer window or feeds the dashboard does not carry.
 | CMN case studies (48h panels per notice) | Partly | The dashboard counts notices; it does not draw the event |
 | Feed coverage by week | No | *out of scope* — a build-quality check for a three-year store |
 | Fleet buildout over the window | No | *needs data the dashboard does not fetch* — 60 days shows no buildout |
-| Availability factor (ΣMELS ÷ online nameplate) | No | *needs data the dashboard does not fetch* — MELS would be a fourth per-day feed |
+| Availability factor (ΣMELS ÷ online nameplate) | No | *needs data the dashboard does not fetch* — MELS measured at +1.02 MB/day, about +2s on a 30-day window with concurrent fetching. The cheapest promotion left |
 | Inferred state of charge, stressed vs all periods | No | Needs the SoC inference scheme and its usability filter |
 | Trend by quarter / three winters with CIs | No | *needs data the dashboard does not fetch* — multi-year by construction |
 | RQ3 — advance visibility, hours of warning | No | Needs **all** forecast horizons; the dashboard keeps the latest print per period |
@@ -156,4 +156,7 @@ still open:
    presentation surface is a judgement worth making deliberately rather than by default.
 
 The nearest thing to a free promotion left is **RQ1's availability factor**: one extra
-feed (MELS), reusing `site_limit_profile`, which already exists and is lite-safe.
+feed (MELS), reusing `site_limit_profile`, which already exists and is lite-safe. Measured
+cost is +1.02 MB/day and roughly +2s on a 30-day window now that day fetches run
+concurrently — cheap enough that the question is whether the metric earns a page, not
+whether the dashboard can afford it.
