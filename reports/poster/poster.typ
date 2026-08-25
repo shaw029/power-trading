@@ -24,7 +24,7 @@
 
 // Body copy at 26pt. Poster text is read from roughly 1.5 m, where anything
 // under about 24pt starts costing the reader.
-#set text(font: ("Helvetica Neue", "Helvetica", "Arial"), size: 20pt, fill: ink)
+#set text(font: ("Helvetica Neue", "Helvetica", "Arial"), size: 18pt, fill: ink)
 #set par(justify: true, leading: 0.62em)
 
 // A metric that must survive being read at a glance.
@@ -59,16 +59,16 @@
   #text(size: 32pt, fill: da-blue)[
     Quantifying the Alignment Gap Between Battery Arbitrage and System Scarcity
   ]
-  #v(6mm)
+  #v(4mm)
   #line(length: 100%, stroke: 3pt + rule-grey)
-  #v(3mm)
+  #v(2mm)
   #text(size: 19pt, fill: ink.lighten(25%))[
     An 87-site census of GB grid-scale batteries · 2018–2026 · built entirely
     from public Elexon and NESO data
   ]
 ]
 
-#v(5mm)
+#v(4mm)
 
 #block(
   width: 100%,
@@ -85,62 +85,47 @@
   ]
   #v(2mm)
   #text(size: 19pt, fill: ink.lighten(20%))[
-    Paying a 2 h battery to align buys 8 points of stress delivery. Giving it
-    more energy buys 52. The gap is procurement, not incentives.
+    For today's GB fleet, duration explains more of the gap than dispatch
+    incentives do — and the fleet does not fully use the duration it has.
   ]
 ]
 
-#v(6mm)
+#v(4mm)
 
 // ─── Three columns ───────────────────────────────────────────────────────────
 #columns(3, gutter: 20mm)[
 
 #section("1 · The Problem, and the Fleet to Measure It", da-blue)
 
-Grid-scale batteries optimise for arbitrage, but market signals do not always
-align with system stress. Measuring that gap at fleet level needs a fleet — and
-no public census of GB batteries exists, because Elexon labels no BM Unit a
-battery.
-
-So we built one: #metric[87 sites], #metric[124 BM Units], #metric[6,234 MW],
-found by declared import matching declared export and corroborated against four
-public registers. Sections 2–4 all measure this population.
+Measuring the gap at fleet level needs a fleet, and no public census of GB
+batteries exists — Elexon labels no BM Unit a battery. So we built one:
+#metric[87 sites], #metric[124 BM Units], #metric[6,234 MW], found by declared
+import matching declared export and corroborated against four public registers.
+Sections 2–4 all measure this population.
 
 Energy capacity is barely published: #metric[24 sites] read by hand off operator
-pages with URL and read date, #metric[18] from Capacity Market filings, and
-#metric[22] with none.
+pages, #metric[18] from Capacity Market filings, #metric[22] with none.
 
-#panel("nb06_fig1_census_composition.svg", ratio: 87%)[
+#panel("nb06_fig1_census_composition.svg", ratio: 73%)[
   Fig 1 — What the census contains. Seven sites hold a third of the fleet's MW,
   while the distribution-connected half of the fleet holds under a third of it.
 ]
 
 #v(4mm)
-#text(size: 20pt, weight: "bold", fill: ink)[
-  Four analyses, four boundaries
-]
-#v(1mm)
-#text(size: 17pt, fill: ink.lighten(15%))[
-  They sit side by side but are not one sample.
+#text(size: 19pt, weight: "bold", fill: ink)[
+  Four analyses, four boundaries — not one sample
 ]
 #v(2mm)
 #text(size: 17pt)[
   *Counterfactual* · 60 days, summer 2026 · 50 MW / 2 h reference battery \
-  #text(fill: ink.lighten(35%))[The opportunity cost of stress delivery]
-
-  *Observed response* · 2018–2026 · 87-site BM-registered census \
-  #text(fill: ink.lighten(35%))[What the real fleet does under operator scarcity]
-
-  *Revenue stack* · 60 days, recent EAC · sites with attributable awards \
-  #text(fill: ink.lighten(35%))[Whether earnings track scarcity coverage]
-
-  *Robustness* · Q1 2018 and winter 2019–20 · reference battery \
-  #text(fill: ink.lighten(35%))[A different season, price archive and stress rule]
+  *Observed response* · 2018–2026 · the 87-site BM-registered census \
+  *Revenue stack* · 60 days of EAC · sites with attributable awards \
+  *Robustness* · Q1 2018 and winter 2019–20 · reference battery
 ]
 
 #colbreak()
 
-#section("2 · The Gap Is Duration, Not Incentives", cost-red)
+#section("2 · Duration Beats Dispatch Incentives", cost-red)
 
 A profit-optimised #metric[50 MW / 2 h] battery delivers #metric[22%]
 #text(size: 17pt)[(13–32%)] less stress-period energy than the same battery run
@@ -151,25 +136,25 @@ The shortfall is not mistimed. Mean discharge peaks at #metric[19:00], exactly
 when stress does — the battery simply empties, reaching its #metric[10%] floor
 by 21:00 while the system is still tight #metric[59%] of the time.
 
-Sweeping a blended objective prices that duration. For the 2 h asset the profit
-schedule already delivers #metric[79%] of what it can ever deliver, and the rest
-costs under #metric[4% of benchmark revenue] — about #metric[£4/MW/day], priced
-under the production dispatch model (degradation £5/MWh, slippage £2/MWh, 1.5
-cycles/day).
+Sweeping a blended objective prices that duration. The 2 h profit schedule
+already delivers #metric[79%] of everything *that* battery can ever deliver, and
+the rest costs under #metric[4% of benchmark revenue] — about #metric[£4/MW/day]
+#text(size: 17pt)[(£3–7 across cost models)], priced under the production model
+(degradation £5/MWh, slippage £2/MWh, 1.5 cycles/day).
 
-But the ceiling itself is set by energy, not by incentives. Re-solving at 1, 2,
-4 and 6 h: a #metric[6 h] battery delivers #metric[88%] of the achievable
-scarcity energy at zero cost, where a #metric[2 h] battery tops out at
-#metric[43%] however much value it gives up.
+But the ceiling is set by energy, not incentives. Against the best any duration
+reaches, a #metric[6 h] battery delivers #metric[88%] at zero cost where a
+#metric[2 h] battery tops out at #metric[43%] at any price — and GB has almost
+no duration beyond #metric[3 h] to deploy.
 
-#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 75%)[
+#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 63%)[
   Fig 2 — The mean day across all 34 days containing a stress hour. Discharge
   peaks at the same hour as stress, so the gap is not one of timing. It is
   duration: the battery reaches its floor by 21:00 while the system is still
   tight 59% of the time.
 ]
 
-#panel("nb04_fig_duration_frontier.svg", ratio: 80%)[
+#panel("nb04_fig_duration_frontier.svg", ratio: 70%)[
   Fig 3 — The frontier is a family. Each curve sweeps the weight on system value
   for one duration; the dot is the profit schedule. Moving up beats moving right.
   Capital cost of the extra energy is not modelled.
@@ -184,31 +169,35 @@ GB fleet discharges in #metric[95%] of periods, delivering
 #metric[+0.051 MW per MW online] against a #metric[+0.003] baseline. That mean
 hides a tail: #metric[11%] of site-periods run above half of nameplate.
 
-The fleet arrives ready and does not empty. Charge rises from #metric[61%] six
-hours out to #metric[66%] an hour before onset, and across #metric[418] events
-only #metric[9%] of event time is spent below #metric[23%] charge.
+The fleet arrives ready and does not empty. Charge rises into the event, and
+across #metric[418] events only #metric[9–10%] of event time is spent below the
+fleet's own low-water mark.
 
-Its shortfall is dispatch, not duration: #metric[51%] of usable energy is still
-held at the deepest point of the average event. Declared duration does not
-predict response either (#metric[r = +0.05] across 53 sites).
+Its shortfall is dispatch, not duration: #metric[40–51%] of usable energy is
+still held at the deepest point of the average event, four to five times the
+duration gap. Declared duration does not predict response either
+(#metric[r = +0.05] across 53 sites). Ranges span both state-of-charge
+inference schemes.
 
-#panel("nb05_fig_gap_decomposition.svg", ratio: 88%)[
-  Fig 4 — Readiness into the event, and which of the three gaps binds. For the
-  modelled 2 h battery it is duration. For the real fleet it is dispatch.
+#panel("nb05_fig_gap_decomposition.svg", ratio: 72%)[
+  Fig 4 — Readiness into the event, and which of the three gaps binds, on the
+  primary state-of-charge inference. These do not sum: three questions, three
+  denominators. For the modelled 2 h battery the
+  answer is duration; for the real fleet it is dispatch.
 ]
 
 #section("4 · The Full Revenue Stack", mid-amber)
 
-Revenue does not buy scarcity coverage. Across revenue quartiles median earnings
+If duration is the binding constraint, then earning more should *not* buy better
+scarcity coverage — and it does not. Across revenue quartiles median earnings
 rise from #metric[£18] to #metric[£224/MW/day] while median stress coverage
-stays flat at #metric[0.22–0.25]. The headline correlation of −0.24 is a line
-through noise.
+stays flat at #metric[0.22–0.25]. The −0.24 correlation is a line through noise.
 
 Ancillary services do lift earnings — #metric[£7.23m] in 60 days — but only
 #metric[27%] of the pound reaches a named site. Participation is a plausible
 contributor to the fleet's response, not an identified cause.
 
-#panel("nb04_fig5_revenue_stack.svg", ratio: 79%)[
+#panel("nb04_fig5_revenue_stack.svg", ratio: 65%)[
   Fig 5 — The third stream lifts median earnings from £122 to £150 per MW per
   day, but most of the pound is collected by portfolios naming a trading unit.
 ]
@@ -224,10 +213,12 @@ contributor to the fleet's response, not an identified cause.
   #text(size: 20pt, weight: "bold", fill: ink)[What this implies]
   #v(1mm)
   #text(size: 19pt)[
-    The gap is not a behaviour problem. A merchant 2 h battery already does
-    most of what a system-optimal one would, and paying it to do the rest is
-    cheap but capped. What GB buys is MW; what scarcity needs is MWh — reserve
-    priced in hours rather than megawatts, and duration-weighted capacity.
+    *Duration sets the ceiling; dispatch decides how much of it is used.*
+    Incentives cannot buy what the hardware cannot hold — a 2 h battery tops out
+    at 43%. But the fleet holds #metric[40–51%] of its energy at an event's
+    deepest point, so its ceiling is not fully used either. The Capacity Market
+    already de-rates short duration when it *procures*; nothing pays for energy
+    *delivered* during scarcity.
   ]
 ]
 
@@ -260,13 +251,17 @@ contributor to the fleet's response, not an identified cause.
 #v(2mm)
 #text(size: 16pt)[
 - *State of charge is inferred* from notified position, never metered.
+  Re-anchoring the inference daily moves levels about ten points, not the
+  ordering.
 - *Three quarters of ancillary revenue reaches no site* — portfolios name a
   trading unit, not an asset. It is quantified and attributed to nobody.
 - *Duration is declared, not metered* — energy capacity for a third of the
   census rests on operator disclosure rather than a register.
-- *These are private opportunity costs*, not social ones: avoided balancing
-  cost, unserved energy, reserve procurement and peaker operation are all
-  unvalued here.
+- *The benchmark has perfect foresight* of realised intraday price — an upper
+  bound; real dispatch tracks these curves from below.
+- *Nothing here is priced socially or in capex.* Avoided balancing cost,
+  unserved energy and reserve procurement are unvalued, and building 6 h is not
+  costed: incentives cannot substitute for energy, but energy is not free.
 - *Rare samples are exhibits, not statistics.* Capacity Market Notices
   (#metric[n=13]) and DRM < 1 GW (#metric[n=39]) carry nothing like the weight
   of tiers with thousands of periods.
