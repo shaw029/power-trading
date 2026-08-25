@@ -123,6 +123,44 @@ pages, #metric[18] from Capacity Market filings, #metric[22] with none.
   *Robustness* · Q1 2018 and winter 2019–20 · reference battery
 ]
 
+#v(6mm)
+
+#section("International Context: What Other Markets Buy", mid-amber)
+
+GB is not behind on duration. The Capacity Market has de-rated storage by
+duration since 2017 — #metric[4–5%] of nameplate at half an hour, about
+#metric[95%] at eight — and the LDES cap and floor committed #metric[7.6 GW] at
+#metric[8–22 h] in June 2026. The evidence here supports that direction rather
+than proposing it.
+
+The lesson from elsewhere is about the *other* half — using the duration that
+already exists.
+
+#v(2mm)
+#text(size: 17pt)[
+  #table(
+    columns: (auto, auto, 1fr),
+    stroke: none,
+    inset: (x: 3mm, y: 1.6mm),
+    fill: (_, row) => if row == 0 { rule-grey.lighten(55%) },
+    table.header([*Instrument*], [*Buys*], [*GB today*]),
+    [LDES cap and floor #text(fill: ink.lighten(40%))[(GB)]], [the ceiling],
+      [live — 7.6 GW],
+    [Energy auction #text(fill: ink.lighten(40%))[(Italy, MACSE)]],
+      [the ceiling, priced], [administered, not auctioned],
+    [Locational tariff #text(fill: ink.lighten(40%))[(France, TURPE 7)]],
+      [the *usage*], [nothing equivalent],
+  )
+]
+#v(2mm)
+
+Italy prices energy directly rather than selecting projects: #metric[10 GWh] on
+15-year contracts, oversubscribed fourfold at #metric[€12,959/MWh-year]. France,
+live this month, pays up to #metric[€69/MWh] for charging in solar-heavy zones
+and rewards discharge in demand zones at winter peaks — a *continuous* signal,
+not one tied to a declared event. GB's delivery obligation binds only inside a
+declared stress event: #metric[13] of them in eight years.
+
 #colbreak()
 
 #section("2 · Duration Beats Dispatch Incentives", cost-red)
@@ -300,7 +338,8 @@ contributor to the fleet's response, not an identified cause.
     register and notices, TEC and Embedded registers, per-unit auction results
     across all five eras · *PV_Live* · *ENTSO-E* (2018 and 2019–20 day-ahead) · *Nord Pool
     N2EX* · *operator disclosures* for energy capacity, each carrying its source
-    and read date.
+    and read date. Policy: *Ofgem* LDES window 1, *EMRS* capacity-market
+    guidance, *Terna* MACSE, *CRE* TURPE 7, *BNetzA*.
   ],
   [
     #image("../figures/poster/repo_qr.svg", width: 100%)
