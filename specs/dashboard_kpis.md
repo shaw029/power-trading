@@ -294,6 +294,13 @@ The research page, and the busiest one: eight Numbers in two rows.
 
 Plain-English explanation of every number above, plus a glossary. Nothing computed.
 
+## The research side
+
+`specs/notebook_indicators.md` is the mirror of this file: every indicator the six
+notebooks compute, and whether the dashboard has it. Use it to decide what to promote —
+it separates what is deliberately notebook-only (multi-year work, the census) from what
+is merely not built yet, and gives the reason in each case.
+
 ## Keeping it current
 
 Edit a row when you decide something; the build updates it when something ships. If it drifts
