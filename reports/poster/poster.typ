@@ -217,8 +217,10 @@ contributor to the fleet's response, not an identified cause.
     Incentives cannot buy what the hardware cannot hold — a 2 h battery tops out
     at 43%. But the fleet holds #metric[40–51%] of its energy at an event's
     deepest point, so its ceiling is not fully used either. The Capacity Market
-    already de-rates short duration when it *procures*; nothing pays for energy
-    *delivered* during scarcity.
+    already de-rates short duration, and pays for delivery inside a declared
+    stress event — but this study counts #metric[13] such periods in eight
+    years. The tight-but-undeclared hours it measures carry no obligation
+    at all.
   ]
 ]
 
