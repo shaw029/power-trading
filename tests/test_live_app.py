@@ -12,6 +12,7 @@ exception-free when the duration selector changes.
 """
 
 import datetime as dt
+import threading
 
 import pandas as pd
 import pytest
@@ -125,6 +126,45 @@ def app(monkeypatch):
     live_app._lolpdrm_window.clear()
     live_app._cmn_notices.clear()
     return live_app
+
+
+def test_prefetch_fleet_days_covers_every_day_and_survives_failures(monkeypatch):
+    """The parallel prefetch must touch each day exactly once and swallow the
+    failures the sequential path already tolerated."""
+    import dashboard.live_app as live_app
+
+    seen: list[str] = []
+    lock = threading.Lock()
+
+    def record(date):
+        with lock:
+            seen.append(date.isoformat())
+        return []
+
+    def boom(date):
+        raise RuntimeError("Elexon unavailable")
+
+    monkeypatch.setattr(fetch_fleet, "fetch_fleet_pn", record)
+    monkeypatch.setattr(fetch_fleet, "fetch_day_mid_prices", record)
+    monkeypatch.setattr(fetch_fleet, "fetch_fleet_boalf", boom)
+    monkeypatch.setattr(fetch_fleet, "fetch_fleet_bm_cashflows", record)
+
+    days = [f"2024-01-{d:02d}" for d in range(1, 13)]
+    live_app._prefetch_fleet_days(days, bar=None)   # must not raise
+
+    # Three surviving fetchers per day, and no day dropped by the pool.
+    assert sorted(set(seen)) == sorted(days)
+    assert len(seen) == 3 * len(days)
+
+
+def test_prefetch_fleet_days_is_a_noop_on_an_empty_window(monkeypatch):
+    import dashboard.live_app as live_app
+
+    def fail(date):
+        raise AssertionError("must not fetch for an empty window")
+
+    monkeypatch.setattr(fetch_fleet, "fetch_fleet_pn", fail)
+    live_app._prefetch_fleet_days([], bar=None)
 
 
 def test_app_boots_on_latest_day_page(app):
