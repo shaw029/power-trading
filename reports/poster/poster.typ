@@ -152,9 +152,10 @@ when stress does — the battery simply empties, reaching its #metric[10%] floor
 by 21:00 while the system is still tight #metric[59%] of the time.
 
 Sweeping a blended objective prices that duration. For the 2 h asset the profit
-schedule already delivers #metric[79%] #text(size: 17pt)[(69–88%)] of what it
-can ever deliver, and the rest costs #metric[£4.31/MW/day]
-#text(size: 17pt)[(£2.56–6.38)].
+schedule already delivers #metric[79%] of what it can ever deliver, and the rest
+costs under #metric[4% of benchmark revenue] — about #metric[£4/MW/day], priced
+under the production dispatch model (degradation £5/MWh, slippage £2/MWh, 1.5
+cycles/day).
 
 But the ceiling itself is set by energy, not by incentives. Re-solving at 1, 2,
 4 and 6 h: a #metric[6 h] battery delivers #metric[88%] of the achievable
@@ -245,7 +246,7 @@ contributor to the fleet's response, not an identified cause.
 
 #text(size: 21pt, weight: "bold", fill: ink)[Method & data]
 #v(2mm)
-#text(size: 17pt)[
+#text(size: 16pt)[
 - *Public feeds only.* Elexon per-BMU notifications, acceptances and cashflows;
   NESO capacity, connection and auction registers; PV_Live. No subscription data.
 - *The census is built, not downloaded.* Elexon labels no unit a battery.
@@ -257,15 +258,15 @@ contributor to the fleet's response, not an identified cause.
 
 #text(size: 21pt, weight: "bold", fill: ink)[What these numbers cannot say]
 #v(2mm)
-#text(size: 17pt)[
+#text(size: 16pt)[
 - *State of charge is inferred* from notified position, never metered.
 - *Three quarters of ancillary revenue reaches no site* — portfolios name a
   trading unit, not an asset. It is quantified and attributed to nobody.
 - *Duration is declared, not metered* — energy capacity for a third of the
   census rests on operator disclosure rather than a register.
-- *£4.31/MW/day is a private opportunity cost*, not a social one. It excludes
-  avoided balancing cost, unserved energy, reserve procurement and peaker
-  operation — the benefit side is unvalued here.
+- *These are private opportunity costs*, not social ones: avoided balancing
+  cost, unserved energy, reserve procurement and peaker operation are all
+  unvalued here.
 - *Rare samples are exhibits, not statistics.* Capacity Market Notices
   (#metric[n=13]) and DRM < 1 GW (#metric[n=39]) carry nothing like the weight
   of tiers with thousands of periods.
@@ -275,17 +276,20 @@ contributor to the fleet's response, not an identified cause.
 
 #text(size: 21pt, weight: "bold", fill: ink)[Robustness]
 #v(2mm)
-#text(size: 17pt)[
+#text(size: 16pt)[
 - *Four definitions, one severe winter.* On winter 2019–20 (margin to
-  #metric[213 MW], LoLP #metric[0.371]) the gap lands in #metric[20–24%], cost
-  in #metric[£31–38/MW/day], across definitions spanning #metric[364] periods
-  down to #metric[21]. The summer's #metric[22%] sits inside it.
+  #metric[213 MW], LoLP #metric[0.371]) the gap lands in #metric[20–24%] across
+  definitions spanning #metric[364] periods down to #metric[21] — and the
+  summer's #metric[22%] sits inside it.
 - *Why a winter?* Operator scarcity does not occur in a GB summer — margin never
   falls below #metric[5.1 GW]. 2019–20 is also the last priceable one: no GB
   day-ahead price is published after the single market ended.
-- *Where the stress line is drawn* barely matters: at the top 5%, 10% and 15%
+- *Where the stress line is drawn* barely matters — at the top 5%, 10% and 15%
   of residual load the gap is #metric[22–23%].
-- *Bootstrap over days:* cost #metric[£37–63/MW/day].
+- *Cost model against calendar.* Resampling days gives #metric[£37–63/MW/day],
+  and sweeping degradation #metric[£0–10] with slippage #metric[£0–4/MWh] gives
+  #metric[£46–54]. Assumptions move it less than the sample does, and the
+  frontier's shape shifts under #metric[6%].
 ]
 
 #colbreak()
