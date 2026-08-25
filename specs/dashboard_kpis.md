@@ -285,6 +285,9 @@ The research page, and the busiest one: eight Numbers in two rows.
 | ALN-11 | System tightness | Graph | Spare capacity over the window, with risk periods and warnings marked. | Built |
 | ALN-12 | Profit vs alignment | Graph | Every real site plotted on money against grid service. | Built |
 | ALN-13 | Cost by day type | Graph | Which days make alignment expensive. | Built |
+| ALN-15 | Fleet response when tightest | Number | Mean fleet net output across the tightest fifth of the window's de-rated margins, with how often it was charging instead. Positive means the fleet discharged into tightness rather than competing with it. | Built |
+| ALN-16 | Swing from loosest to tightest | Number | How far the fleet's net position moves between the loosest and tightest fifth — the size of the response, as against its direction. | Built |
+| ALN-17 | Fleet response by de-rated margin | Graph | Mean fleet net MW in each fifth of the window's margins, tightest first. Answers the alignment question with the operator's own margin data rather than a residual-load proxy. Bands are quantiles of the window, not fixed thresholds — a rolling summer window never reaches a scarcity margin, so absolute bands would render empty. | Built |
 | ALN-14 | Tightest periods | Table | The hardest half-hours, and what each battery did. | Built |
 
 ## Methodology  ·  *About*

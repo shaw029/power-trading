@@ -30,6 +30,7 @@ from dashboard.charts import (
     chart_fleet_dispersion,
     chart_fleet_spread,
     chart_gap_by_daytype,
+    chart_margin_response,
     chart_generation_daily,
     chart_generation_mix,
     chart_renewable_daily,
@@ -245,6 +246,24 @@ def test_chart_daytype_market_reliance_orders_by_intraday_share():
     assert [t.name for t in fig.data] == ["Day-ahead auction", "Intraday re-trading"]
     # Ascending intraday share, so the in-day hunters end up together.
     assert list(fig.data[0].y) == ["wind-led", "volatile", "solar-led"]
+
+
+def test_chart_margin_response_colours_by_sign():
+    df = pd.DataFrame(
+        {
+            "band": ["5.1–12.2 GW", "12.2–14.7 GW", "19.5–25.5 GW"],
+            "mean_fleet_mw": [292.8, 129.9, -105.6],
+            "charging_share": [0.12, 0.30, 0.63],
+            "periods": [288, 287, 288],
+        }
+    )
+    fig = chart_margin_response(df)
+    assert isinstance(fig, go.Figure)
+    colours = list(fig.data[0].marker.color)
+    # Discharge and charge must not share a colour: relief and competition are
+    # the two answers this chart exists to separate.
+    assert colours[0] == colours[1] != colours[2]
+    assert list(fig.data[0].x) == list(df["band"])
 
 
 def test_chart_generation_mix_stacks_groups_and_demand():

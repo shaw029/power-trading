@@ -5,6 +5,7 @@ figure; they hold no Streamlit or data-loading logic so they can be reused and
 tested in isolation.
 """
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -2399,6 +2400,48 @@ def chart_system_tightness(
     fig.update_layout(hovermode="x unified", showlegend=True)
     fig.update_yaxes(title_text="De-rated margin (MW)", row=1, col=1)
     fig.update_yaxes(title_text="Dispatch (MW)", row=2, col=1)
+    return fig
+
+
+def chart_margin_response(df: pd.DataFrame) -> go.Figure:
+    """Does the real fleet relieve tight margins, or deepen them?
+
+    ``df`` columns: ``band`` (a de-rated-margin range, tightest first),
+    ``mean_fleet_mw`` (positive = net discharge), ``charging_share`` and
+    ``periods``.
+
+    Bands are quantiles of the margin *within the window on screen*, not fixed
+    GW thresholds. A rolling 60-day window in summer never sees a scarcity
+    margin — the tightest half-hour in the last 30 days was 5.1 GW, so absolute
+    scarcity bands would render empty and say nothing. Quantiles always
+    populate and adapt to the season, at the cost of "tight" meaning tight
+    *relative to this window* — the same convention the stress decile on this
+    page already uses.
+
+    Colour carries the sign, as everywhere else on the dashboard: discharging
+    into a tight margin helps, charging into one competes with the system.
+    """
+    fig = go.Figure(
+        go.Bar(
+            x=df["band"],
+            y=df["mean_fleet_mw"],
+            marker_color=_dispatch_bar_colors(df["mean_fleet_mw"].to_numpy()),
+            customdata=np.stack([df["charging_share"] * 100, df["periods"]], axis=-1),
+            hovertemplate=(
+                "%{x}<br>Fleet net %{y:,.0f} MW"
+                "<br>charging in %{customdata[0]:.0f}% of periods"
+                "<br>%{customdata[1]:,} half-hours<extra></extra>"
+            ),
+        )
+    )
+    apply_theme(
+        fig,
+        height=DEFAULT_CHART_HEIGHT,
+        title="Fleet response by de-rated margin — relief or competition",
+    )
+    fig.update_layout(showlegend=False)
+    fig.update_xaxes(title_text="De-rated margin (tightest fifth of the window first)")
+    fig.update_yaxes(title_text="Mean fleet net output (MW, + discharge / − charge)")
     return fig
 
 

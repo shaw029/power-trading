@@ -58,6 +58,7 @@ from dashboard.charts import (  # noqa: E402
     chart_alignment_day,
     chart_alignment_scatter,
     chart_gap_by_daytype,
+    chart_margin_response,
     chart_system_tightness,
     chart_shape_overlay,
     chart_sim_vs_fleet_daily,
@@ -141,6 +142,8 @@ _MAX_HISTORY_DAYS = 60
 # cashflow endpoint's latency (the measured 5.8x) while staying a modest
 # neighbour to Elexon — the window is at most 60 days, not thousands.
 _FLEET_FETCH_WORKERS = 6
+# Below this many half-hours the margin quantiles are noise, not bands.
+_MARGIN_BAND_MIN_PERIODS = 96
 
 
 def _duration_hours(duration: str) -> int:
@@ -2162,6 +2165,57 @@ def _page_alignment():
             "the same classifier as the benchmark. ⚠ sites are ancillary-tilted; "
             "their revenue is understated."
         )
+
+    # --- Does the fleet relieve tight margins, or compete with them? ----------
+    # Both inputs are already on this page: the fleet's half-hourly profile,
+    # built above for the scatter, and the margin feed fetched for the tier
+    # ladder. So this costs a groupby, not a fetch.
+    if not profiles.empty and not lolpdrm.empty and "drm_mw" in lolpdrm:
+        net = profiles.groupby("time")["mw"].sum().rename("fleet_mw")
+        joined = pd.concat([net, lolpdrm["drm_mw"]], axis=1).dropna()
+        # Five bands, or fewer if the margin barely moved in this window.
+        if len(joined) >= _MARGIN_BAND_MIN_PERIODS:
+            joined = joined.assign(
+                band=pd.qcut(joined["drm_mw"], 5, labels=False, duplicates="drop")
+            )
+            bands = [
+                {
+                    "band": f"{sub['drm_mw'].min() / 1000:.1f}–"
+                            f"{sub['drm_mw'].max() / 1000:.1f} GW",
+                    "mean_fleet_mw": float(sub["fleet_mw"].mean()),
+                    "charging_share": float((sub["fleet_mw"] < 0).mean()),
+                    "periods": int(len(sub)),
+                }
+                for _, sub in joined.groupby("band")
+            ]
+            band_df = pd.DataFrame(bands)
+            tight, loose = band_df.iloc[0], band_df.iloc[-1]
+            mcols = st.columns(2)
+            mcols[0].metric(
+                _unit_label("Fleet response when tightest", "MW"),
+                f"{tight['mean_fleet_mw']:,.0f}",
+                f"{tight['charging_share']:.0%} of those periods charging",
+                delta_color="off",
+                help="Mean fleet net output across the tightest fifth of the "
+                "window's de-rated margins. Positive means the fleet was "
+                "discharging into tightness rather than competing with it.",
+            )
+            mcols[1].metric(
+                _unit_label("Swing from loosest to tightest", "MW"),
+                f"{tight['mean_fleet_mw'] - loose['mean_fleet_mw']:+,.0f}",
+                f"loosest fifth {loose['mean_fleet_mw']:,.0f} MW",
+                delta_color="off",
+                help="How far the fleet's net position moves between the "
+                "loosest and tightest fifth of margins — the size of the "
+                "response, as opposed to its direction.",
+            )
+            st.plotly_chart(chart_margin_response(band_df), width="stretch")
+            st.caption(
+                "Margin bands are quantiles of this window, not fixed thresholds: "
+                "a rolling summer window never reaches a scarcity margin, so "
+                "absolute bands would render empty. Read 'tightest' as tightest "
+                "relative to the days on screen."
+            )
 
     # --- Gap by day type + stress events --------------------------------------
     tag_rows: dict[str, dict] = {}
