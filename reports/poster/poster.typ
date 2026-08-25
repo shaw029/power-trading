@@ -78,15 +78,15 @@
   radius: 2pt,
 )[
   #text(size: 24pt, weight: "bold", fill: ink)[
-    Prices find the scarcity peak. What they do not buy is the
-    #text(fill: cost-red)[duration] — and no price fixes that: a 6 h battery
-    delivers #text(fill: cost-red)[88%] of the achievable scarcity energy for
-    nothing, more than a 2 h battery reaches at #text(fill: cost-red)[any] cost.
+    GB pays #text(fill: cost-red)[£0.00/MWh] for scarcity across the window
+    studied — and pays it in cash-out, not the day-ahead price batteries
+    schedule against. So they find the peak and stop:
+    #text(fill: cost-red)[22%] of system-optimal scarcity energy undelivered.
   ]
   #v(2mm)
   #text(size: 19pt, fill: ink.lighten(20%))[
-    For today's GB fleet, duration explains more of the gap than dispatch
-    incentives do — and the fleet does not fully use the duration it has.
+    Closing it costs under #text(fill: cost-red)[4%] of revenue. But no price
+    closes it fully — a 2 h battery caps at 43% of what a 6 h one reaches.
   ]
 ]
 
@@ -125,74 +125,77 @@ pages, #metric[18] from Capacity Market filings, #metric[22] with none.
 
 #v(6mm)
 
-#section("International Context: What Other Markets Buy", mid-amber)
+#section("International Context: Who Prices Scarcity in Real Time", mid-amber)
 
-GB is not behind on duration. The Capacity Market has de-rated storage by
-duration since 2017 — #metric[4–5%] of nameplate at half an hour, about
-#metric[95%] at eight — and the LDES cap and floor committed #metric[7.6 GW] at
-#metric[8–22 h] in June 2026. The evidence here supports that direction rather
-than proposing it.
-
-The lesson from elsewhere is about the *other* half — using the duration that
-already exists.
+Every market here runs the same wholesale, intraday and balancing stack. They
+differ in whether scarcity reaches the price an asset schedules against.
 
 #v(2mm)
 #text(size: 17pt)[
   #table(
-    columns: (auto, auto, 1fr),
+    columns: (auto, 1fr),
     stroke: none,
     inset: (x: 3mm, y: 1.6mm),
     fill: (_, row) => if row == 0 { rule-grey.lighten(55%) },
-    table.header([*Instrument*], [*Buys*], [*GB today*]),
-    [LDES cap and floor #text(fill: ink.lighten(40%))[(GB)]], [the ceiling],
-      [live — 7.6 GW],
-    [Energy auction #text(fill: ink.lighten(40%))[(Italy, MACSE)]],
-      [the ceiling, priced], [administered, not auctioned],
-    [Locational tariff #text(fill: ink.lighten(40%))[(France, TURPE 7)]],
-      [the *usage*], [nothing equivalent],
+    table.header([*Market*], [*How scarcity enters the dispatch signal*]),
+    [*Belgium*], [An alpha adder steepens the imbalance price once system
+      imbalance passes a threshold; ORDC scarcity prices have run since 2019],
+    [*Ireland*], [The imbalance price is the extremum of three components, one
+      an explicit scarcity function],
+    [*Netherlands*], [Continuously published activation and price make passive
+      balancing a core battery revenue, not a residual cost],
+    [*France*], [TURPE 7, live this month: up to €69/MWh to charge in
+      solar-heavy zones, rewards for discharge at winter peaks],
+    [*GB*], [VoLL × LoLP in cash-out — #metric[£0.00/MWh] here — and nothing in
+      the day-ahead price],
   )
 ]
 #v(2mm)
 
-Italy prices energy directly rather than selecting projects: #metric[10 GWh] on
-15-year contracts, oversubscribed fourfold at #metric[€12,959/MWh-year]. France,
-live this month, pays up to #metric[€69/MWh] for charging in solar-heavy zones
-and rewards discharge in demand zones at winter peaks — a *continuous* signal,
-not one tied to a declared event. GB's delivery obligation binds only inside a
-declared stress event: #metric[13] of them in eight years.
+The others price scarcity *continuously*. GB prices it in a step that almost
+never fires, and in a settlement price rather than a scheduling one. REMA
+(July 2025) ruled out zonal pricing and chose to deliver locational signals
+through network charges instead — which is precisely the TURPE 7 route, already
+running in France. This study is a measurement of what that choice has to fix.
 
 #colbreak()
 
-#section("2 · Duration Beats Dispatch Incentives", cost-red)
+#section("2 · Why the Gap Exists, and What It Costs", cost-red)
 
 A profit-optimised #metric[50 MW / 2 h] battery delivers #metric[22%]
 #text(size: 17pt)[(13–32%)] less stress-period energy than the same battery run
 on a system-value objective — #metric[595 of 2,662 MWh]. That
 counterfactual is our own objective, not a NESO instruction.
 
-The shortfall is not mistimed. Mean discharge peaks at #metric[19:00], exactly
-when stress does — the battery simply empties, reaching its #metric[10%] floor
-by 21:00 while the system is still tight #metric[59%] of the time.
+It is not mistimed: discharge peaks at #metric[19:00], exactly when stress does.
+It simply empties, hitting its #metric[10%] floor by 21:00 while the system is
+still tight #metric[59%] of the time — because nothing pays it not to. GB prices scarcity as
+#metric[VoLL × LoLP] in the *imbalance* price: across this window that is
+#metric[£0.00/MWh] on average, exactly zero in #metric[99.5%] of periods, and it
+never reaches the day-ahead objective the battery actually maximises.
 
-Sweeping a blended objective prices that duration. The 2 h profit schedule
-already delivers #metric[79%] of everything *that* battery can ever deliver, and
-the rest costs under #metric[4% of benchmark revenue] — about #metric[£4/MW/day]
-#text(size: 17pt)[(£3–7 across cost models)], priced under the production model
-(degradation £5/MWh, slippage £2/MWh, 1.5 cycles/day).
+The gap runs both ways. A battery serves the system by absorbing surplus as well
+as discharging into scarcity, and the profit schedule captures #metric[39%] of
+surplus against #metric[41%] of stress. It does track the system — dispatch
+correlates #metric[+0.41] with residual load — it stops short in both
+directions.
 
-But the ceiling is set by energy, not incentives. Against the best any duration
-reaches, a #metric[6 h] battery delivers #metric[88%] at zero cost where a
-#metric[2 h] battery tops out at #metric[43%] at any price — and GB has almost
-no duration beyond #metric[3 h] to deploy.
+Sweeping a blended objective prices it. The 2 h profit schedule already delivers
+#metric[79%] of everything *that* battery can deliver, and the rest costs under
+#metric[4% of benchmark revenue] — about #metric[£4/MW/day]
+#text(size: 17pt)[(£3–7 across cost models)], under the production model
+(degradation £5/MWh, slippage £2/MWh, 1.5 cycles/day). The ceiling is energy,
+not incentives: a #metric[6 h] battery reaches #metric[88%] free where a
+#metric[2 h] one caps at #metric[43%] at any price.
 
-#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 63%)[
+#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 62%)[
   Fig 2 — The mean day across all 34 days containing a stress hour. Discharge
   peaks at the same hour as stress, so the gap is not one of timing. It is
   duration: the battery reaches its floor by 21:00 while the system is still
   tight 59% of the time.
 ]
 
-#panel("nb04_fig_duration_frontier.svg", ratio: 70%)[
+#panel("nb04_fig_duration_frontier.svg", ratio: 68%)[
   Fig 3 — The frontier is a family. Each curve sweeps the weight on system value
   for one duration; the dot is the profit schedule. Moving up beats moving right.
   Capital cost of the extra energy is not modelled.
@@ -226,8 +229,8 @@ inference schemes.
 
 #section("4 · The Full Revenue Stack", mid-amber)
 
-If duration is the binding constraint, then earning more should *not* buy better
-scarcity coverage — and it does not. Across revenue quartiles median earnings
+If scarcity carries no rent, then earning more should *not* buy better scarcity
+coverage — and it does not. Across revenue quartiles median earnings
 rise from #metric[£18] to #metric[£224/MW/day] while median stress coverage
 stays flat at #metric[0.22–0.25]. The −0.24 correlation is a line through noise.
 
@@ -251,14 +254,12 @@ contributor to the fleet's response, not an identified cause.
   #text(size: 20pt, weight: "bold", fill: ink)[What this implies]
   #v(1mm)
   #text(size: 19pt)[
-    *Duration sets the ceiling; dispatch decides how much of it is used.*
-    Incentives cannot buy what the hardware cannot hold — a 2 h battery tops out
-    at 43%. But the fleet holds #metric[40–51%] of its energy at an event's
-    deepest point, so its ceiling is not fully used either. The Capacity Market
-    already de-rates short duration, and pays for delivery inside a declared
-    stress event — but this study counts #metric[13] such periods in eight
-    years. The tight-but-undeclared hours it measures carry no obligation
-    at all.
+    *Scarcity value never reaches the price batteries schedule against.* It is
+    paid in cash-out, at #metric[£0.00/MWh] across this window, and only inside
+    a declared stress event — #metric[13] of those in eight years. So the fleet
+    holds #metric[40–51%] of its energy at an event's deepest point: nothing
+    pays it to spend that energy. Duration bounds what any signal could buy — a
+    2 h battery caps at 43% — but the binding problem here is the signal.
   ]
 ]
 
