@@ -18,6 +18,7 @@ motivated it is invisible, so ancillary-tilted sites can read negative.
 estimate is comparable.
 """
 
+import numpy as np
 import pandas as pd
 
 from fleet.population import REGISTRY, Population
@@ -230,32 +231,36 @@ def _paint_profile(
     level held for 24 of 30 minutes counted 80% of that period.
     """
     parts = []
+    minute = pd.Timedelta(minutes=1)
+    slots = int(pd.Timedelta(_MID_FREQ) / minute)
     for bmu, spans in df.groupby("bmUnit"):
         start = spans["timeFrom"].min().floor(_MID_FREQ)
         end = spans["timeTo"].max().ceil(_MID_FREQ)
-        minutes = pd.date_range(start, end, freq="1min", inclusive="left")
-        level = pd.Series(float("nan"), index=minutes)
+        # Integer minute offsets into a plain float array. The label-indexed
+        # equivalent rebuilt a DatetimeIndex per span and assigned by label,
+        # which dominated every fleet page: thousands of spans a day, each one
+        # paying for index alignment it did not need.
+        total = int((end - start) / minute)
+        level = np.full(total, np.nan)
         for row in spans.sort_values(order_cols, na_position="first").itertuples():
-            span = pd.date_range(row.timeFrom, row.timeTo, freq="1min", inclusive="left")
-            if len(span) == 0:
+            lo = max(int((row.timeFrom - start) / minute), 0)
+            hi = min(int((row.timeTo - start) / minute), total)
+            if hi <= lo:
                 continue
-            ramp = pd.Series(
-                [
-                    row.levelFrom
-                    + (row.levelTo - row.levelFrom) * i / max(len(span) - 1, 1)
-                    for i in range(len(span))
-                ],
-                index=span,
-            )
-            level.loc[ramp.index] = ramp
-        half_hourly = level.resample(_MID_FREQ).mean().dropna()
-        if half_hourly.empty:
+            level[lo:hi] = np.linspace(row.levelFrom, row.levelTo, hi - lo)
+        # Mean of each half-hour, skipping unpainted minutes and dropping any
+        # period that was never painted at all — what resample().mean().dropna()
+        # did, without materialising a Series per BMU.
+        block = level.reshape(-1, slots)
+        painted = ~np.isnan(block)
+        counts = painted.sum(axis=1)
+        keep = counts > 0
+        if not keep.any():
             continue
+        means = np.nansum(np.where(painted, block, 0.0), axis=1)[keep] / counts[keep]
+        stamps = pd.date_range(start, periods=block.shape[0], freq=_MID_FREQ)[keep]
         parts.append(
-            pd.DataFrame(
-                {"site": site_of[bmu].site, "time": half_hourly.index,
-                 "mw": half_hourly.values}
-            )
+            pd.DataFrame({"site": site_of[bmu].site, "time": stamps, "mw": means})
         )
     if not parts:
         return pd.DataFrame(columns=["site", "time", "mw"])
@@ -319,34 +324,47 @@ def site_physical_profile(
         return site_profile(pn_records, population)
 
     site_of = population.bmu_to_site()
-    layers = [(pn_df, ["timeFrom"]), (boalf_df, ["acceptanceTime", "acceptanceNumber"])]
+    # Group each layer by unit once. Filtering the frames inside the per-unit
+    # loop instead re-scanned every row for every unit, which is quadratic in
+    # the population — the cost the whole fleet page was paying.
+    layers = [
+        (dict(tuple(pn_df.groupby("bmUnit"))), ["timeFrom"]),
+        (
+            dict(tuple(boalf_df.groupby("bmUnit"))),
+            ["acceptanceTime", "acceptanceNumber"],
+        ),
+    ]
+    minute = pd.Timedelta(minutes=1)
+    slots = int(pd.Timedelta(_MID_FREQ) / minute)
     parts = []
     for bmu in sorted(set(pn_df["bmUnit"]) | set(boalf_df["bmUnit"])):
-        spans = [(d[d["bmUnit"] == bmu], order) for d, order in layers]
-        spans = [(d, order) for d, order in spans if not d.empty]
+        spans = [(g[bmu], order) for g, order in layers if bmu in g]
         if not spans:
             continue
         start = min(d["timeFrom"].min() for d, _ in spans).floor(_MID_FREQ)
         stop = max(d["timeTo"].max() for d, _ in spans).ceil(_MID_FREQ)
-        level = pd.Series(float("nan"), index=pd.date_range(start, stop, freq="1min",
-                                                            inclusive="left"))
+        # Integer minute offsets into a float array: same semantics as painting
+        # a DatetimeIndex-labelled Series, without paying for index alignment
+        # on every one of the day's several thousand spans.
+        total = int((stop - start) / minute)
+        level = np.full(total, np.nan)
         for frame, order in spans:                      # PN first, then acceptances
             for row in frame.sort_values(order, na_position="first").itertuples():
-                minutes = pd.date_range(row.timeFrom, row.timeTo, freq="1min",
-                                        inclusive="left")
-                if len(minutes) == 0:
+                lo = max(int((row.timeFrom - start) / minute), 0)
+                hi = min(int((row.timeTo - start) / minute), total)
+                if hi <= lo:
                     continue
-                level.loc[minutes] = [
-                    row.levelFrom
-                    + (row.levelTo - row.levelFrom) * i / max(len(minutes) - 1, 1)
-                    for i in range(len(minutes))
-                ]
-        half_hourly = level.resample(_MID_FREQ).mean().dropna()
-        if half_hourly.empty:
+                level[lo:hi] = np.linspace(row.levelFrom, row.levelTo, hi - lo)
+        block = level.reshape(-1, slots)
+        painted = ~np.isnan(block)
+        counts = painted.sum(axis=1)
+        keep = counts > 0
+        if not keep.any():
             continue
+        means = np.nansum(np.where(painted, block, 0.0), axis=1)[keep] / counts[keep]
+        stamps = pd.date_range(start, periods=block.shape[0], freq=_MID_FREQ)[keep]
         parts.append(
-            pd.DataFrame({"site": site_of[bmu].site, "time": half_hourly.index,
-                          "mw": half_hourly.values})
+            pd.DataFrame({"site": site_of[bmu].site, "time": stamps, "mw": means})
         )
     if not parts:
         return pd.DataFrame(columns=["site", "time", "mw"])
