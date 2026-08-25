@@ -1443,7 +1443,7 @@ def _page_sim_vs_fleet():
         / comp_sites["days"].sum()
     )
 
-    st.markdown("**The headline gap** · *like legs only — wholesale against wholesale*")
+    st.markdown("**The headline gap**")
     cols = st.columns(5)
     cols[0].metric(
         _unit_label("Sim ceiling", "£/MW/day"),
@@ -1499,7 +1499,7 @@ def _page_sim_vs_fleet():
             ],
         }
     )
-    st.markdown("**Behaviour & timing** · *when does reality fall behind?*")
+    st.markdown("**Behaviour & timing**")
     st.plotly_chart(chart_sim_vs_fleet_daily(daily), width="stretch")
 
     shape = _fleet_hourly_shape(common, comp_sites)
@@ -1550,7 +1550,7 @@ def _page_sim_vs_fleet():
 
     # Site level last: the two headline questions are answered above, and this
     # is where you go to ask which operators closed the gap.
-    st.markdown("**Site-level breakdown** · *who closed the gap?*")
+    st.markdown("**Site-level breakdown**")
     st.plotly_chart(
         chart_sim_vs_fleet_sites(comp, sim_gbp, f"sim {duration} ceiling"),
         width="stretch",
