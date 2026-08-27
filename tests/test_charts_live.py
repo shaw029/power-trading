@@ -8,7 +8,8 @@ existing dashboard charts.
 import pandas as pd
 import plotly.graph_objects as go
 
-from dashboard.charts import (
+from dashboard.charts import (  # noqa: F401
+    DEFAULT_CHART_HEIGHT,
     chart_alignment_day,
     chart_capture_spread_daily,
     chart_alignment_scatter,
@@ -228,9 +229,36 @@ def test_chart_daytype_yield_wear_sizes_by_days_and_splits_families():
         "Fundamentals (physics)",
         "Price traits (finance)",
     ]
-    # Every tag is named on the plot, and the bubble carries the day count.
-    assert set(fig.data[0].text) == {"wind-led", "wind-drought"}
+    # Tags are annotations, not marker text, so they can move out of each
+    # other's way. Every tag is still named exactly once.
+    assert {a.text for a in fig.layout.annotations} == set(df["tag"])
     assert list(fig.data[0].marker.size) == [3, 5]
+
+
+def test_chart_daytype_yield_wear_separates_overlapping_labels():
+    """Three regimes within a pound of each other must not stack their labels.
+
+    The far-apart tags matter: they set the y range, which is what makes the
+    tight cluster collide in pixels. This is the case that shipped broken.
+    """
+    df = pd.DataFrame(
+        {
+            "tag": ["wind-led", "weekend", "low-demand", "solar-led", "two-peak"],
+            "family": ["driver", "driver", "driver", "driver", "price"],
+            "gbp_per_mw": [150.2, 120.8, 100.0, 99.6, 99.2],
+            "cycles": [0.877, 0.752, 0.897, 0.906, 0.908],
+            "days": [3, 8, 17, 29, 30],
+        }
+    )
+    fig = chart_daytype_yield_wear(df)
+    # Label height in data units, the same conversion the builder uses.
+    y0, y1 = fig.layout.yaxis.range
+    gap = (y1 - y0) * 15.0 / (DEFAULT_CHART_HEIGHT * 0.70)
+    placed = sorted(a.y - a.ay / (DEFAULT_CHART_HEIGHT * 0.70) * (y1 - y0)
+                    for a in fig.layout.annotations)
+    assert all(b - a >= gap * 0.99 for a, b in zip(placed, placed[1:]))
+    # A label that had to travel gets a leader line back to its bubble.
+    assert any(a.showarrow for a in fig.layout.annotations)
 
 
 def test_chart_daytype_market_reliance_orders_by_intraday_share():

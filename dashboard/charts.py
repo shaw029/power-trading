@@ -948,6 +948,33 @@ def chart_daytype_frequency(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def _spread_labels(
+    points: list[tuple[float, str]], min_gap: float
+) -> list[float]:
+    """Nudge label positions apart so none overlaps its neighbour.
+
+    ``points`` is ``(value, key)`` in draw order; returns the adjusted value for
+    each, keeping the original order. A greedy upward sweep in sorted order is
+    enough here: with fewer than a dozen labels it always terminates, and the
+    total displacement is the smallest that clears ``min_gap``.
+
+    Positions are nudged along one axis only. Labels are wide and short, so
+    vertical crowding is what makes them collide, and the vertical scale is the
+    one a chart knows at build time — the width of a Streamlit column is not
+    known until it renders.
+    """
+    order = sorted(range(len(points)), key=lambda i: points[i][0])
+    out = [0.0] * len(points)
+    previous = None
+    for i in order:
+        value = points[i][0]
+        if previous is not None and value - previous < min_gap:
+            value = previous + min_gap
+        out[i] = value
+        previous = value
+    return out
+
+
 def chart_daytype_yield_wear(df: pd.DataFrame) -> go.Figure:
     """Absolute earnings against physical wear, one bubble per tag.
 
@@ -959,17 +986,19 @@ def chart_daytype_yield_wear(df: pd.DataFrame) -> go.Figure:
     ``df`` columns: ``tag``, ``family``, ``gbp_per_mw`` and ``cycles`` (both
     averaged over the days carrying that tag) and ``days`` (how many, which sets
     the bubble area — a tag seen twice should not read like one seen forty
-    times). Tags are labelled on the plot, so the legend only carries family.
+    times).
+
+    Labels are annotations rather than marker text, because marker text cannot
+    move out of the way of its neighbours. Regimes cluster hard — a bound cycle
+    target puts most tags within a few hundredths of a cycle of each other — so
+    the labels are thrown outward from the middle of the field, then spread
+    vertically until none overlaps, with a leader line back to any bubble whose
+    label had to move far.
     """
     fig = go.Figure()
     # Area, not diameter, carries the day count: doubling the days should look
     # twice as big, which is what sizemode="area" gives.
     sizeref = 2.0 * float(df["days"].max()) / (38.0**2) if len(df) else 1.0
-    # The chart sits in a half-width column, where "top center" on every label
-    # stacks them into each other in whichever corner the tags cluster. Throwing
-    # each label outward, away from the middle of the field, spreads them into
-    # the padded space at the edges instead.
-    midpoint = (float(df["cycles"].max()) + float(df["cycles"].min())) / 2 if len(df) else 0.0
     for family in ("driver", "price"):
         sub = df[df["family"] == family]
         if sub.empty:
@@ -978,14 +1007,8 @@ def chart_daytype_yield_wear(df: pd.DataFrame) -> go.Figure:
             go.Scatter(
                 x=sub["cycles"],
                 y=sub["gbp_per_mw"],
-                mode="markers+text",
+                mode="markers",
                 name=FAMILY_NAMES[family],
-                text=sub["tag"],
-                textposition=[
-                    "middle right" if x > midpoint else "middle left"
-                    for x in sub["cycles"]
-                ],
-                textfont=dict(size=10, color=_INK),
                 marker=dict(
                     color=FAMILY_COLORS[family],
                     size=sub["days"],
@@ -995,29 +1018,60 @@ def chart_daytype_yield_wear(df: pd.DataFrame) -> go.Figure:
                     opacity=0.65,
                     line=dict(width=1, color="white"),
                 ),
-                customdata=sub["days"],
+                customdata=np.stack([sub["tag"], sub["days"]], axis=-1),
                 hovertemplate=(
-                    "%{text}<br>£%{y:,.0f}/MW/day · %{x:.2f} cycles/day"
-                    "<br>%{customdata} day(s)<extra></extra>"
+                    "%{customdata[0]}<br>£%{y:,.0f}/MW/day · %{x:.2f} cycles/day"
+                    "<br>%{customdata[1]} day(s)<extra></extra>"
                 ),
             )
         )
-    apply_theme(
-        fig, height=DEFAULT_CHART_HEIGHT,
-        title="Yield vs wear by regime",
-    )
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Yield vs wear by regime")
     fig.update_layout(hovermode="closest")
-    # Padding on both axes so a label thrown outward, or a bubble at the top of
-    # the range, is not clipped by the plot frame.
     fig.update_xaxes(title_text="Mean cycles per day", automargin=True)
     fig.update_yaxes(title_text="Mean net PnL (£/MW/day)", automargin=True)
-    if len(df):
-        pad_x = (float(df["cycles"].max()) - float(df["cycles"].min())) * 0.22 or 0.05
-        pad_y = (float(df["gbp_per_mw"].max()) - float(df["gbp_per_mw"].min())) * 0.15 or 10.0
-        fig.update_xaxes(range=[df["cycles"].min() - pad_x, df["cycles"].max() + pad_x])
-        fig.update_yaxes(
-            range=[df["gbp_per_mw"].min() - pad_y, df["gbp_per_mw"].max() + pad_y]
+    if not len(df):
+        return fig
+
+    pad_x = (float(df["cycles"].max()) - float(df["cycles"].min())) * 0.22 or 0.05
+    pad_y = (float(df["gbp_per_mw"].max()) - float(df["gbp_per_mw"].min())) * 0.15 or 10.0
+    y_lo, y_hi = df["gbp_per_mw"].min() - pad_y, df["gbp_per_mw"].max() + pad_y
+    fig.update_xaxes(range=[df["cycles"].min() - pad_x, df["cycles"].max() + pad_x])
+    fig.update_yaxes(range=[y_lo, y_hi])
+
+    # One label line is ~15px; the plot area is roughly 70% of the figure once
+    # the title, legend and axis furniture are taken out. That converts a pixel
+    # gap into the data units the spreader works in.
+    plot_px = DEFAULT_CHART_HEIGHT * 0.70
+    min_gap = (y_hi - y_lo) * 15.0 / plot_px
+    midpoint = (float(df["cycles"].max()) + float(df["cycles"].min())) / 2
+
+    # Left and right labels can share a row without touching, so they are
+    # spread independently — otherwise one crowded side pushes the other apart
+    # for no reason.
+    for side, keep in (("right", True), ("left", False)):
+        mine = df[(df["cycles"] > midpoint) == keep]
+        if mine.empty:
+            continue
+        placed = _spread_labels(
+            [(float(y), t) for y, t in zip(mine["gbp_per_mw"], mine["tag"])], min_gap
         )
+        for (_, row), label_y in zip(mine.iterrows(), placed):
+            moved_px = (label_y - row["gbp_per_mw"]) / (y_hi - y_lo) * plot_px
+            fig.add_annotation(
+                x=row["cycles"],
+                y=row["gbp_per_mw"],
+                text=row["tag"],
+                font=dict(size=10, color=_INK),
+                xanchor="left" if side == "right" else "right",
+                ax=14 if side == "right" else -14,
+                ay=-moved_px,
+                # A leader line only where the label had to travel; drawing one
+                # on every label would be clutter for no information.
+                showarrow=bool(abs(moved_px) > 3),
+                arrowhead=0,
+                arrowwidth=1,
+                arrowcolor=COLORS["ghost"],
+            )
     return fig
 
 
