@@ -32,7 +32,15 @@ FULL_PROFILE_MODULES = {
 }
 
 #: Everything the live dashboard loads at import time.
-LITE_SURFACE = ["dashboard/live_app.py", "dashboard/app.py", "dashboard/charts.py"] + [
+LITE_SURFACE = [
+    "dashboard/live_app.py",
+    "dashboard/app.py",
+    "dashboard/charts.py",
+    # Generated from the census by scripts/build_extended_fleet.py, but it is
+    # the dashboard's population and therefore part of its import surface: it
+    # must stay a plain data module.
+    "fleet/extended.py",
+] + [
     str(p.relative_to(REPO_ROOT)) for p in (REPO_ROOT / "live").glob("*.py")
 ]
 
@@ -62,12 +70,38 @@ def test_dashboard_does_not_import_the_full_profile(relative_path):
     )
 
 
-def test_registry_stays_the_dashboard_default():
-    """`fleet.registry` is the lite population; the census must not replace it."""
-    from fleet import registry
+def test_dashboard_population_is_static_and_fully_measurable():
+    """The dashboard runs on the generated extended population, not the census.
 
-    assert len(registry.FLEET) == 23
-    assert len(registry.all_bmu_ids()) == 47
+    Two properties matter and neither is about size. Every site must have an
+    energy capacity, because cycles per day and the duration bucket divide by
+    it and a site without one renders blank cells rather than a smaller number.
+    And the curated registry must remain a subset, so switching population can
+    only ever add sites to a page, never drop one.
+    """
+    import math
+
+    from fleet import registry
+    from fleet.extended import EXTENDED
+
+    assert len(registry.FLEET) == 23, "the curated registry itself is unchanged"
+
+    assert EXTENDED.sites, "generated population must not be empty"
+    for site in EXTENDED.sites:
+        assert site.capacity_mwh and not math.isnan(site.capacity_mwh), site.site
+        assert site.power_mw > 0, site.site
+
+    assert {s.site for s in registry.FLEET} <= {s.site for s in EXTENDED.sites}
+    assert len(EXTENDED.bmu_ids()) == len(set(EXTENDED.bmu_ids())), "duplicate BM Unit"
+    # Its own cache suffix: a day-file holds exactly the units it was fetched
+    # for, so sharing the curated cache would serve a 47-unit day as the fleet.
+    assert EXTENDED.cache_suffix and EXTENDED.cache_suffix != registry_suffix()
+
+
+def registry_suffix() -> str:
+    from fleet.population import REGISTRY
+
+    return REGISTRY.cache_suffix
 
 
 def test_dashboard_window_stays_bounded():

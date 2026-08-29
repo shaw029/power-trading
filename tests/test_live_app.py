@@ -32,7 +32,7 @@ def _context(_date):
     return {"wind_gwh": 120.0, "solar_gwh": 0.0, "demand_gwh": 700.0, "wind_share": 0.42}
 
 
-def _fleet_pn(date):
+def _fleet_pn(date, population=None):
     """One half-hour 50 MW discharge on a real fleet BMU."""
     start = pd.Timestamp(f"{date.isoformat()}T18:00:00Z")
     return [
@@ -100,12 +100,12 @@ def app(monkeypatch):
     monkeypatch.setattr(fetch_live, "get_day_context", _context)
     monkeypatch.setattr(fetch_fleet, "fetch_fleet_pn", _fleet_pn)
     monkeypatch.setattr(
-        fetch_fleet, "fetch_fleet_bm_cashflows", lambda d: {"bid": [], "offer": []}
+        fetch_fleet, "fetch_fleet_bm_cashflows", lambda d, p=None: {"bid": [], "offer": []}
     )
     monkeypatch.setattr(fetch_fleet, "fetch_day_mid_prices", _fleet_mid)
     # Physical delivery needs acceptances; without this the suite silently
     # starts hitting Elexon, which is exactly what this fixture exists to stop.
-    monkeypatch.setattr(fetch_fleet, "fetch_fleet_boalf", lambda d: [])
+    monkeypatch.setattr(fetch_fleet, "fetch_fleet_boalf", lambda d, p=None: [])
     monkeypatch.setattr(fetch_live, "get_day_system", _system)
     monkeypatch.setattr(fetch_live, "get_day_lolpdrm", _lolpdrm)
     monkeypatch.setattr(fetch_live, "get_cmn_notices", _no_cmn)
@@ -136,12 +136,12 @@ def test_prefetch_fleet_days_covers_every_day_and_survives_failures(monkeypatch)
     seen: list[str] = []
     lock = threading.Lock()
 
-    def record(date):
+    def record(date, population=None):
         with lock:
             seen.append(date.isoformat())
         return []
 
-    def boom(date):
+    def boom(date, population=None):
         raise RuntimeError("Elexon unavailable")
 
     monkeypatch.setattr(fetch_fleet, "fetch_fleet_pn", record)
@@ -160,7 +160,7 @@ def test_prefetch_fleet_days_covers_every_day_and_survives_failures(monkeypatch)
 def test_prefetch_fleet_days_is_a_noop_on_an_empty_window(monkeypatch):
     import dashboard.live_app as live_app
 
-    def fail(date):
+    def fail(date, population=None):
         raise AssertionError("must not fetch for an empty window")
 
     monkeypatch.setattr(fetch_fleet, "fetch_fleet_pn", fail)

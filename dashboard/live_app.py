@@ -65,6 +65,7 @@ from dashboard.charts import (  # noqa: E402
     chart_sim_vs_fleet_sites,
 )
 from fleet import fetch_fleet  # noqa: E402
+from fleet.extended import EXTENDED as FLEET_POPULATION  # noqa: E402
 from fleet import performance as fleet_perf  # noqa: E402
 from live import classify as classify_mod  # noqa: E402
 from live import fetch_live  # noqa: E402
@@ -86,23 +87,31 @@ read at a glance and to stay responsive on free hosting, which sets what it can 
 | | **This dashboard** | **Research notebooks** |
 |---|---|---|
 | Purpose | Present and communicate | Detailed research |
-| Battery fleet | 23 curated sites, 2,761 MW | Full census — 90 BM-registered sites, 6,348 MW |
+| Battery fleet | 65 sites, 5,559 MW — 88% of GB BM-registered battery MW | Full census — 89 sites, 6,293 MW |
 | Window | Rolling 60 days | 2023-10-01 onward (~1,050 days) |
 | Revenue streams | Wholesale proxy + Balancing Mechanism | Adds per-unit ancillary (response and reserve) |
 | Data | Fetched live, cached per day | Complete day-file archive, backfilled to 100% |
 
 **Neither tier is a cut-down of the other — they answer different questions.** The
-dashboard shows what the GB market is doing now, for a curated cross-section chosen to
-span optimisers and regions. The notebooks establish what is true of the fleet as a
-whole, which needs a population and a multi-year window no interactive app can carry.
+dashboard shows what the GB market is doing now. The notebooks establish what is true of
+the fleet as a whole, which needs a multi-year window no interactive app can carry.
 
-**What that means when reading these numbers.** The 23 sites here are a sample, and its
-size is measured rather than assumed: they are **45.5% of GB BM-registered battery MW**,
-weighted toward large transmission-connected assets (70% coverage above 200 MW, 14% in
-the 20-50 MW band). Figures on this dashboard describe that segment well and should not
-be read as describing the whole GB fleet. The census behind that number, and the bias
-analysis, are in `notebooks/06_fleet_coverage_census.ipynb`; the split itself is recorded
-in `DATA_ARCHITECTURE.md`.
+**What that means when reading these numbers.** The 65 sites here are **88% of GB
+BM-registered battery MW**, and the residual is concentrated at the small end:
+
+| Site size | MW covered |
+|---|---|
+| 200 MW and above | 100% |
+| 100–200 MW | 100% |
+| 50–100 MW | 97% |
+| 20–50 MW | 50% |
+| Under 20 MW | 11% |
+
+So fleet figures here describe GB grid-scale storage closely, and describe the sub-50 MW
+tail poorly. What is missing is not a random sample: it is small sites, plus every
+battery traded behind an aggregator or supplier unit, which has no per-unit feed at all
+and sits outside even the denominator. The census behind these numbers is in
+`notebooks/06_fleet_coverage_census.ipynb`; the tier split is in `DATA_ARCHITECTURE.md`.
 
 *Coverage figures are a July 2026 snapshot computed in the notebook. This page states
 them rather than recomputing them — keeping the census out of the dashboard's process is
@@ -290,24 +299,26 @@ def _fleet_day(date_iso: str) -> pd.DataFrame:
     """
     date = dt.date.fromisoformat(date_iso)
     try:
-        pn = fetch_fleet.fetch_fleet_pn(date)
+        pn = fetch_fleet.fetch_fleet_pn(date, FLEET_POPULATION)
         mid = fetch_fleet.fetch_day_mid_prices(date)
     except Exception:
         return pd.DataFrame()
     if not pn or mid.empty:
         return pd.DataFrame()
     try:
-        cashflows = fetch_fleet.fetch_fleet_bm_cashflows(date)
+        cashflows = fetch_fleet.fetch_fleet_bm_cashflows(date, FLEET_POPULATION)
     except Exception:
         cashflows = {"bid": [], "offer": []}
     # Acceptances correct the notified position into actual delivery. A day
     # whose acceptances have not published yet falls back to PN alone rather
     # than dropping the day.
     try:
-        boalf = fetch_fleet.fetch_fleet_boalf(date)
+        boalf = fetch_fleet.fetch_fleet_boalf(date, FLEET_POPULATION)
     except Exception:
         boalf = []
-    return fleet_perf.day_site_metrics(date_iso, pn, cashflows, mid, boalf)
+    return fleet_perf.day_site_metrics(
+        date_iso, pn, cashflows, mid, boalf, population=FLEET_POPULATION
+    )
 
 
 def _prefetch_fleet_days(date_isos: list[str], bar) -> None:
@@ -339,14 +350,17 @@ def _prefetch_fleet_days(date_isos: list[str], bar) -> None:
         date = dt.date.fromisoformat(iso)
         for fetch in (
             fetch_fleet.fetch_fleet_pn,
-            fetch_fleet.fetch_day_mid_prices,
             fetch_fleet.fetch_fleet_boalf,
             fetch_fleet.fetch_fleet_bm_cashflows,
         ):
             try:
-                fetch(date)
+                fetch(date, FLEET_POPULATION)
             except Exception:
                 pass
+        try:
+            fetch_fleet.fetch_day_mid_prices(date)   # market-wide, no population
+        except Exception:
+            pass
         return iso
 
     with futures.ThreadPoolExecutor(max_workers=_FLEET_FETCH_WORKERS) as pool:
@@ -1053,15 +1067,33 @@ public Elexon per-unit data.
   below ~0.3 cycles/day are flagged ⚠ in the site table: their revenue likely
   comes from markets this model cannot see, so don't read their £ figures as
   trading performance.
-- **Site selection** — sites qualify by having their own registered BM Units
-  (the per-unit data only exists for those), being grid-scale (~35 MW+), and
-  being operational as of the July 2026 snapshot. The list is a curated
-  cross-section of optimisers and regions, **not** a census — and the gap is
-  measured, not guessed: these 23 sites are **45.5% of GB BM-registered
-  battery MW** across a census of 90 sites, over-weighting large
-  transmission-connected assets. Batteries traded behind aggregator/VLP units
-  have no per-unit feed at all and sit outside even that denominator. See
-  Scope, above.
+- **Which batteries are on this dashboard** — every BM-registered GB battery
+  the census can identify **whose energy capacity is known**: 65 sites, 99 BM
+  Units, 5,559 MW, or 88% of BM-registered battery MW.
+
+  Two filters produce that list, and they do different jobs. *BM registration*
+  is a hard data requirement — the free per-unit feeds this dashboard runs on
+  (Physical Notifications, acceptances, cashflows) exist only for registered
+  BM Units, so a battery traded behind an aggregator or supplier unit is
+  invisible at site level and cannot appear whatever we do. *Known energy
+  capacity* is a presentation choice: cycles per day and the duration bucket
+  both divide by MWh, so a site without a published duration would render
+  blank cells rather than a smaller number. Twenty-four such sites — 734 MW,
+  12% of the fleet — are therefore left out, and they are mostly small.
+
+  The list is built offline by `scripts/build_extended_fleet.py`, which reads
+  the census and writes a static `fleet/extended.py`. The dashboard imports
+  that file and never builds a census itself: doing so would pull whole
+  registers into a process sized for free hosting. It is a generated snapshot,
+  so it goes stale as units commission — regenerate it when the fleet moves.
+
+  Metadata quality is not uniform across the 65, and the difference shows up in
+  one place. For the 23 hand-curated sites, optimiser and region are verified.
+  For the other 42, `power_mw` and `capacity_mwh` are published figures
+  (Elexon's declared capability; a matched Capacity Market agreement), but the
+  *optimiser* falls back to the BM Unit's lead party — the trading party rather
+  than the optimiser proper. Read the **By optimiser** cut on Fleet performance
+  with that caveat; every MW- and MWh-based number is unaffected.
 - **Metadata** — optimiser, region and approximate MWh are a hand-curated
   snapshot and can go stale; cycle counts are indicative.
 """
@@ -1372,10 +1404,10 @@ def _fleet_profile_day(date_iso: str) -> pd.DataFrame:
     """Per-site half-hourly net MW for one day, from the cached PN records."""
     date = dt.date.fromisoformat(date_iso)
     try:
-        pn = fetch_fleet.fetch_fleet_pn(date)
+        pn = fetch_fleet.fetch_fleet_pn(date, FLEET_POPULATION)
     except Exception:
         return pd.DataFrame(columns=["site", "time", "mw"])
-    return fleet_perf.site_profile(pn)
+    return fleet_perf.site_profile(pn, FLEET_POPULATION)
 
 
 def _fleet_hourly_shape(dates: list[str], sites: pd.DataFrame) -> pd.DataFrame | None:
@@ -1613,9 +1645,9 @@ def _page_fleet():
     # a viewer needs in order to read the numbers below correctly, and it is the
     # first thing an informed reader will ask for.
     st.caption(
-        "23 curated sites — a measured **45.5% of GB BM-registered battery MW**, "
-        "weighted toward large transmission-connected assets. A cross-section, not "
-        "a census; see Methodology → Scope."
+        "65 sites — **88% of GB BM-registered battery MW**, and every site above "
+        "100 MW. Thinner below 50 MW; batteries behind aggregator units are absent "
+        "entirely. See Methodology → Scope."
     )
     # Nothing on this page carries from one day to the next, so only the
     # filtered window is fetched — per-BMU streams are the heaviest feed in
