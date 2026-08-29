@@ -1,6 +1,6 @@
-"""Integrity checks on the curated fleet registry."""
+"""Integrity checks on the curated metadata table."""
 
-from fleet.registry import FLEET, all_bmu_ids, bmu_to_site
+from fleet.curated import CURATED_SITES, all_bmu_ids, bmu_to_site
 
 
 def test_bmu_ids_are_unique_across_sites():
@@ -9,7 +9,7 @@ def test_bmu_ids_are_unique_across_sites():
 
 
 def test_every_site_has_positive_ratings_and_at_least_one_bmu():
-    for site in FLEET:
+    for site in CURATED_SITES:
         assert site.bmu_ids, site.site
         assert site.power_mw > 0, site.site
         assert site.capacity_mwh > 0, site.site
@@ -20,6 +20,6 @@ def test_every_site_has_positive_ratings_and_at_least_one_bmu():
 def test_bmu_to_site_covers_every_bmu():
     mapping = bmu_to_site()
     assert set(mapping) == set(all_bmu_ids())
-    for site in FLEET:
+    for site in CURATED_SITES:
         for bmu in site.bmu_ids:
             assert mapping[bmu] is site

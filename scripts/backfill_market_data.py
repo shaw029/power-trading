@@ -35,8 +35,9 @@ with a statement of what the analysis window actually contains rather than an
 assumption that it is now complete.
 
 The per-BMU fleet feeds are fetched for whichever population
-``fleet.fetch_fleet`` is pointed at — today the curated registry, later the
-census — so this script does not need to change when the population does.
+``fleet.fetch_fleet`` is pointed at, so this script does not need to change when
+a tier's population does. The dashboard's own ``REGISTRY`` day-files are fetched
+by the dashboard on demand and are not backfilled here.
 
 CLI::
 
@@ -62,7 +63,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from fleet import fetch_fleet  # noqa: E402
-from fleet.population import REGISTRY, Population, census_population  # noqa: E402
+from fleet.curated import CURATED  # noqa: E402
+from fleet.population import Population, census_population  # noqa: E402
 from src.data import coverage as cov  # noqa: E402
 from src.data.download import (  # noqa: E402
     download_b1770,
@@ -155,7 +157,7 @@ def population_fetchers(population: Population) -> dict[str, Callable[..., Any]]
     ``*_CENSUS`` cache directories, so coverage accounting never confuses one
     population's day-files for the other's.
     """
-    if population is REGISTRY or not population.cache_suffix:
+    if population is CURATED or not population.cache_suffix:
         return dict(DAY_FETCHERS)
 
     bound: dict[str, Callable[..., Any]] = {
@@ -238,8 +240,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--population",
-        choices=("registry", "census"),
-        default="registry",
+        choices=("curated", "census"),
+        default="curated",
         help=(
             "Which battery population to fetch per-BMU feeds for. 'registry' is "
             "the curated 23 sites the dashboard uses; 'census' is every "
@@ -274,7 +276,7 @@ def main() -> None:
     start = dt.date.fromisoformat(args.start)
     end = dt.date.fromisoformat(args.end)
 
-    population = REGISTRY if args.population == "registry" else census_population()
+    population = CURATED if args.population == "curated" else census_population()
     fetchers = population_fetchers(population)
     logger.info(
         "Population '%s': %d sites, %d BM Units", population.name,

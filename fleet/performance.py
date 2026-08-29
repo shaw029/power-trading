@@ -21,7 +21,8 @@ estimate is comparable.
 import numpy as np
 import pandas as pd
 
-from fleet.population import REGISTRY, Population
+from fleet.curated import CURATED
+from fleet.population import Population
 
 # MID is published on a half-hourly grid; PN spans are floored onto it.
 _MID_FREQ = "30min"
@@ -116,7 +117,7 @@ def day_site_metrics(
     cashflows: dict[str, list[dict]],
     mid_prices: pd.DataFrame,
     boalf_records: list[dict] | None = None,
-    population: Population = REGISTRY,
+    population: Population = CURATED,
 ) -> pd.DataFrame:
     """Per-site metrics for one settlement day.
 
@@ -199,7 +200,7 @@ def day_site_metrics(
 
 
 def site_profile(
-    pn_records: list[dict], population: Population = REGISTRY
+    pn_records: list[dict], population: Population = CURATED
 ) -> pd.DataFrame:
     """Net output per fleet site per half-hour, in MW (positive = discharge).
 
@@ -270,7 +271,7 @@ def _paint_profile(
 
 
 def _span_frame(
-    records: list[dict], order_cols: list[str], population: Population = REGISTRY
+    records: list[dict], order_cols: list[str], population: Population = CURATED
 ) -> pd.DataFrame:
     """Common preparation for the irregular-span feeds (MELS, MILS, BOALF)."""
     site_of = population.bmu_to_site()
@@ -294,7 +295,7 @@ def _span_frame(
 def site_physical_profile(
     pn_records: list[dict],
     boalf_records: list[dict],
-    population: Population = REGISTRY,
+    population: Population = CURATED,
 ) -> pd.DataFrame:
     """Physical delivery per site per half-hour: PN overwritten by acceptances.
 
@@ -374,7 +375,7 @@ def site_physical_profile(
 
 
 def site_limit_profile(
-    records: list[dict], population: Population = REGISTRY
+    records: list[dict], population: Population = CURATED
 ) -> pd.DataFrame:
     """Effective declared limit per fleet site per half-hour, in MW.
 

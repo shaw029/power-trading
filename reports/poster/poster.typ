@@ -3,6 +3,20 @@
 // Figures are referenced as SVG, not PDF: Typst embeds PNG, JPEG, GIF and SVG,
 // and has no PDF image support. The SVG and PDF exports carry the same vectors,
 // so nothing is lost — see src/utils/poster.py.
+//
+// **Every number below is read from the notebooks, not typed here.** Each
+// notebook writes its poster-facing figures to <name>_metrics.json beside its
+// figures, and this file substitutes them. That is deliberate: a number typed
+// onto a poster is a second copy of a result, and the two drift silently the
+// moment a window moves or a register refreshes — which is exactly what
+// happened before this was wired up. Re-run the notebooks, rebuild, and the
+// board cannot disagree with the analysis.
+//
+// So: do not type a figure into this file. If the poster needs a number the
+// notebooks do not publish, add it to that notebook's export cell first.
+#let n4 = json("../figures/poster/nb04_metrics.json")
+#let n5 = json("../figures/poster/nb05_metrics.json")
+#let n6 = json("../figures/poster/nb06_metrics.json")
 
 #let ink        = rgb("#0b0b0b")
 #let da-blue    = rgb("#2a78d6")
@@ -63,8 +77,8 @@
   #line(length: 100%, stroke: 3pt + rule-grey)
   #v(2mm)
   #text(size: 19pt, fill: ink.lighten(25%))[
-    An 87-site census of GB grid-scale batteries · 2018–2026 · built entirely
-    from public Elexon and NESO data
+    A #n6.census_sites census of GB grid-scale batteries · 2018–2026 · built
+    entirely from public Elexon and NESO data · all data as of #n6.snapshot
   ]
 ]
 
@@ -99,16 +113,16 @@
 
 Measuring the gap at fleet level needs a fleet, and no public census of GB
 batteries exists — Elexon labels no BM Unit a battery. So we built one:
-#metric[87 sites], #metric[124 BM Units], #metric[6,234 MW], found by declared
+#metric[#n6.census_sites], #metric[#n6.census_bmus], #metric[#n6.census_mw], found by declared
 import matching declared export and corroborated against four public registers.
 Sections 2–4 all measure this population.
 
-Energy capacity is barely published: #metric[24 sites] read by hand off operator
-pages, #metric[18] from Capacity Market filings, #metric[22] with none.
+Energy capacity is barely published: #metric[#n6.mwh_hand] read by hand off operator
+pages, #metric[#n6.mwh_cm] from Capacity Market filings, #metric[#n6.mwh_none] with none.
 
 #panel("nb06_fig1_census_composition.svg", ratio: 73%)[
-  Fig 1 — What the census contains. Seven sites hold a third of the fleet's MW,
-  while the distribution-connected half of the fleet holds under a third of it.
+  Fig 1 — What the census contains. #n6.top_band_sites sites hold #n6.top_band_share of the
+  fleet's MW, while its #n6.dist_sites distribution-connected sites hold #n6.dist_share of it.
 ]
 
 #v(4mm)
@@ -162,31 +176,31 @@ running in France. This study is a measurement of what that choice has to fix.
 
 #section("2 · Why the Gap Exists, and What It Costs", cost-red)
 
-A profit-optimised #metric[50 MW / 2 h] battery delivers #metric[22%]
-#text(size: 17pt)[(13–32%)] less stress-period energy than the same battery run
-on a system-value objective — #metric[595 of 2,662 MWh]. That
+A profit-optimised #metric[#n4.asset] battery delivers #metric[#n4.forgone_pct]
+#text(size: 17pt)[#n4.forgone_ci] less stress-period energy than the same battery run
+on a system-value objective — #metric[#n4.forgone_mwh]. That
 counterfactual is our own objective, not a NESO instruction.
 
-It is not mistimed: discharge peaks at #metric[19:00], exactly when stress does.
-It simply empties, hitting its #metric[10%] floor by 21:00 while the system is
-still tight #metric[59%] of the time — because nothing pays it not to. GB prices scarcity as
+It is not mistimed: discharge peaks at #metric[#n4.peak_hour], exactly when stress does.
+It simply empties, hitting its #metric[#n4.soc_floor] floor by #n4.floor_hour while the system is
+still tight #metric[#n4.tight_at_floor] of the time — because nothing pays it not to. GB prices scarcity as
 #metric[VoLL × LoLP] in the *imbalance* price: across this window that is
 #metric[£0.00/MWh] on average, exactly zero in #metric[99.5%] of periods, and it
 never reaches the day-ahead objective the battery actually maximises.
 
 The gap runs both ways. A battery serves the system by absorbing surplus as well
-as discharging into scarcity, and the profit schedule captures #metric[39%] of
-surplus against #metric[41%] of stress. It does track the system — dispatch
-correlates #metric[+0.41] with residual load — it stops short in both
+as discharging into scarcity, and the profit schedule captures #metric[#n4.surplus_pct] of
+surplus against #metric[#n4.stress_pct] of stress. It does track the system — dispatch
+correlates #metric[#n4.dispatch_corr] with residual load — it stops short in both
 directions.
 
 Sweeping a blended objective prices it. The 2 h profit schedule already delivers
-#metric[79%] of everything *that* battery can deliver, and the rest costs under
+#metric[#n4.free_share] of everything *that* battery can deliver, and the rest costs under
 #metric[4% of benchmark revenue] — about #metric[£4/MW/day]
 #text(size: 17pt)[(£3–7 across cost models)], under the production model
 (degradation £5/MWh, slippage £2/MWh, 1.5 cycles/day). The ceiling is energy,
-not incentives: a #metric[6 h] battery reaches #metric[88%] free where a
-#metric[2 h] one caps at #metric[43%] at any price.
+not incentives: a #metric[6 h] battery reaches #metric[#n4.dur6_free] free where a
+#metric[2 h] one caps at #metric[#n4.dur2_best] at any price.
 
 #panel("nb04_fig2_diurnal_mismatch.svg", ratio: 62%)[
   Fig 2 — The mean day across all 34 days containing a stress hour. Discharge
@@ -205,20 +219,20 @@ not incentives: a #metric[6 h] battery reaches #metric[88%] free where a
 
 #section("3 · Real Fleet Performance Under Stress", discharge)
 
-Measured against operator-grade scarcity (De-Rated Margin #metric[< 1 GW]), the
-GB fleet discharges in #metric[95%] of periods, delivering
-#metric[+0.051 MW per MW online] against a #metric[+0.003] baseline. That mean
-hides a tail: #metric[11%] of site-periods run above half of nameplate.
+Measured against operator-grade scarcity (De-Rated Margin #metric[#n5.drm_threshold]), the
+GB fleet discharges in #metric[#n5.discharge_share] of periods, delivering
+#metric[#n5.response] against a #metric[#n5.baseline] baseline. That mean
+hides a tail: #metric[#n5.tail_half] of site-periods run above half of nameplate.
 
 The fleet arrives ready and does not empty. Charge rises into the event, and
-across #metric[418] events only #metric[9–10%] of event time is spent below the
+across #metric[#n5.events] events only #metric[#n5.duration_gap] of event time is spent below the
 fleet's own low-water mark.
 
-Its shortfall is dispatch, not duration: #metric[40–51%] of usable energy is
-still held at the deepest point of the average event, four to five times the
+Its shortfall is dispatch, not duration: #metric[#n5.dispatch_gap] of usable energy is
+still held at the deepest point of the average event, #n5.dispatch_multiple the
 duration gap. Declared duration does not predict response either
-(#metric[r = +0.05] across 53 sites). Ranges span both state-of-charge
-inference schemes.
+(#metric[#n5.dur_corr] across #n5.dur_sites sites). Figures are on the primary
+state-of-charge inference.
 
 #panel("nb05_fig_gap_decomposition.svg", ratio: 72%)[
   Fig 4 — Readiness into the event, and which of the three gaps binds, on the
@@ -231,15 +245,15 @@ inference schemes.
 
 If scarcity carries no rent, then earning more should *not* buy better scarcity
 coverage — and it does not. Across revenue quartiles median earnings
-rise from #metric[£18] to #metric[£224/MW/day] while median stress coverage
-stays flat at #metric[0.22–0.25]. The −0.24 correlation is a line through noise.
+rise from #metric[#n4.q_low] to #metric[#n4.q_high] while median stress coverage
+stays flat at #metric[#n4.coverage_range]. The #n4.coverage_corr correlation is a line through noise.
 
-Ancillary services do lift earnings — #metric[£7.23m] in 60 days — but only
-#metric[27%] of the pound reaches a named site. Participation is a plausible
+Ancillary services do lift earnings — #metric[#n4.anc_site] in #n4.window_days — but only
+#metric[#n4.anc_site_share] of the pound reaches a named site. Participation is a plausible
 contributor to the fleet's response, not an identified cause.
 
 #panel("nb04_fig5_revenue_stack.svg", ratio: 65%)[
-  Fig 5 — The third stream lifts median earnings from £122 to £150 per MW per
+  Fig 5 — The third stream lifts median earnings from #n4.median_base to #n4.median_full per MW per
   day, but most of the pound is collected by portfolios naming a trading unit.
 ]
 
@@ -257,7 +271,7 @@ contributor to the fleet's response, not an identified cause.
     *Scarcity value never reaches the price batteries schedule against.* It is
     paid in cash-out, at #metric[£0.00/MWh] across this window, and only inside
     a declared stress event — #metric[13] of those in eight years. So the fleet
-    holds #metric[40–51%] of its energy at an event's deepest point: nothing
+    holds #metric[#n5.dispatch_gap] of its energy at an event's deepest point: nothing
     pays it to spend that energy. Duration bounds what any signal could buy — a
     2 h battery caps at 43% — but the binding problem here is the signal.
   ]
@@ -283,7 +297,7 @@ contributor to the fleet's response, not an identified cause.
   NESO capacity, connection and auction registers; PV_Live. No subscription data.
 - *The census is built, not downloaded.* Elexon labels no unit a battery.
 - *Sites are found by symmetry* — declared import ≈ declared export. The rule
-  recovers all 47 BM Units of the 23-site registry without being shown them.
+  admits #n6.curated_recovered of the #n6.curated_bmus hand-researched BM Units unaided.
 ]
 
 #colbreak()
@@ -316,7 +330,7 @@ contributor to the fleet's response, not an identified cause.
 - *Four definitions, one severe winter.* On winter 2019–20 (margin to
   #metric[213 MW], LoLP #metric[0.371]) the gap lands in #metric[20–24%] across
   definitions spanning #metric[364] periods down to #metric[21] — and the
-  summer's #metric[22%] sits inside it.
+  summer's #metric[#n4.forgone_pct] sits inside it.
 - *Why a winter?* Operator scarcity does not occur in a GB summer — margin never
   falls below #metric[5.1 GW]. 2019–20 is also the last priceable one: no GB
   day-ahead price is published after the single market ended.

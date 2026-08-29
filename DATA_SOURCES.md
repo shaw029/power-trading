@@ -155,13 +155,14 @@ National Grid BM Unit name (`KILSB-5`, `CLAYB-1`), which is what `fleet.census` 
 ## Populations: which batteries a fetch is for
 
 Every per-BMU fetch takes a `fleet.population.Population`, defaulting to the curated
-registry so the live dashboard is unaffected:
+metadata table. The live dashboard passes `fleet.registry.REGISTRY` explicitly and fetches
+its own day-files on demand, so a backfill is a research-tier concern:
 
 ```bash
-# Curated 23 sites / 47 BM Units — what the dashboard reads (the default)
+# The curated list in fleet/registry.py — the default, and the metadata baseline
 python scripts/backfill_market_data.py --start 2023-10-01
 
-# Full BM-registered census, 87 sites / 124 BM Units — what the notebooks read
+# Full BM-registered census — every battery the rule identifies; what the notebooks read
 python scripts/backfill_market_data.py --population census --start 2023-10-01
 python scripts/build_stress_store.py --population census --start 2023-10-01
 ```

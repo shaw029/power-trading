@@ -22,7 +22,8 @@ from typing import Any, cast
 import pandas as pd
 import requests
 
-from fleet.population import REGISTRY, Population
+from fleet.curated import CURATED
+from fleet.population import Population
 from src.data.download import fetch_market_index_price
 from src.data.preprocess import process_market_index_price
 from src.utils.config import ELEXON_BASE_URL, RAW_DATA_DIR
@@ -82,7 +83,7 @@ def _get_json(url: str, params: list[tuple[str, str]] | None = None):
 
 
 def _fetch_day_stream(
-    dataset: str, subdir: str, date: dt.date, population: Population = REGISTRY
+    dataset: str, subdir: str, date: dt.date, population: Population = CURATED
 ) -> list[dict]:
     """One settlement day of a per-BMU Elexon ``/datasets/<X>/stream`` feed.
 
@@ -111,7 +112,7 @@ def _fetch_day_stream(
     return records
 
 
-def fetch_fleet_pn(date: dt.date, population: Population = REGISTRY) -> list[dict]:
+def fetch_fleet_pn(date: dt.date, population: Population = CURATED) -> list[dict]:
     """Physical Notification records for every fleet BMU on one settlement day.
 
     Returns the raw Elexon ``PN`` stream records (one per BMU per settlement
@@ -121,7 +122,7 @@ def fetch_fleet_pn(date: dt.date, population: Population = REGISTRY) -> list[dic
     return _fetch_day_stream("PN", _PN_DIR, date, population)
 
 
-def fetch_fleet_mels(date: dt.date, population: Population = REGISTRY) -> list[dict]:
+def fetch_fleet_mels(date: dt.date, population: Population = CURATED) -> list[dict]:
     """Maximum Export Limit records for every fleet BMU on one settlement day.
 
     Raw Elexon ``MELS`` stream records: declared export capability in MW
@@ -134,7 +135,7 @@ def fetch_fleet_mels(date: dt.date, population: Population = REGISTRY) -> list[d
     return _fetch_day_stream("MELS", _MELS_DIR, date, population)
 
 
-def fetch_fleet_mils(date: dt.date, population: Population = REGISTRY) -> list[dict]:
+def fetch_fleet_mils(date: dt.date, population: Population = CURATED) -> list[dict]:
     """Maximum Import Limit records for every fleet BMU on one settlement day.
 
     Raw Elexon ``MILS`` stream records: declared import capability in MW
@@ -145,7 +146,7 @@ def fetch_fleet_mils(date: dt.date, population: Population = REGISTRY) -> list[d
 
 
 def fetch_fleet_bm_cashflows(
-    date: dt.date, population: Population = REGISTRY
+    date: dt.date, population: Population = CURATED
 ) -> dict[str, list[dict]]:
     """Indicative BM cashflow records (£) for every fleet BMU on one day.
 
@@ -186,7 +187,7 @@ def fetch_day_mid_prices(date: dt.date) -> pd.DataFrame:
     )
 
 
-def fetch_fleet_boalf(date: dt.date, population: Population = REGISTRY) -> list[dict]:
+def fetch_fleet_boalf(date: dt.date, population: Population = CURATED) -> list[dict]:
     """Accepted bid-offer levels for every fleet BMU on one settlement day.
 
     A Balancing Mechanism acceptance instructs a unit away from its Physical

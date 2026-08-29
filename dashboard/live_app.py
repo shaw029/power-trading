@@ -65,7 +65,7 @@ from dashboard.charts import (  # noqa: E402
     chart_sim_vs_fleet_sites,
 )
 from fleet import fetch_fleet  # noqa: E402
-from fleet.extended import EXTENDED as FLEET_POPULATION  # noqa: E402
+from fleet.registry import REGISTRY as FLEET_POPULATION  # noqa: E402
 from fleet import performance as fleet_perf  # noqa: E402
 from live import classify as classify_mod  # noqa: E402
 from live import fetch_live  # noqa: E402
@@ -87,7 +87,7 @@ read at a glance and to stay responsive on free hosting, which sets what it can 
 | | **This dashboard** | **Research notebooks** |
 |---|---|---|
 | Purpose | Present and communicate | Detailed research |
-| Battery fleet | 65 sites, 5,559 MW — 88% of GB BM-registered battery MW | Full census — 89 sites, 6,293 MW |
+| Battery fleet | 65 sites, 5,559 MW — 89% of GB BM-registered battery MW | Full census — 87 sites, 6,234 MW |
 | Window | Rolling 60 days | 2023-10-01 onward (~1,050 days) |
 | Revenue streams | Wholesale proxy + Balancing Mechanism | Adds per-unit ancillary (response and reserve) |
 | Data | Fetched live, cached per day | Complete day-file archive, backfilled to 100% |
@@ -96,7 +96,7 @@ read at a glance and to stay responsive on free hosting, which sets what it can 
 dashboard shows what the GB market is doing now. The notebooks establish what is true of
 the fleet as a whole, which needs a multi-year window no interactive app can carry.
 
-**What that means when reading these numbers.** The 65 sites here are **88% of GB
+**What that means when reading these numbers.** The 65 sites here are **89% of GB
 BM-registered battery MW**, and the residual is concentrated at the small end:
 
 | Site size | MW covered |
@@ -104,8 +104,8 @@ BM-registered battery MW**, and the residual is concentrated at the small end:
 | 200 MW and above | 100% |
 | 100–200 MW | 100% |
 | 50–100 MW | 97% |
-| 20–50 MW | 50% |
-| Under 20 MW | 11% |
+| 20–50 MW | 51% |
+| Under 20 MW | 15% |
 
 So fleet figures here describe GB grid-scale storage closely, and describe the sub-50 MW
 tail poorly. What is missing is not a random sample: it is small sites, plus every
@@ -1069,7 +1069,7 @@ public Elexon per-unit data.
   trading performance.
 - **Which batteries are on this dashboard** — every BM-registered GB battery
   the census can identify **whose energy capacity is known**: 65 sites, 99 BM
-  Units, 5,559 MW, or 88% of BM-registered battery MW.
+  Units, 5,559 MW, or 89% of BM-registered battery MW.
 
   Two filters produce that list, and they do different jobs. *BM registration*
   is a hard data requirement — the free per-unit feeds this dashboard runs on
@@ -1078,17 +1078,19 @@ public Elexon per-unit data.
   invisible at site level and cannot appear whatever we do. *Known energy
   capacity* is a presentation choice: cycles per day and the duration bucket
   both divide by MWh, so a site without a published duration would render
-  blank cells rather than a smaller number. Twenty-four such sites — 734 MW,
-  12% of the fleet — are therefore left out, and they are mostly small.
+  blank cells rather than a smaller number. Twenty-two such sites — 675 MW,
+  11% of the fleet — are therefore left out, and they are mostly small.
 
-  The list is built offline by `scripts/build_extended_fleet.py`, which reads
-  the census and writes a static `fleet/extended.py`. The dashboard imports
+  The list is built offline by `scripts/build_registry.py`, which reads
+  the census and writes a static `fleet/registry.py`. The dashboard imports
   that file and never builds a census itself: doing so would pull whole
   registers into a process sized for free hosting. It is a generated snapshot,
   so it goes stale as units commission — regenerate it when the fleet moves.
 
   Metadata quality is not uniform across the 65, and the difference shows up in
-  one place. For the 23 hand-curated sites, optimiser and region are verified.
+  one place. For the 23 sites `fleet/curated.py` covers, optimiser and region
+  are hand-researched — cross-checked against operator disclosure rather than
+  derived, though hand-researched is not the same as authoritative.
   For the other 42, `power_mw` and `capacity_mwh` are published figures
   (Elexon's declared capability; a matched Capacity Market agreement), but the
   *optimiser* falls back to the BM Unit's lead party — the trading party rather
@@ -1645,7 +1647,7 @@ def _page_fleet():
     # a viewer needs in order to read the numbers below correctly, and it is the
     # first thing an informed reader will ask for.
     st.caption(
-        "65 sites — **88% of GB BM-registered battery MW**, and every site above "
+        "65 sites — **89% of GB BM-registered battery MW**, and every site above "
         "100 MW. Thinner below 50 MW; batteries behind aggregator units are absent "
         "entirely. See Methodology → Scope."
     )

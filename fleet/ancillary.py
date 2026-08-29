@@ -203,7 +203,14 @@ def _sql_paged(sql_without_limit: str) -> list[dict]:
 
 def _cached_json(name: str, builder, refresh: bool = False):
     """Fetch ``name`` at most once per day, alongside the ancillary parquet."""
-    path = os.path.join(_CACHE_DIR, f"{name}_{dt.date.today().isoformat()}.json")
+    # Frozen with the census it is joined to — see `census.SNAPSHOT`.
+    # Auction results are published continuously, so an unpinned read would put
+    # a different vintage of revenue against a fixed population.
+    stamp = census.snapshot_date(
+        os.path.join(_CACHE_DIR, f"{name}_{census.SNAPSHOT}.json")
+        if census.SNAPSHOT else None
+    )
+    path = os.path.join(_CACHE_DIR, f"{name}_{stamp.isoformat()}.json")
     if not refresh and os.path.exists(path):
         with open(path, "r", encoding="utf-8") as fp:
             return json.load(fp)
@@ -343,7 +350,11 @@ def fetch_all(refresh: bool = False) -> pd.DataFrame:
     columnar format, so the cache stays a few tens of megabytes rather than the
     hundreds a raw JSON copy would take.
     """
-    path = _cache_path("battery_ancillary", dt.date.today())
+    # Frozen with the census it is joined to — see `census.SNAPSHOT`.
+    path = _cache_path("battery_ancillary", census.snapshot_date(
+        _cache_path("battery_ancillary", census.SNAPSHOT)
+        if census.SNAPSHOT else None
+    ))
     if not refresh and os.path.exists(path):
         return pd.read_parquet(path)
 

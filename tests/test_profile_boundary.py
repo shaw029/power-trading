@@ -36,10 +36,10 @@ LITE_SURFACE = [
     "dashboard/live_app.py",
     "dashboard/app.py",
     "dashboard/charts.py",
-    # Generated from the census by scripts/build_extended_fleet.py, but it is
+    # Generated from the census by scripts/build_registry.py, but it is
     # the dashboard's population and therefore part of its import surface: it
     # must stay a plain data module.
-    "fleet/extended.py",
+    "fleet/registry.py",
 ] + [
     str(p.relative_to(REPO_ROOT)) for p in (REPO_ROOT / "live").glob("*.py")
 ]
@@ -71,7 +71,7 @@ def test_dashboard_does_not_import_the_full_profile(relative_path):
 
 
 def test_dashboard_population_is_static_and_fully_measurable():
-    """The dashboard runs on the generated extended population, not the census.
+    """The dashboard runs on the generated registry, not the census.
 
     Two properties matter and neither is about size. Every site must have an
     energy capacity, because cycles per day and the duration bucket divide by
@@ -81,27 +81,27 @@ def test_dashboard_population_is_static_and_fully_measurable():
     """
     import math
 
-    from fleet import registry
-    from fleet.extended import EXTENDED
+    from fleet import curated
+    from fleet.registry import REGISTRY
 
-    assert len(registry.FLEET) == 23, "the curated registry itself is unchanged"
+    assert len(curated.CURATED_SITES) == 23, "the curated registry itself is unchanged"
 
-    assert EXTENDED.sites, "generated population must not be empty"
-    for site in EXTENDED.sites:
+    assert REGISTRY.sites, "generated population must not be empty"
+    for site in REGISTRY.sites:
         assert site.capacity_mwh and not math.isnan(site.capacity_mwh), site.site
         assert site.power_mw > 0, site.site
 
-    assert {s.site for s in registry.FLEET} <= {s.site for s in EXTENDED.sites}
-    assert len(EXTENDED.bmu_ids()) == len(set(EXTENDED.bmu_ids())), "duplicate BM Unit"
+    assert {s.site for s in curated.CURATED_SITES} <= {s.site for s in REGISTRY.sites}
+    assert len(REGISTRY.bmu_ids()) == len(set(REGISTRY.bmu_ids())), "duplicate BM Unit"
     # Its own cache suffix: a day-file holds exactly the units it was fetched
     # for, so sharing the curated cache would serve a 47-unit day as the fleet.
-    assert EXTENDED.cache_suffix and EXTENDED.cache_suffix != registry_suffix()
+    assert REGISTRY.cache_suffix and REGISTRY.cache_suffix != curated_suffix()
 
 
-def registry_suffix() -> str:
-    from fleet.population import REGISTRY
+def curated_suffix() -> str:
+    from fleet.curated import CURATED
 
-    return REGISTRY.cache_suffix
+    return CURATED.cache_suffix
 
 
 def test_dashboard_window_stays_bounded():

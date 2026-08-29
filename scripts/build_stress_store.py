@@ -43,7 +43,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from fleet import fetch_fleet  # noqa: E402
-from fleet.population import REGISTRY, Population, census_population  # noqa: E402
+from fleet.curated import CURATED  # noqa: E402
+from fleet.population import Population, census_population  # noqa: E402
 from fleet import performance as fleet_perf  # noqa: E402
 from live import fetch_live, resilience  # noqa: E402
 from src.data.download import (  # noqa: E402
@@ -125,7 +126,7 @@ def _require(profile: pd.DataFrame, what: str) -> pd.DataFrame:
     return profile
 
 
-def _day_pn(date: dt.date, population: Population = REGISTRY) -> pd.DataFrame:
+def _day_pn(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
     return _require(
         fleet_perf.site_profile(
             fetch_fleet.fetch_fleet_pn(date, population), population
@@ -134,7 +135,7 @@ def _day_pn(date: dt.date, population: Population = REGISTRY) -> pd.DataFrame:
     )
 
 
-def _day_mels(date: dt.date, population: Population = REGISTRY) -> pd.DataFrame:
+def _day_mels(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
     return _require(
         fleet_perf.site_limit_profile(
             fetch_fleet.fetch_fleet_mels(date, population), population
@@ -143,7 +144,7 @@ def _day_mels(date: dt.date, population: Population = REGISTRY) -> pd.DataFrame:
     )
 
 
-def _day_mils(date: dt.date, population: Population = REGISTRY) -> pd.DataFrame:
+def _day_mils(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
     return _require(
         fleet_perf.site_limit_profile(
             fetch_fleet.fetch_fleet_mils(date, population), population
@@ -236,7 +237,7 @@ def build_store(
     force: bool = False,
     progress_every: int = 25,
     log: Callable[[str], None] = print,
-    population: Population = REGISTRY,
+    population: Population = CURATED,
 ) -> dict:
     """Fetch every feed over ``days`` and write the tidy store.
 
@@ -340,8 +341,8 @@ def main() -> None:
     parser.add_argument("--force", action="store_true")
     parser.add_argument(
         "--population",
-        choices=("registry", "census"),
-        default="registry",
+        choices=("curated", "census"),
+        default="curated",
         help=(
             "Which battery population to build the store from. 'registry' is the "
             "curated 23 sites; 'census' is every BM-registered battery. Each "
@@ -351,7 +352,7 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-    population = REGISTRY if args.population == "registry" else census_population()
+    population = CURATED if args.population == "curated" else census_population()
     store = Path(args.store) if args.store else store_for(population)
     days = window_days(
         dt.date.fromisoformat(args.start), dt.date.fromisoformat(args.end)

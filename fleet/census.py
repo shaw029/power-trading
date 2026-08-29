@@ -1,6 +1,6 @@
 """Master asset registry: every BM-registered GB grid-scale battery.
 
-:mod:`fleet.registry` is a curated cross-section — 23 sites chosen to span
+:mod:`fleet.curated` is a hand-researched metadata table — sites chosen to span
 optimisers and regions, and honest about being a sample. That is the right
 input for the live dashboard, which needs a stable, hand-verified list it can
 render fast. It is the wrong input for a claim about the GB fleet: "the
@@ -57,8 +57,11 @@ Registers are not day-partitioned, so each is cached once per *fetch* date
 under ``RAW_DATA_DIR/REGISTERS/`` — at most one network round per source per
 day, mirroring how the Capacity Market Notice register is already cached.
 
-Nothing here is imported by the live dashboard, and :mod:`fleet.registry` is
-untouched: the dashboard keeps rendering the curated 23 exactly as before.
+Nothing here is imported by the live dashboard — the census pulls whole
+registers and is barred from that process by ``tests/test_profile_boundary.py``.
+The dashboard renders :mod:`fleet.registry`, a static module *generated* from
+this census by ``scripts/build_registry.py``, so it gets the population
+without ever building it.
 """
 
 from __future__ import annotations
@@ -73,7 +76,7 @@ from typing import Any, cast
 import pandas as pd
 import requests
 
-from fleet.registry import FLEET, bmu_to_site
+from fleet.curated import CURATED_SITES, bmu_to_site
 from src.utils.config import ELEXON_BASE_URL, RAW_DATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -105,6 +108,26 @@ SYMMETRY_BAND = (0.75, 1.35)
 #: as one asset rather than two.
 ASSET_ID_ALIASES: dict[str, str] = {}
 
+#: Optional freeze for the live feeds this module and :mod:`fleet.ancillary`
+#: read. ``None`` — the default — means "use today", which is the live behaviour
+#: every library caller and the dashboard rely on. **Nothing in the repo pins
+#: this.**
+#:
+#: The research notebooks set it, each in its own setup cell, because a
+#: reproducible result needs a fixed vintage: the five registers and NESO's
+#: auction results are all live, so two runs on different days return a
+#: different population and different revenue, and every figure quoting either
+#: disagrees with the next run. Notebooks 04, 05 and 06 each set a date, and
+#: state it there rather than here — a vintage copied into library code is one
+#: more place to forget to update.
+#:
+#: To move a notebook's analysis forward, change the date in that notebook's
+#: setup cell and re-run it. If its figures are quoted in ``README.md``,
+#: ``DATA_ARCHITECTURE.md`` or ``reports/poster/poster.typ``, update those too —
+#: and regenerate ``fleet/registry.py`` if the population changed, since the
+#: dashboard's list is derived from this census.
+SNAPSHOT: dt.date | None = None
+
 _BATTERY_NAME_RE = re.compile(r"\b(?:BESS|BATTER\w*|ENERGY STORAGE|STORAGE)\b", re.I)
 _BMU_BATTERY_ID_RE = re.compile(r"B-?\d+$")
 _DURATION_RE = re.compile(r"Duration\s*([\d.]+)\s*h", re.I)
@@ -126,9 +149,35 @@ def _cache_path(name: str, date: dt.date) -> str:
     return os.path.join(RAW_DATA_DIR, _CACHE_DIR, f"{name}_{date.isoformat()}.json")
 
 
+def snapshot_date(probe: str | None = None) -> dt.date:
+    """The date a cached feed is read at, and whether a pin is being honoured.
+
+    Returns :data:`SNAPSHOT` when a caller has set one and it is on disk, and
+    today otherwise. ``probe`` is the cache file the caller needs; each feed
+    passes its own, because the pin is only meaningful per feed.
+
+    The fallback is deliberate and noisy: a pinned date whose file is missing
+    must not cause today's data to be written under the pinned name, because
+    that would label live data as the snapshot and make the pin worse than
+    useless. ``data/`` is gitignored, so a fresh clone hits this path.
+    """
+    if SNAPSHOT is None:
+        return dt.date.today()
+    probe = _cache_path("BMU_REFERENCE", SNAPSHOT) if probe is None else probe
+    if os.path.exists(probe):
+        return SNAPSHOT
+    logger.warning(
+        "SNAPSHOT is pinned to %s but %s does not exist; fetching live instead. "
+        "Results will differ from the figures this notebook's outputs, and any "
+        "document quoting them, were computed on.",
+        SNAPSHOT.isoformat(), os.path.basename(probe),
+    )
+    return dt.date.today()
+
+
 def _cached(name: str, builder, refresh: bool = False) -> Any:
-    """Fetch ``name`` at most once per day, reusing today's cache otherwise."""
-    path = _cache_path(name, dt.date.today())
+    """Fetch ``name`` once per snapshot date, reusing that cache otherwise."""
+    path = _cache_path(name, snapshot_date())
     if not refresh and os.path.exists(path):
         with open(path, "r", encoding="utf-8") as fp:
             return json.load(fp)
@@ -436,7 +485,12 @@ def battery_bmus(refresh: bool = False) -> pd.DataFrame:
         & ref["is_bidirectional"]
         & ref["is_symmetric"]
     )
-    ref["is_battery"] = ref["sig_registry"] | signature
+    # The identifying rule and nothing else. The curated list used to be OR'd in
+    # here, which made the population partly an assertion rather than a
+    # measurement. It was also doing nothing: the signature recovers every unit
+    # on that list unaided, so removing it leaves the census byte-identical.
+    # `tests/test_census.py` holds that to be true.
+    ref["is_battery"] = signature
 
     corroborated = ref[["sig_name", "sig_cm", "sig_connection", "sig_eac"]].any(axis=1)
     ref["corroborations"] = ref[["sig_name", "sig_cm", "sig_connection", "sig_eac"]].sum(axis=1)
@@ -525,8 +579,8 @@ def census_sites(
 def registry_totals() -> dict[str, float]:
     """Headline totals for the curated registry — the coverage numerator."""
     return {
-        "sites": float(len(FLEET)),
-        "bmus": float(sum(len(s.bmu_ids) for s in FLEET)),
-        "power_mw": float(sum(s.power_mw for s in FLEET)),
-        "capacity_mwh": float(sum(s.capacity_mwh for s in FLEET)),
+        "sites": float(len(CURATED_SITES)),
+        "bmus": float(sum(len(s.bmu_ids) for s in CURATED_SITES)),
+        "power_mw": float(sum(s.power_mw for s in CURATED_SITES)),
+        "capacity_mwh": float(sum(s.capacity_mwh for s in CURATED_SITES)),
     }

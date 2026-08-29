@@ -9,15 +9,22 @@ computing fleet-level results on a sample without any way to ask for more.
 A :class:`Population` supplies that pair, and every fetcher and metric takes one
 as an argument. Two exist:
 
-``REGISTRY``
-    The curated 23 sites / 47 BM Units, hand-verified, with real optimiser,
-    region and MWh metadata. The **default everywhere**, so the live dashboard's
-    behaviour is unchanged by construction — it never passes a population and
-    therefore always gets this one.
+``fleet.registry.REGISTRY``
+    **The** fleet: every BM-registered battery the census identifies whose
+    energy capacity is published. Generated, not written — so it is a
+    measurement. This is what the live dashboard renders.
+
+``fleet.curated.CURATED``
+    Not a rival registry. A hand-researched **metadata table** — optimiser,
+    region and MWh for the sites it covers — which the generator copies into
+    ``REGISTRY``. It is also the default population of every fetcher, purely so
+    that a caller which says nothing keeps writing to the cache directory it
+    always wrote to.
 
 ``census_population()``
-    Every BM-registered battery :mod:`fleet.census` can identify — 87 sites /
-    124 BM Units. The research tier's population. Its metadata is machine-derived
+    Every BM-registered battery :mod:`fleet.census` can identify. The research
+    tier's population; its size depends on the register vintage the caller pins,
+    so it is not quoted here. Its metadata is machine-derived
     rather than hand-checked, which matters for some metrics and not others; see
     the note on that function.
 
@@ -38,7 +45,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fleet.registry import FLEET, FleetSite
+
+@dataclass(frozen=True)
+class FleetSite:
+    """One physical battery site, possibly spanning several BM Units.
+
+    Defined here rather than beside any one site list, because three modules
+    build them — :mod:`fleet.registry` (generated), :mod:`fleet.curated`
+    (hand-researched) and :func:`census_population` — and none of them owns the
+    shape.
+    """
+
+    site: str
+    bmu_ids: tuple[str, ...]
+    power_mw: float
+    capacity_mwh: float
+    optimiser: str
+    region: str
 
 
 @dataclass(frozen=True)
@@ -47,8 +70,8 @@ class Population:
 
     name: str
     sites: tuple[FleetSite, ...]
-    #: Appended to every raw-cache directory. Empty for the curated registry so
-    #: its existing caches keep working untouched.
+    #: Appended to every raw-cache directory, so a day-file always holds
+    #: exactly the BM Units it was fetched for and two populations never merge.
     cache_suffix: str = ""
 
     def bmu_ids(self) -> tuple[str, ...]:
@@ -61,10 +84,6 @@ class Population:
 
     def __len__(self) -> int:
         return len(self.sites)
-
-
-#: The curated cross-section. Default for every fleet function.
-REGISTRY = Population(name="registry", sites=FLEET, cache_suffix="")
 
 
 def census_population(refresh: bool = False) -> Population:

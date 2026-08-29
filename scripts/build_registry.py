@@ -1,4 +1,4 @@
-"""Regenerate ``fleet/extended.py`` — the dashboard's population.
+"""Regenerate ``fleet/registry.py`` — the fleet this project analyses.
 
 The dashboard cannot build a census. ``fleet.census`` and ``fleet.coverage``
 pull whole registers and are barred from its process by
@@ -20,7 +20,7 @@ site on screen, at the cost of the MW they carry.
 Run after the census moves (new units commissioning, new Capacity Market
 agreements)::
 
-    python scripts/build_extended_fleet.py
+    python scripts/build_registry.py
 """
 
 from __future__ import annotations
@@ -34,22 +34,23 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-TARGET = REPO_ROOT / "fleet" / "extended.py"
+TARGET = REPO_ROOT / "fleet" / "registry.py"
 
-HEADER = '''"""The live dashboard's battery population — generated, do not hand-edit.
+HEADER = '''"""The battery fleet this project analyses — generated, do not hand-edit.
 
 Every BM-registered GB battery the census can identify **whose energy capacity
 is known**, which is what makes every dashboard metric computable for every site
 shown: cycles per day and the duration bucket both divide by MWh, and a site
 without one would render blank cells rather than a smaller number.
 
-{sites} sites / {bmus} BM Units / {mw:,.0f} MW, against the curated registry's
-{reg_sites} / {reg_bmus} / {reg_mw:,.0f} MW. Every registry site is included —
-this is a superset, so nothing the dashboard showed before it can show less of.
+Every site in the curated registry is included: this is a superset of it, so the
+dashboard can never show less than it did before. The generator refuses to write
+a file that is not. Sizes are deliberately not written here — count the tuple
+below, which is the only copy that cannot go stale.
 
 Metadata provenance differs across the two groups and the difference matters:
 
-* For the {reg_sites} curated sites, ``optimiser``, ``region`` and
+* For the curated sites, ``optimiser``, ``region`` and
   ``capacity_mwh`` are hand-verified (see :mod:`fleet.registry`).
 * For the rest, ``power_mw`` is Elexon's declared export capability and
   ``capacity_mwh`` comes from a matched Capacity Market agreement — both
@@ -57,44 +58,39 @@ Metadata provenance differs across the two groups and the difference matters:
   is the trading party rather than the optimiser proper, and ``region`` to the
   GSP group. Read the *By optimiser* cut with that in mind.
 
-Generated {stamp} from census snapshot by ``scripts/build_extended_fleet.py``.
+Generated {stamp} from a census snapshot by ``scripts/build_registry.py``.
 Regenerate when the fleet moves on; this file is data, not logic.
 """
 
-from fleet.population import Population
-from fleet.registry import FleetSite
+from fleet.population import FleetSite, Population
 
-EXTENDED_FLEET: tuple[FleetSite, ...] = (
+REGISTRY_SITES: tuple[FleetSite, ...] = (
 '''
 
 
 def main() -> int:
+    from fleet import curated as curated_mod
     from fleet import population as pop_mod
 
     census = pop_mod.census_population()
-    registry = pop_mod.REGISTRY
     keep = [
         s for s in census.sites
         if s.capacity_mwh and not math.isnan(s.capacity_mwh) and s.power_mw > 0
     ]
     keep.sort(key=lambda s: s.site)
 
-    reg_names = {s.site for s in registry.sites}
-    missing = sorted(reg_names - {s.site for s in keep})
+    # A site dropped here loses its hand-researched optimiser, region and MWh,
+    # which nothing else supplies. Refusing is the whole safety property.
+    curated_names = {s.site for s in curated_mod.CURATED_SITES}
+    missing = sorted(curated_names - {s.site for s in keep})
     if missing:
         raise SystemExit(
             "refusing to write: these curated sites would be dropped, so the "
-            f"file would not be a superset of the registry — {missing}"
+            f"file would not be a superset of the metadata table — {missing}"
         )
 
     lines = [
         HEADER.format(
-            sites=len(keep),
-            bmus=sum(len(s.bmu_ids) for s in keep),
-            mw=sum(s.power_mw for s in keep),
-            reg_sites=len(registry.sites),
-            reg_bmus=len(registry.bmu_ids()),
-            reg_mw=sum(s.power_mw for s in registry.sites),
             stamp=dt.date.today().isoformat(),
         )
     ]
@@ -115,8 +111,8 @@ def main() -> int:
         "#: The dashboard's population. Its own cache suffix, because a day-file\n"
         "#: holds exactly the BM Units it was fetched for — reusing the curated\n"
         "#: cache would silently serve a 47-unit day as if it were the whole fleet.\n"
-        'EXTENDED = Population(\n'
-        '    name="extended", sites=EXTENDED_FLEET, cache_suffix="_EXT"\n'
+        'REGISTRY = Population(\n'
+        '    name="registry", sites=REGISTRY_SITES, cache_suffix="_REGISTRY"\n'
         ')\n'
     )
     TARGET.write_text("".join(lines), encoding="utf-8")

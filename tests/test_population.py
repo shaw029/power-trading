@@ -15,29 +15,30 @@ from unittest import mock
 import pytest
 
 from fleet import fetch_fleet, performance
-from fleet.population import REGISTRY, Population
-from fleet.registry import FLEET, FleetSite
+from fleet.population import Population
+from fleet.curated import CURATED, CURATED_SITES
+from fleet.population import FleetSite
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_registry_is_the_default_population():
-    assert REGISTRY.sites is FLEET
-    assert len(REGISTRY.bmu_ids()) == 47
+def test_curated_is_the_default_population():
+    assert CURATED.sites is CURATED_SITES
+    assert len(CURATED.bmu_ids()) == 47
 
 
-def test_registry_cache_paths_are_unchanged():
+def test_curated_cache_paths_are_unchanged():
     """The dashboard reads these directories; moving them would orphan its cache."""
-    assert fetch_fleet._dir_for("FLEET_PN", REGISTRY) == "FLEET_PN"
-    assert fetch_fleet._dir_for("FLEET_EBOCF", REGISTRY) == "FLEET_EBOCF"
+    assert fetch_fleet._dir_for("FLEET_PN", CURATED) == "FLEET_PN"
+    assert fetch_fleet._dir_for("FLEET_EBOCF", CURATED) == "FLEET_EBOCF"
 
 
 def test_populations_cache_into_separate_directories():
     """A day-file holds only the BM Units it was fetched for, so it cannot be shared."""
-    census = Population("census", FLEET, cache_suffix="_CENSUS")
+    census = Population("census", CURATED_SITES, cache_suffix="_CENSUS")
     assert fetch_fleet._dir_for("FLEET_PN", census) == "FLEET_PN_CENSUS"
     assert fetch_fleet._dir_for("FLEET_PN", census) != fetch_fleet._dir_for(
-        "FLEET_PN", REGISTRY
+        "FLEET_PN", CURATED
     )
 
 

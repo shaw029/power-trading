@@ -1,10 +1,15 @@
 """How much of the GB battery fleet the curated registry actually represents.
 
-:mod:`fleet.registry` analyses 23 sites. :mod:`fleet.census` reconstructs the
-population those 23 are drawn from. This module is the arithmetic between them,
-and it exists to replace an assumption with a measurement: every result the
-project computes on the registry is generalisable exactly as far as this number
-says it is, and no further.
+:mod:`fleet.curated` is a hand-researched table of sites. :mod:`fleet.census`
+reconstructs the population those sites are drawn from. This module is the arithmetic between them,
+and it exists to replace an assumption with a measurement.
+
+**It measures the curated registry specifically**, which is no longer a
+reported population — it is the metadata table behind :mod:`fleet.registry`, the
+superset the live dashboard renders. Notebook 06 marks ``in_dashboard`` on
+:func:`coverage_table` and reports that instead; the functions here stay
+hardwired to ``in_registry`` on purpose, because widening them would put a
+population argument on a module the dashboard must not import.
 
 The structure follows the four-tier method the analysis brief sets out:
 

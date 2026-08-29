@@ -106,21 +106,35 @@ def test_labelled_fuel_types_are_rejected(patched_sources):
     assert not units.loc["T_PUMP-1", "is_battery"]
 
 
-def test_registry_membership_overrides_the_signature():
-    """A curated site is ground truth even if its declared capability is odd."""
-    odd = _frame()
-    odd.loc[odd["elexonBmUnit"] == "T_SOLAR-1", "generationCapacity"] = 50.0
-    with (
-        mock.patch.object(census, "fetch_bmu_reference", return_value=odd),
-        mock.patch.object(census, "fetch_cm_storage", return_value=_CM),
-        mock.patch.object(census, "fetch_tec_storage", return_value=_EMPTY_CONNECTION),
-        mock.patch.object(census, "fetch_embedded_storage", return_value=_EMPTY_CONNECTION),
-        mock.patch.object(census, "fetch_eac_battery_participants", return_value=_EMPTY_EAC),
-        mock.patch.object(census, "bmu_to_site", return_value={"E_CHP-1": object()}),
-    ):
+def test_curated_membership_does_not_admit_a_unit(patched_sources):
+    """The population is the rule's, not a list's.
+
+    The curated list used to be OR'd into ``is_battery``, which let a name on a
+    hand-written list stand in for evidence. It no longer does: a unit whose
+    declared capability fails the symmetry test stays out however it is
+    labelled. ``E_CHP-1`` is asymmetric in the fixture, and being named as a
+    curated BM Unit must not rescue it.
+    """
+    with mock.patch.object(census, "bmu_to_site", return_value={"E_CHP-1": object()}):
         units = census.battery_bmus().set_index("elexonBmUnit")
-    assert units.loc["E_CHP-1", "is_battery"]
-    assert units.loc["E_CHP-1", "confidence"] == "registry"
+    assert not units.loc["E_CHP-1", "is_battery"]
+
+
+def test_the_rule_recovers_every_curated_bm_unit_unaided():
+    """The claim notebook 06 prints, held as a test.
+
+    Dropping the curated shortcut from the classifier is only safe while the
+    signature finds those units by itself. If a curated BM Unit ever stops
+    passing the rule, the census silently loses it — so the agreement between
+    the two routes is asserted here rather than left to be noticed.
+    """
+    from fleet import curated
+
+    units = census.battery_bmus().set_index("elexonBmUnit")
+    listed = [b for b in curated.bmu_to_site() if b in units.index]
+    assert listed, "no curated BM Unit present in the reference data"
+    missed = [b for b in listed if not units.loc[b, "is_battery"]]
+    assert not missed, f"the rule no longer recovers curated units: {missed}"
 
 
 def test_multi_unit_site_collapses_to_one_asset(patched_sources):

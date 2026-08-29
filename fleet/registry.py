@@ -1,261 +1,563 @@
-"""Curated registry of large operational GB grid-scale batteries.
+"""The battery fleet this project analyses — generated, do not hand-edit.
 
-The live-fleet dashboard tab tracks *real* batteries in the Balancing
-Mechanism, so it needs to know which BM Units belong to which site and who
-optimises them. Elexon's BMU reference data carries no battery fuel type and
-no optimiser/location fields, so that mapping is hand-curated here.
+Every BM-registered GB battery the census can identify **whose energy capacity
+is known**, which is what makes every per-site metric computable for every site
+shown: cycles per day and the duration bucket both divide by MWh, and a site
+without one would render blank cells rather than a smaller number.
 
-Selection criteria — a site is included when all of these hold:
+This is *the* registry — the population the live dashboard renders. It is
+generated from :mod:`fleet.census` rather than written by hand, so it is a
+measurement rather than an assertion. :mod:`fleet.curated` is not a rival
+registry: it is a metadata table, supplying hand-researched optimiser, region
+and MWh for the sites it covers.
 
-1. **BM-registered with its own BM Units.** This is a hard data requirement,
-   not a preference: the free per-unit Elexon feeds the dashboard runs on
-   (Physical Notifications, ``EBOCF`` cashflows) only exist for registered
-   BM Units. Batteries traded behind an aggregator/VLP unit or a supplier
-   portfolio are invisible at site level and cannot be listed.
-2. **Grid-scale.** Roughly 35 MW nameplate and up (smallest included site is
-   Contego at 34 MW). Below that, per-site estimates get noisy and the long
-   tail of small sites adds little fleet MW.
-3. **Operational.** Actively submitting PNs / being dispatched as of the
-   July 2026 snapshot — not merely consented or under commissioning.
-4. **Coverage over completeness.** The list is a curated cross-section of
-   optimisers (Tesla, Zenobe, Habitat, EDF, Octopus, …) and regions
-   (Scotland to the South East), *not* a census of GB BESS. When adding
-   sites, prefer ones that broaden optimiser/region coverage.
+Every site in :mod:`fleet.curated` is included, so no site ever loses its
+hand-researched metadata. The generator refuses to write a file that is not a
+superset. Sizes are deliberately not written here — count the tuple
+below, which is the only copy that cannot go stale.
 
-Provenance and staleness:
+Metadata provenance differs across the two groups and the difference matters:
 
-* ``bmu_ids`` were verified against the live Elexon BMU reference list
-  (``/reference/bmunits/all``) in July 2026 — every ID below exists and its
-  registered capacity matches ``power_mw`` to within a few MW.
-* ``optimiser`` is the route-to-market / trading party. For most sites it is
-  simply the BMU lead party (Tesla, EDF, Limejump, Octopus, …); where the lead
-  party is a project SPV the publicly known optimiser is used instead
-  (e.g. Pivot Power units are optimised by Habitat Energy).
-* ``capacity_mwh`` is approximate nameplate energy. Several sites do not
-  publish exact figures, so derived cycle counts are indicative only.
-* ``region`` is hand-assigned; transmission-connected BMUs have no GSP group
-  in the reference data.
+* Where :mod:`fleet.curated` covers a site, ``optimiser``, ``region`` and
+  ``capacity_mwh`` are hand-researched.
+* For the rest, ``power_mw`` is Elexon's declared export capability and
+  ``capacity_mwh`` comes from a matched Capacity Market agreement — both
+  published figures. ``optimiser`` falls back to the BM Unit's lead party, which
+  is the trading party rather than the optimiser proper, and ``region`` to the
+  GSP group. Read the *By optimiser* cut with that in mind.
 
-Sites commission, re-contract and change optimiser over time — refresh this
-list when the fleet moves on.
+Generated 2026-08-29 from a census snapshot by ``scripts/build_registry.py``.
+Regenerate when the fleet moves on; this file is data, not logic.
 """
 
-from dataclasses import dataclass
+from fleet.population import FleetSite, Population
 
-
-@dataclass(frozen=True)
-class FleetSite:
-    """One physical battery site, possibly spanning several BM Units."""
-
-    site: str
-    bmu_ids: tuple[str, ...]
-    power_mw: float
-    capacity_mwh: float
-    optimiser: str
-    region: str
-
-
-# Metadata snapshot: July 2026.
-FLEET: tuple[FleetSite, ...] = (
+REGISTRY_SITES: tuple[FleetSite, ...] = (
     FleetSite(
-        site="Coalburn 1",
-        bmu_ids=("T_COALB-1", "T_COALB-2", "T_COALB-3", "T_COALB-4", "T_COALB-5"),
-        power_mw=500.0,
-        capacity_mwh=1000.0,
-        optimiser="Alcemi (CIP)",
-        region="Scotland (South)",
+        site='AR0006-BLOX',
+        bmu_ids=("E_ARNKB-1",),
+        power_mw=41.7,
+        capacity_mwh=47.0,
+        optimiser='Octopus Energy Trading Limited',
+        region='Midlands',
     ),
     FleetSite(
-        site="Kilmarnock South",
-        bmu_ids=(
-            "T_KILSB-1",
-            "T_KILSB-2",
-            "T_KILSB-3",
-            "T_KILSB-4",
-            "T_KILSB-5",
-            "T_KILSB-6",
-        ),
-        power_mw=300.0,
-        capacity_mwh=600.0,
-        optimiser="Zenobe",
-        region="Scotland (South)",
+        site='Berkeley BESS',
+        bmu_ids=("E_BERKB-1", "E_BERKB-2"),
+        power_mw=104.0,
+        capacity_mwh=49.9,
+        optimiser='EDF Energy Customers Limited',
+        region='Midlands',
     ),
     FleetSite(
-        site="Blackhillock",
+        site='Blackhillock',
         bmu_ids=("T_BLHLB-1", "T_BLHLB-2", "T_BLHLB-3", "T_BLHLB-4"),
-        power_mw=200.0,
+        power_mw=208.8,
         capacity_mwh=400.0,
-        optimiser="Zenobe",
-        region="Scotland (North)",
+        optimiser='Zenobe',
+        region='Scotland (North)',
     ),
     FleetSite(
-        site="Uskmouth",
-        bmu_ids=("T_USKMB-2", "T_USKMB-3", "T_USKMB-4", "T_USKMB-5"),
-        power_mw=230.0,
-        capacity_mwh=460.0,
-        optimiser="E.ON / UES",
-        region="South Wales",
-    ),
-    FleetSite(
-        site="Thornton",
-        bmu_ids=("T_BLWNB-1",),
-        power_mw=200.0,
-        capacity_mwh=400.0,
-        optimiser="Statkraft",
-        region="Yorkshire",
-    ),
-    FleetSite(
-        site="Ferrybridge",
-        bmu_ids=("T_FERRB-1", "T_FERRB-2"),
-        power_mw=150.0,
-        capacity_mwh=300.0,
-        optimiser="SSE",
-        region="Yorkshire",
-    ),
-    FleetSite(
-        site="Wilton",
-        bmu_ids=("T_LIONB-1", "T_LIONB-2", "T_LIONB-3"),
-        power_mw=150.0,
-        capacity_mwh=300.0,
-        optimiser="Sembcorp",
-        region="North East England",
-    ),
-    FleetSite(
-        site="Dollymans",
-        bmu_ids=("E_DOLLB-1",),
-        power_mw=100.0,
-        capacity_mwh=200.0,
-        optimiser="Statera",
-        region="Eastern England",
-    ),
-    FleetSite(
-        site="Capenhurst (Zenobe)",
-        bmu_ids=("T_PINFB-1", "T_PINFB-2", "T_PINFB-3", "T_PINFB-4"),
-        power_mw=100.0,
-        capacity_mwh=107.0,
-        optimiser="Zenobe",
-        region="North West England",
-    ),
-    FleetSite(
-        site="Richborough",
-        bmu_ids=("T_RICHB-1", "T_RICHB-2"),
-        power_mw=100.0,
-        capacity_mwh=100.0,
-        optimiser="Limejump (Shell)",
-        region="South East England",
-    ),
-    FleetSite(
-        site="Clay Tye",
-        bmu_ids=("E_CLAYB-1", "E_CLAYB-2"),
-        power_mw=99.0,
-        capacity_mwh=198.0,
-        optimiser="Tesla Autobidder",
-        region="Eastern England",
-    ),
-    FleetSite(
-        site="Pillswood",
-        bmu_ids=("E_PILLB-1", "E_PILLB-2"),
-        power_mw=98.0,
-        capacity_mwh=196.0,
-        optimiser="bp",
-        region="Yorkshire",
-    ),
-    FleetSite(
-        site="Enderby",
-        bmu_ids=("T_ENDRB-1",),
-        power_mw=57.0,
-        capacity_mwh=114.0,
-        optimiser="Flexitricity",
-        region="East Midlands",
-    ),
-    FleetSite(
-        site="Larks Green",
-        bmu_ids=("T_LARKB-1",),
-        power_mw=52.0,
-        capacity_mwh=104.0,
-        optimiser="EDF",
-        region="South West England",
-    ),
-    FleetSite(
-        site="Wishaw",
-        bmu_ids=("T_WISHB-1",),
-        power_mw=51.0,
-        capacity_mwh=102.0,
-        optimiser="Zenobe",
-        region="Scotland (South)",
-    ),
-    FleetSite(
-        site="Sundon",
-        bmu_ids=("T_SUNDB-1",),
-        power_mw=50.0,
-        capacity_mwh=50.0,
-        optimiser="Habitat Energy",
-        region="Eastern England",
-    ),
-    FleetSite(
-        site="Bredbury",
+        site='Bredbury',
         bmu_ids=("T_BREDB-1",),
-        power_mw=50.0,
+        power_mw=49.9,
         capacity_mwh=50.0,
-        optimiser="Habitat Energy",
-        region="North West England",
+        optimiser='Habitat Energy',
+        region='North West England',
     ),
     FleetSite(
-        site="Burwell (Weirs Drove)",
-        bmu_ids=("E_BURWB-1",),
-        power_mw=50.0,
-        capacity_mwh=100.0,
-        optimiser="Arenko",
-        region="Eastern England",
+        site='Brentwood BESS',
+        bmu_ids=("E_BRETB-1", "E_BRETB-2"),
+        power_mw=104.0,
+        capacity_mwh=49.9,
+        optimiser='EDF Energy Customers Limited',
+        region='Eastern',
     ),
     FleetSite(
-        site="Broxburn",
+        site='Brook Farm BESS',
+        bmu_ids=("E_BROFB-1",),
+        power_mw=52.0,
+        capacity_mwh=49.4,
+        optimiser='EDF Energy Customers Limited',
+        region='Eastern',
+    ),
+    FleetSite(
+        site='Broxburn',
         bmu_ids=("E_BROXB-1",),
         power_mw=50.0,
         capacity_mwh=100.0,
-        optimiser="ENGIE",
-        region="Scotland (South)",
+        optimiser='ENGIE',
+        region='Scotland (South)',
     ),
     FleetSite(
-        site="Whitelee",
-        bmu_ids=("T_WHLWB-1",),
-        power_mw=50.0,
+        site='Bulphan Fen Warley Green BESS',
+        bmu_ids=("T_BLPFB-1",),
+        power_mw=56.6,
+        capacity_mwh=75.0,
+        optimiser='EDF Energy Customers Limited',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Burwell (Weirs Drove)',
+        bmu_ids=("E_BURWB-1", "E_BURWB-2", "E_BURWB-3"),
+        power_mw=132.5,
+        capacity_mwh=100.0,
+        optimiser='Arenko',
+        region='Eastern England',
+    ),
+    FleetSite(
+        site='Capenhurst',
+        bmu_ids=("T_CAPNB-1",),
+        power_mw=57.0,
+        capacity_mwh=165.0,
+        optimiser='HD888CAP Ltd',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Capenhurst (Zenobe)',
+        bmu_ids=("T_PINFB-1", "T_PINFB-2", "T_PINFB-3", "T_PINFB-4"),
+        power_mw=105.1,
+        capacity_mwh=107.0,
+        optimiser='Zenobe',
+        region='North West England',
+    ),
+    FleetSite(
+        site='Carnegie Road 1',
+        bmu_ids=("E_CRSSB-1",),
+        power_mw=20.0,
+        capacity_mwh=20.0,
+        optimiser='Arenko Cleantech Limited',
+        region='Merseyside North Wales',
+    ),
+    FleetSite(
+        site='CathkinBattery',
+        bmu_ids=("E_CATHB-1",),
+        power_mw=49.9,
+        capacity_mwh=100.0,
+        optimiser='ENGIE Power Limited',
+        region='South Scotland',
+    ),
+    FleetSite(
+        site='Chapel Farm BESS',
+        bmu_ids=("E_CHAPB-1",),
+        power_mw=50.2,
+        capacity_mwh=84.0,
+        optimiser='Tesla Motors Limited',
+        region='Eastern',
+    ),
+    FleetSite(
+        site='Clay Tye',
+        bmu_ids=("E_CLAYB-1", "E_CLAYB-2"),
+        power_mw=99.0,
+        capacity_mwh=198.0,
+        optimiser='Tesla Autobidder',
+        region='Eastern England',
+    ),
+    FleetSite(
+        site='Coalburn 1',
+        bmu_ids=("T_COALB-1", "T_COALB-2", "T_COALB-3", "T_COALB-4", "T_COALB-5"),
+        power_mw=512.4,
+        capacity_mwh=1000.0,
+        optimiser='Alcemi (CIP)',
+        region='Scotland (South)',
+    ),
+    FleetSite(
+        site='Contego',
+        bmu_ids=("E_CONTB-1",),
+        power_mw=35.8,
+        capacity_mwh=68.0,
+        optimiser='Tesla Autobidder',
+        region='South East England',
+    ),
+    FleetSite(
+        site='Coupar Angus',
+        bmu_ids=("E_CUPAB-1",),
+        power_mw=41.3,
+        capacity_mwh=82.0,
+        optimiser='Octopus',
+        region='Scotland (North)',
+    ),
+    FleetSite(
+        site='Cowley',
+        bmu_ids=("T_COWB-1",),
+        power_mw=50.4,
         capacity_mwh=50.0,
-        optimiser="ScottishPower",
-        region="Scotland (South)",
+        optimiser='Pivoted Power LLP',
+        region='unknown',
     ),
     FleetSite(
-        site="Roosecote",
+        site='Coylton  Greener Grid  Park',
+        bmu_ids=("T_COYLB-1",),
+        power_mw=50.0,
+        capacity_mwh=59.8,
+        optimiser='Statkraft Markets Gmbh',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Dollymans',
+        bmu_ids=("E_DOLLB-1",),
+        power_mw=102.0,
+        capacity_mwh=200.0,
+        optimiser='Statera',
+        region='Eastern England',
+    ),
+    FleetSite(
+        site='Enderby',
+        bmu_ids=("T_ENDRB-1",),
+        power_mw=57.0,
+        capacity_mwh=114.0,
+        optimiser='Flexitricity',
+        region='East Midlands',
+    ),
+    FleetSite(
+        site='Erskine BESS',
+        bmu_ids=("E_ERSKB-1",),
+        power_mw=29.9,
+        capacity_mwh=30.0,
+        optimiser='EDF Energy Customers Limited',
+        region='South Scotland',
+    ),
+    FleetSite(
+        site='Farnham BESS',
+        bmu_ids=("E_FARNB-1",),
+        power_mw=20.0,
+        capacity_mwh=40.0,
+        optimiser='Tesla Motors Limited',
+        region='Southern',
+    ),
+    FleetSite(
+        site='Ferrybridge',
+        bmu_ids=("T_FERRB-1", "T_FERRB-2"),
+        power_mw=152.0,
+        capacity_mwh=300.0,
+        optimiser='SSE',
+        region='Yorkshire',
+    ),
+    FleetSite(
+        site='Gerrards Cross BESS',
+        bmu_ids=("E_GRCRB-1",),
+        power_mw=20.0,
+        capacity_mwh=20.0,
+        optimiser='FIELD GERRARDS CROSS LTD',
+        region='Southern',
+    ),
+    FleetSite(
+        site='HawkersHill  Battery',
+        bmu_ids=("E_HAWKB-1",),
+        power_mw=20.0,
+        capacity_mwh=40.0,
+        optimiser='Tesla Motors Limited',
+        region='Southern',
+    ),
+    FleetSite(
+        site='Holes Bay Battery',
+        bmu_ids=("E_BHOLB-1",),
+        power_mw=7.1,
+        capacity_mwh=10.0,
+        optimiser='Tesla Motors Limited',
+        region='Southern',
+    ),
+    FleetSite(
+        site='Hunningley Stairfoot BESS',
+        bmu_ids=("E_BARNB-1",),
+        power_mw=44.0,
+        capacity_mwh=40.0,
+        optimiser='EDF Energy Customers Limited',
+        region='Yorkshire',
+    ),
+    FleetSite(
+        site='INDIAN QUEENS BESS',
+        bmu_ids=("T_INDQB-1",),
+        power_mw=47.5,
+        capacity_mwh=95.0,
+        optimiser='Pivoted Power LLP',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Iron Acton',
+        bmu_ids=("T_IRNAB-1",),
+        power_mw=121.0,
+        capacity_mwh=300.0,
+        optimiser='HD000ACT Ltd',
+        region='unknown',
+    ),
+    FleetSite(
+        site='KXP Immingham BESS',
+        bmu_ids=("E_STALB-1",),
+        power_mw=80.8,
+        capacity_mwh=160.0,
+        optimiser='KXP Immingham Ltd',
+        region='Yorkshire',
+    ),
+    FleetSite(
+        site='Kilmarnock South',
+        bmu_ids=("T_KILSB-1", "T_KILSB-2", "T_KILSB-3", "T_KILSB-4", "T_KILSB-5", "T_KILSB-6"),
+        power_mw=312.6,
+        capacity_mwh=600.0,
+        optimiser='Zenobe',
+        region='Scotland (South)',
+    ),
+    FleetSite(
+        site='Lakeside  BESS',
+        bmu_ids=("T_LKSDB-1",),
+        power_mw=105.0,
+        capacity_mwh=149.9,
+        optimiser='Lakeside Energy Storage Ltd',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Larks Green',
+        bmu_ids=("T_LARKB-1",),
+        power_mw=52.0,
+        capacity_mwh=104.0,
+        optimiser='EDF',
+        region='South West England',
+    ),
+    FleetSite(
+        site='Little Raith BESS',
+        bmu_ids=("E_LITRB-1",),
+        power_mw=50.0,
+        capacity_mwh=98.0,
+        optimiser='Tesla Motors Limited',
+        region='South Scotland',
+    ),
+    FleetSite(
+        site='Monk Fryston',
+        bmu_ids=("T_MKFRB-1",),
+        power_mw=57.0,
+        capacity_mwh=165.0,
+        optimiser='HD777FRY Ltd',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Monk Fryston BESS BMU-1',
+        bmu_ids=("T_MNFRB-1", "T_MNFRB-2", "T_MNFRB-3", "T_MNFRB-4"),
+        power_mw=320.0,
+        capacity_mwh=640.0,
+        optimiser='SSE Battery Monk Fryston Ltd',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Native River',
+        bmu_ids=("T_NTRVB-1",),
+        power_mw=57.0,
+        capacity_mwh=138.0,
+        optimiser='Arenko Cleantech Limited',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Neilston Battery 1',
+        bmu_ids=("T_NLSTB-1",),
+        power_mw=50.0,
+        capacity_mwh=110.7,
+        optimiser='Statkraft Markets Gmbh',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Newton wood BESS',
+        bmu_ids=("E_NEWTB-1",),
+        power_mw=52.0,
+        capacity_mwh=49.9,
+        optimiser='EDF Energy Customers Limited',
+        region='East Midlands',
+    ),
+    FleetSite(
+        site='North Tawton BESS',
+        bmu_ids=("E_NTAWB-1",),
+        power_mw=32.0,
+        capacity_mwh=30.0,
+        optimiser='EDF Energy Customers Limited',
+        region='South Western',
+    ),
+    FleetSite(
+        site='Ocker Hill',
+        bmu_ids=("T_OCHLB-1",),
+        power_mw=58.0,
+        capacity_mwh=165.0,
+        optimiser='HD143OCK Ltd',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Oldham BESS',
+        bmu_ids=("E_OLDHB-1",),
+        power_mw=20.0,
+        capacity_mwh=20.0,
+        optimiser='Field Oldham Ltd',
+        region='North Western',
+    ),
+    FleetSite(
+        site='Pen y Cymoedd Battery',
+        bmu_ids=("T_PNYCB-1",),
+        power_mw=22.0,
+        capacity_mwh=16.0,
+        optimiser='Arenko Cleantech Limited',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Pillswood',
+        bmu_ids=("E_PILLB-1", "E_PILLB-2"),
+        power_mw=99.8,
+        capacity_mwh=196.0,
+        optimiser='bp',
+        region='Yorkshire',
+    ),
+    FleetSite(
+        site='Pivot Power Bustleholme',
+        bmu_ids=("T_BUSTB-1",),
+        power_mw=52.2,
+        capacity_mwh=100.0,
+        optimiser='Pivoted Power LLP',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Pivot Power Coventry',
+        bmu_ids=("T_COVNB-1",),
+        power_mw=50.4,
+        capacity_mwh=80.0,
+        optimiser='Pivoted Power LLP',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Richborough',
+        bmu_ids=("T_RICHB-1", "T_RICHB-2"),
+        power_mw=99.8,
+        capacity_mwh=100.0,
+        optimiser='Limejump (Shell)',
+        region='South East England',
+    ),
+    FleetSite(
+        site='Roaring Hill BESS',
+        bmu_ids=("E_ROARB-1",),
+        power_mw=50.0,
+        capacity_mwh=75.0,
+        optimiser='Tesla Motors Limited',
+        region='South Scotland',
+    ),
+    FleetSite(
+        site='Roosecote',
         bmu_ids=("E_ROOSB-1",),
         power_mw=49.0,
         capacity_mwh=98.0,
-        optimiser="Gresham House",
-        region="North West England",
+        optimiser='Gresham House',
+        region='North West England',
     ),
     FleetSite(
-        site="Coupar Angus",
-        bmu_ids=("E_CUPAB-1",),
-        power_mw=41.0,
-        capacity_mwh=82.0,
-        optimiser="Octopus",
-        region="Scotland (North)",
+        site='Sizing John',
+        bmu_ids=("T_SZJNB-1",),
+        power_mw=57.0,
+        capacity_mwh=137.5,
+        optimiser='Arenko Cleantech Limited',
+        region='unknown',
     ),
     FleetSite(
-        site="Contego",
-        bmu_ids=("E_CONTB-1",),
-        power_mw=34.0,
-        capacity_mwh=68.0,
-        optimiser="Tesla Autobidder",
-        region="South East England",
+        site='Skelmersdale Battery',
+        bmu_ids=("E_SKELB-1",),
+        power_mw=49.9,
+        capacity_mwh=99.8,
+        optimiser='Tesla Motors Limited',
+        region='North Western',
+    ),
+    FleetSite(
+        site='Sundon',
+        bmu_ids=("T_SUNDB-1",),
+        power_mw=50.2,
+        capacity_mwh=50.0,
+        optimiser='Habitat Energy',
+        region='Eastern England',
+    ),
+    FleetSite(
+        site='T_THURB-1',
+        bmu_ids=("T_THURB-1", "T_THURB-2", "T_THURB-3"),
+        power_mw=300.0,
+        capacity_mwh=600.0,
+        optimiser='THURROCK STORAGE LIMITED',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Thornton',
+        bmu_ids=("T_BLWNB-1",),
+        power_mw=200.0,
+        capacity_mwh=400.0,
+        optimiser='Statkraft',
+        region='Yorkshire',
+    ),
+    FleetSite(
+        site='Tye Lane BESS',
+        bmu_ids=("T_TYLNB-1",),
+        power_mw=59.2,
+        capacity_mwh=114.0,
+        optimiser='Pivoted Power LLP',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Uskmouth',
+        bmu_ids=("T_USKMB-2", "T_USKMB-3", "T_USKMB-4", "T_USKMB-5"),
+        power_mw=230.0,
+        capacity_mwh=460.0,
+        optimiser='E.ON / UES',
+        region='South Wales',
+    ),
+    FleetSite(
+        site='West Burton B Battery',
+        bmu_ids=("T_WBURB-41", "T_WBURB-43"),
+        power_mw=62.0,
+        capacity_mwh=49.0,
+        optimiser='West Burton B Limited',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Whitebirk BESS',
+        bmu_ids=("E_WHTBB-1",),
+        power_mw=25.0,
+        capacity_mwh=36.6,
+        optimiser='Field Whitebirk Ltd',
+        region='North Western',
+    ),
+    FleetSite(
+        site='Whitegate',
+        bmu_ids=("T_WTGTB-1",),
+        power_mw=58.0,
+        capacity_mwh=165.0,
+        optimiser='HD144WHI Ltd',
+        region='unknown',
+    ),
+    FleetSite(
+        site='Whitelee',
+        bmu_ids=("T_WHLWB-1",),
+        power_mw=50.2,
+        capacity_mwh=50.0,
+        optimiser='ScottishPower',
+        region='Scotland (South)',
+    ),
+    FleetSite(
+        site='Wilton',
+        bmu_ids=("T_LIONB-1", "T_LIONB-2", "T_LIONB-3"),
+        power_mw=150.0,
+        capacity_mwh=300.0,
+        optimiser='Sembcorp',
+        region='North East England',
+    ),
+    FleetSite(
+        site='Wishaw',
+        bmu_ids=("T_WISHB-1",),
+        power_mw=51.0,
+        capacity_mwh=102.0,
+        optimiser='Zenobe',
+        region='Scotland (South)',
+    ),
+    FleetSite(
+        site='Wolverhampton West BESS',
+        bmu_ids=("E_WOLVB-1",),
+        power_mw=56.0,
+        capacity_mwh=310.0,
+        optimiser='EDF Energy Customers Limited',
+        region='Midlands',
     ),
 )
 
-
-def all_bmu_ids() -> tuple[str, ...]:
-    """Every BM Unit ID in the fleet, in registry order."""
-    return tuple(bmu for site in FLEET for bmu in site.bmu_ids)
-
-
-def bmu_to_site() -> dict[str, FleetSite]:
-    """Map each BM Unit ID to its :class:`FleetSite`."""
-    return {bmu: site for site in FLEET for bmu in site.bmu_ids}
+#: The dashboard's population. Its own cache suffix, because a day-file
+#: holds exactly the BM Units it was fetched for — reusing the curated
+#: cache would silently serve a 47-unit day as if it were the whole fleet.
+REGISTRY = Population(
+    name="registry", sites=REGISTRY_SITES, cache_suffix="_REGISTRY"
+)

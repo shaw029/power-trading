@@ -8,10 +8,10 @@ import pandas as pd
 import pytest
 
 from fleet import performance
-from fleet.registry import FLEET
+from fleet.curated import CURATED_SITES
 
 _DATE = "2024-01-01"
-_PILLSWOOD = next(s for s in FLEET if s.site == "Pillswood")
+_PILLSWOOD = next(s for s in CURATED_SITES if s.site == "Pillswood")
 
 
 def _pn_record(bmu: str, hour: int, minute: int, level: float) -> dict:
