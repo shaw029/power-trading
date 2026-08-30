@@ -17,6 +17,7 @@
 #let n4 = json("../figures/poster/nb04_metrics.json")
 #let n5 = json("../figures/poster/nb05_metrics.json")
 #let n6 = json("../figures/poster/nb06_metrics.json")
+#let n8 = json("../figures/poster/nb08_metrics.json")
 
 #let ink        = rgb("#0b0b0b")
 #let da-blue    = rgb("#2a78d6")
@@ -56,12 +57,15 @@
 
 // Figure with a caption beneath. `scale` lets a panel exceed its column when
 // the figure's own labels would otherwise be too small to read.
+// Gutters were 3/2/5mm. The board is exactly full at A0, so the six panels'
+// surrounding whitespace is the cheapest place to find the ~20 lines the
+// modern-era callout and the connective lines need — it costs no content.
 #let panel(path, caption, ratio: 97%) = block(width: 100%, breakable: false)[
-  #v(3mm)
-  #align(center)[#image(FIG + path, width: ratio)]
   #v(2mm)
+  #align(center)[#image(FIG + path, width: ratio)]
+  #v(1.5mm)
   #text(size: 16pt, fill: ink.lighten(35%), style: "italic")[#caption]
-  #v(5mm)
+  #v(3mm)
 ]
 
 // ─── Title banner ────────────────────────────────────────────────────────────
@@ -73,12 +77,16 @@
   #text(size: 32pt, fill: da-blue)[
     Quantifying the Alignment Gap Between Battery Arbitrage and System Scarcity
   ]
-  #v(4mm)
+  #v(3mm)
   #line(length: 100%, stroke: 3pt + rule-grey)
-  #v(2mm)
+  #v(1.5mm)
   #text(size: 19pt, fill: ink.lighten(25%))[
     A #n6.census_sites census of GB grid-scale batteries · 2018–2026 · built
     entirely from public Elexon and NESO data · all data as of #n6.snapshot
+  ]
+  #v(2mm)
+  #text(size: 19pt, fill: ink.lighten(35%), style: "italic")[
+    Resilience has many dimensions; this quantifies one — resource-adequacy scarcity — where public GB data measures the gap exactly.
   ]
 ]
 
@@ -95,13 +103,14 @@
     GB pays #text(fill: cost-red)[#n4.scarcity_mean] for scarcity across the window
     studied — and pays it in cash-out, not the day-ahead price batteries
     schedule against. So they find the peak and stop:
-    #text(fill: cost-red)[#n4.forgone_pct] of system-optimal energy undelivered in the
-    tightest decile of load.
+    #text(fill: cost-red)[#n4.forgone_pct] of system-optimal stress-period energy
+    undelivered — stress here meaning the top decile of residual load.
   ]
   #v(2mm)
   #text(size: 19pt, fill: ink.lighten(20%))[
-    Closing it costs #text(fill: cost-red)[#n4.cost_all_share]. But no price
-    closes it fully — a 2 h battery caps at #n4.dur2_best of what a 6 h one reaches.
+    Closing *most* of it costs #text(fill: cost-red)[#n4.cost_all_share]; closing it
+    *fully* is a different order — #text(fill: cost-red)[#n4.resample_range]. And no price
+    closes it entirely: a 2 h battery caps at #n4.dur2_best of what a 6 h one reaches.
   ]
 ]
 
@@ -121,7 +130,7 @@ Sections 2–4 all measure this population.
 Energy capacity is barely published: #metric[#n6.mwh_hand] read by hand off operator
 pages, #metric[#n6.mwh_cm] from Capacity Market filings, #metric[#n6.mwh_none] with none.
 
-#panel("nb06_fig1_census_composition.svg", ratio: 73%)[
+#panel("nb06_fig1_census_composition.svg", ratio: 68%)[
   Fig 1 — What the census contains. #n6.top_band_sites sites hold #n6.top_band_share of the
   fleet's MW, while its #n6.dist_sites distribution-connected sites hold #n6.dist_share of it.
 ]
@@ -143,7 +152,9 @@ pages, #metric[#n6.mwh_cm] from Capacity Market filings, #metric[#n6.mwh_none] w
 #section("International Context: Who Prices Scarcity in Real Time", mid-amber)
 
 Every market here runs the same wholesale, intraday and balancing stack. They
-differ in whether scarcity reaches the price an asset schedules against.
+differ in whether the system's real-time needs reach the price an asset schedules
+against. The first three rows are scarcity; France's is locational congestion —
+the same question asked of a different need.
 
 #v(2mm)
 #text(size: 17pt)[
@@ -152,7 +163,7 @@ differ in whether scarcity reaches the price an asset schedules against.
     stroke: none,
     inset: (x: 3mm, y: 1.6mm),
     fill: (_, row) => if row == 0 { rule-grey.lighten(55%) },
-    table.header([*Market*], [*How scarcity enters the dispatch signal*]),
+    table.header([*Market*], [*How a system need reaches the battery's schedule*]),
     [*Belgium*], [An alpha adder steepens the imbalance price once system
       imbalance passes a threshold; ORDC scarcity prices have run since 2019],
     [*Ireland*], [The imbalance price is the extremum of three components, one
@@ -204,22 +215,27 @@ Sweeping a blended objective prices it. The 2 h profit schedule already delivers
 not incentives: a #metric[6 h] battery reaches #metric[#n4.dur6_free] free where a
 #metric[2 h] one caps at #metric[#n4.dur2_best] at any price.
 
-#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 62%)[
+#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 57%)[
   Fig 2 — The mean day across all 34 days containing a top-decile load hour.
   Discharge peaks at the same hour, so the gap is not one of timing. It is
   duration: the battery reaches its floor by 21:00 while the system is still
   tight #n4.tight_at_floor of the time.
 ]
 
-#panel("nb04_fig_duration_frontier.svg", ratio: 68%)[
+#panel("nb04_fig_duration_frontier.svg", ratio: 62%)[
   Fig 3 — The frontier is a family. Each curve sweeps the weight on system value
   for one duration; the dot is the profit schedule. Moving up beats moving right.
-  Capital cost of the extra energy is not modelled.
+  It is the ceiling, not the cause: a perfect signal stops at these curves, and
+  GB's never starts. Capital cost of the extra energy is not modelled.
 ]
 
 #colbreak()
 
 #section("3 · Real Fleet Performance Under Stress", discharge)
+
+*Section 2 is what the incentive alone produces.* The real fleet does better —
+operator signals pull it in where price does not — yet still holds roughly half its
+energy at the deepest point. Two routes, one missing signal.
 
 Measured against operator-grade scarcity (De-Rated Margin #metric[#n5.drm_threshold]), the
 GB fleet discharges in #metric[#n5.discharge_share] of periods, delivering
@@ -238,7 +254,14 @@ duration gap. Declared duration does not predict response either
 (#metric[#n5.dur_corr] across #n5.dur_sites sites). Figures are on the primary
 state-of-charge inference.
 
-#panel("nb05_fig_gap_decomposition.svg", ratio: 72%)[
+*Since #n8.era_start the gap moves.* On the same rules the modern fleet responds
+#metric[#n8.ratio_low–#n8.ratio_high] harder but arrives *emptier*: SoC at onset
+#n5.soc_at_onset → #metric[#n8.soc_at_onset], dispatch gap #n5.dispatch_gap →
+#metric[#n8.dispatch_gap], preparedness #n5.preparedness_gap → #metric[#n8.preparedness_gap]
+and now the larger. It trades in ordinary conditions, so less is left in the tank
+(#n8.events events).
+
+#panel("nb05_fig_gap_decomposition.svg", ratio: 64%)[
   Fig 4 — Readiness into the event, and which of the three gaps binds, on the
   primary state-of-charge inference. These do not sum: three questions, three
   denominators. For the modelled 2 h battery the
@@ -256,7 +279,7 @@ Ancillary services do lift earnings — #metric[#n4.anc_site] in #n4.window_days
 #metric[#n4.anc_site_share] of the pound reaches a named site. Participation is a plausible
 contributor to the fleet's response, not an identified cause.
 
-#panel("nb04_fig5_revenue_stack.svg", ratio: 65%)[
+#panel("nb04_fig5_revenue_stack.svg", ratio: 58%)[
   Fig 5 — The third stream lifts median earnings from #n4.median_base to #n4.median_full per MW per
   day, but most of the pound is collected by portfolios naming a trading unit.
 ]
