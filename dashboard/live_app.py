@@ -114,7 +114,7 @@ battery traded behind an aggregator or supplier unit, which has no per-unit feed
 and sits outside even the denominator. The census behind these numbers is in
 `notebooks/06_fleet_coverage_census.ipynb`; the tier split is in `DATA_ARCHITECTURE.md`.
 
-*Coverage figures are a July 2026 snapshot computed in the notebook. This page states
+*Coverage figures are computed in the notebook on its pinned register snapshot. This page states
 them rather than recomputing them — keeping the census out of the dashboard's process is
 what keeps this tier light.*
 """
