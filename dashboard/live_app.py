@@ -1069,8 +1069,9 @@ public Elexon per-unit data.
   comes from markets this model cannot see, so don't read their £ figures as
   trading performance.
 - **Which batteries are on this dashboard** — every BM-registered GB battery
-  the census can identify **whose energy capacity is known**: 65 sites, 99 BM
-  Units, 4,091 MW, or 66% of BM-registered battery MW.
+  the census can identify **whose energy capacity is known and which cycles
+  enough to price**: 51 sites, 77 BM Units, 4,091 MW, or 66% of BM-registered
+  battery MW.
 
   Two filters produce that list, and they do different jobs. *BM registration*
   is a hard data requirement — the free per-unit feeds this dashboard runs on

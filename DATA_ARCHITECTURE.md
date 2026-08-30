@@ -16,8 +16,8 @@ public data, the notebooks should have it.
 **The live dashboard is the presentation surface.** It exists to show and communicate
 what the market is doing now — the thing you put in front of someone. That job requires
 it to load fast and stay within free hosting limits, so it runs deliberately light: a
-65-site population — every BM-registered battery with a known energy capacity, 89% of
-GB battery MW — a rolling 60-day window, the two revenue streams it can
+smaller population — the BM-registered batteries with a known energy capacity that
+cycle enough to be priced from wholesale and BM alone — a rolling 60-day window, the two revenue streams it can
 estimate consistently every day.
 
 One code path serves both. The population and the window are parameters, so a metric is
