@@ -92,15 +92,15 @@
   radius: 2pt,
 )[
   #text(size: 24pt, weight: "bold", fill: ink)[
-    GB pays #text(fill: cost-red)[£0.00/MWh] for scarcity across the window
+    GB pays #text(fill: cost-red)[#n4.scarcity_mean] for scarcity across the window
     studied — and pays it in cash-out, not the day-ahead price batteries
     schedule against. So they find the peak and stop:
-    #text(fill: cost-red)[22%] of system-optimal scarcity energy undelivered.
+    #text(fill: cost-red)[#n4.forgone_pct] of system-optimal scarcity energy undelivered.
   ]
   #v(2mm)
   #text(size: 19pt, fill: ink.lighten(20%))[
-    Closing it costs under #text(fill: cost-red)[4%] of revenue. But no price
-    closes it fully — a 2 h battery caps at 43% of what a 6 h one reaches.
+    Closing it costs #text(fill: cost-red)[#n4.cost_all_share]. But no price
+    closes it fully — a 2 h battery caps at #n4.dur2_best of what a 6 h one reaches.
   ]
 ]
 
@@ -275,7 +275,7 @@ contributor to the fleet's response, not an identified cause.
     a declared stress event — #metric[#n5.n_cmn] of those in eight years. So the fleet
     holds #metric[#n5.dispatch_gap] of its energy at an event's deepest point: nothing
     pays it to spend that energy. Duration bounds what any signal could buy — a
-    2 h battery caps at 43% — but the binding problem here is the signal.
+    2 h battery caps at #n4.dur2_best — but the binding problem here is the signal.
   ]
 ]
 
