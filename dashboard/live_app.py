@@ -1065,7 +1065,7 @@ public Elexon per-unit data.
 - **Ancillary-tilted sites can read *negative*, not just low** — energy bought
   to hold state of charge for an ancillary contract is costed at MID here,
   while the availability payment that motivated it is invisible. Sites cycling
-  below ~0.3 cycles/day are flagged ⚠ in the site table: their revenue likely
+  below ~{CYCLES} cycles/day are flagged ⚠ in the site table: their revenue likely
   comes from markets this model cannot see, so don't read their £ figures as
   trading performance.
 - **Which batteries are on this dashboard** — every BM-registered GB battery
@@ -1083,7 +1083,7 @@ public Elexon per-unit data.
   blank cells rather than a smaller number.
 
   *Enough cycling* is the second, and it is a judgement about behaviour rather
-  than a fact about an asset. A site turning over less than 0.3 cycles a day is
+  than a fact about an asset. A site turning over less than {CYCLES} cycles a day is
   almost certainly earning in ancillary markets this model cannot see — and the
   model *can* see the energy it buys to hold state of charge for those
   contracts, with no availability payment against it. Its £ figures are
@@ -1112,6 +1112,13 @@ public Elexon per-unit data.
 - **Metadata** — optimiser, region and approximate MWh are a hand-curated
   snapshot and can go stale; cycle counts are indicative.
 """
+
+
+# One threshold, one place. `fleet.performance` owns the number; this page only
+# quotes it, so the prose can never drift from the rule the fleet is filtered by.
+FLEET_METHODOLOGY = FLEET_METHODOLOGY.replace(
+    "{CYCLES}", str(fleet_perf.ANCILLARY_CYCLES_THRESHOLD)
+)
 
 
 # Quick-pick period presets for the global filter bar, in display order.

@@ -31,7 +31,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -78,11 +77,12 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
 #: Days of dispatch used to measure how hard a site cycles.
 MEASURE_DAYS = 60
 
-#: Sites cycling below this are left out of the registry entirely.
+#: Sites cycling below :data:`fleet.performance.ANCILLARY_CYCLES_THRESHOLD` are
+#: left out of the registry entirely.
 #:
 #: **This is the one criterion here that is not a fact about an asset.** BM
 #: registration and a published MWh are static; cycling is behaviour over a
-#: window, so a list filtered on it changes with market conditions and not only
+#: window, so a list filtered on it moves with market conditions and not only
 #: with which batteries exist. That cost is accepted deliberately, because a
 #: site cycling this little is almost certainly earning in ancillary markets the
 #: settlement model cannot see — while it *can* see the energy bought to hold
@@ -90,48 +90,21 @@ MEASURE_DAYS = 60
 #: uncertain, they are systematically negative, and showing them as performance
 #: misleads more than leaving the site out does.
 #:
-#: The window and the measured rate are written into the generated file, so a
-#: reader can always see why a battery is absent rather than guess.
-MIN_CYCLES_PER_DAY = 0.3
-
-
-def _cycles_per_day(population, sites, days) -> dict:
-    """Discharge throughput over nameplate energy, per site, across ``days``.
-
-    Reads the census day-file cache the research tier has already fetched, so
-    this adds no network round of its own for any day already on disk.
-    """
-    from fleet import fetch_fleet
-
-    discharged: dict = {}
-    site_of = population.bmu_to_site()
-    for day in days:
-        try:
-            records = fetch_fleet.fetch_fleet_pn(day, population)
-        except Exception:  # one unavailable day must not skew the rate
-            continue
-        for r in records:
-            site = site_of.get(r.get("bmUnit"))
-            if site is None:
-                continue
-            level = (float(r.get("levelFrom", 0.0)) + float(r.get("levelTo", 0.0))) / 2
-            if level <= 0:
-                continue
-            span_h = (
-                pd.Timestamp(r["timeTo"]) - pd.Timestamp(r["timeFrom"])
-            ).total_seconds() / 3600
-            discharged[site.site] = discharged.get(site.site, 0.0) + level * span_h
-    return {
-        s.site: discharged.get(s.site, 0.0) / s.capacity_mwh / len(days)
-        for s in sites
-        if s.capacity_mwh and not math.isnan(s.capacity_mwh) and s.capacity_mwh > 0
-    }
+#: The threshold and the measurement both live in :mod:`fleet.performance`, not
+#: here — the same rule decides what the dashboard flags and how notebook 04
+#: splits its sites, and three copies of it is how a project ends up quoting
+#: three different fleet sizes. The window and every excluded site's measured
+#: rate are written into the generated file, so a reader can see why a battery
+#: is absent rather than guess.
 
 
 def main() -> int:
     from fleet import census as census_mod
     from fleet import curated as curated_mod
+    from fleet import performance as fleet_perf
     from fleet import population as pop_mod
+
+    THRESHOLD = fleet_perf.ANCILLARY_CYCLES_THRESHOLD
 
     census = pop_mod.census_population()
     keep = [
@@ -152,15 +125,15 @@ def main() -> int:
 
     end = census_mod.snapshot_date()
     days = [end - dt.timedelta(days=i) for i in range(MEASURE_DAYS - 1, -1, -1)]
-    rates = _cycles_per_day(census, keep, days)
+    rates = fleet_perf.cycles_per_day(census, keep, days)
     quiet = sorted(
-        (name, rate) for name, rate in rates.items() if rate < MIN_CYCLES_PER_DAY
+        (name, rate) for name, rate in rates.items() if rate < THRESHOLD
     )
     quiet_names = {name for name, _ in quiet}
     keep = [s for s in keep if s.site not in quiet_names]
     print(
         f"cycling measured over {days[0]} → {days[-1]} ({MEASURE_DAYS} days); "
-        f"{len(quiet)} site(s) below {MIN_CYCLES_PER_DAY} cycles/day removed:"
+        f"{len(quiet)} site(s) below {THRESHOLD} cycles/day removed:"
     )
     for name, rate in quiet:
         print(f"    {name:<38} {rate:.3f} cycles/day")
@@ -169,7 +142,7 @@ def main() -> int:
         HEADER.format(
             stamp=dt.date.today().isoformat(),
             window=f"{days[0]} → {days[-1]}",
-            threshold=MIN_CYCLES_PER_DAY,
+            threshold=THRESHOLD,
             quiet="".join(f"\n  {n} ({r:.2f}/day)" for n, r in quiet) or " none",
         )
     ]

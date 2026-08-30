@@ -517,3 +517,34 @@ def test_battery_era_start_is_silent_when_nothing_violates():
     times = pd.date_range("2024-01-01", periods=2, freq="30min", tz="UTC")
     profile = pd.DataFrame({"site": ["Fine", "Fine"], "time": times, "mw": [10.0, -10.0]})
     assert performance.battery_era_start(profile, {"Fine": 50.0}) == {}
+
+
+def test_the_cycling_rule_is_not_copied_anywhere():
+    """One threshold, one measurement, imported everywhere else.
+
+    The registry generator decides membership with this rule, the dashboard
+    flags with it and notebook 04 splits its scored sites on it. When each kept
+    its own copy the project quoted several different fleet sizes and no two
+    agreed, so the rule lives in :mod:`fleet.performance` and every other place
+    imports it. Anything that redefines a cycles constant has forked the rule.
+    """
+    import re
+    from pathlib import Path
+
+    from fleet import performance
+
+    assert isinstance(performance.ANCILLARY_CYCLES_THRESHOLD, float)
+    assert callable(performance.cycles_per_day)
+
+    root = Path(__file__).resolve().parents[2]
+    owner = root / "fleet" / "performance.py"
+    defines_a_cycles_constant = re.compile(r"^\s*[A-Z][A-Z_]*CYCLES[A-Z_]*\s*=\s*[\d.]+\s*(#.*)?$")
+    copies = [
+        f"{path.relative_to(root)}:{n}"
+        for folder in ("fleet", "scripts", "dashboard")
+        for path in (root / folder).rglob("*.py")
+        if path != owner
+        for n, line in enumerate(path.read_text().splitlines(), 1)
+        if defines_a_cycles_constant.match(line)
+    ]
+    assert not copies, f"the cycling rule has been copied: {copies}"

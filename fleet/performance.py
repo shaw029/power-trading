@@ -18,6 +18,8 @@ motivated it is invisible, so ancillary-tilted sites can read negative.
 estimate is comparable.
 """
 
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -511,6 +513,54 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
     grouped["capture_spread"] = _capture_spread(grouped["total_gbp"], grouped["discharge_mwh"])
     grouped["likely_ancillary"] = grouped["cycles_per_day"] < ANCILLARY_CYCLES_THRESHOLD
     return grouped.sort_values("gbp_per_mw_day", ascending=False).reset_index(drop=True)
+
+
+def cycles_per_day(population, sites, days) -> dict[str, float]:
+    """Discharge throughput over nameplate energy, per site, across ``days``.
+
+    **The single implementation of "how hard does this site cycle".**
+    :data:`ANCILLARY_CYCLES_THRESHOLD` is the single threshold it is compared
+    against. Both live here because the answer is read in three places — the
+    registry generator decides membership with it, the dashboard flags with it,
+    and notebook 04 splits its scored sites on it — and three copies of a rule
+    is how a project ends up quoting three different fleet sizes.
+
+    Reads the day-file cache the caller's population already fetched, so it adds
+    no network round of its own for a day already on disk.
+
+    **Divided by every calendar day in the window, not by active days.** A
+    battery that sat idle for a fortnight did not cycle in that fortnight, and
+    the rate should say so. The cost is that a site commissioned mid-window, or
+    one with a fetch gap, reads lower than its behaviour deserves — so the
+    window is always reported alongside the rate.
+    """
+    from fleet import fetch_fleet  # noqa: PLC0415 - avoids an import cycle
+
+    discharged: dict[str, float] = {}
+    site_of = population.bmu_to_site()
+    for day in days:
+        try:
+            records = fetch_fleet.fetch_fleet_pn(day, population)
+        except Exception:  # one unavailable day must not skew the rate
+            continue
+        for record in records:
+            site = site_of.get(record.get("bmUnit"))
+            if site is None:
+                continue
+            level = (
+                float(record.get("levelFrom", 0.0)) + float(record.get("levelTo", 0.0))
+            ) / 2
+            if level <= 0:  # discharge only; charging is not throughput here
+                continue
+            span_h = (
+                pd.Timestamp(record["timeTo"]) - pd.Timestamp(record["timeFrom"])
+            ).total_seconds() / 3600
+            discharged[site.site] = discharged.get(site.site, 0.0) + level * span_h
+    return {
+        site.site: discharged.get(site.site, 0.0) / site.capacity_mwh / len(days)
+        for site in sites
+        if site.capacity_mwh and not math.isnan(site.capacity_mwh) and site.capacity_mwh > 0
+    }
 
 
 def _summarise_by(daily: pd.DataFrame, key: str) -> pd.DataFrame:
