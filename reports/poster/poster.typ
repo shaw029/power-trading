@@ -95,7 +95,8 @@
     GB pays #text(fill: cost-red)[#n4.scarcity_mean] for scarcity across the window
     studied — and pays it in cash-out, not the day-ahead price batteries
     schedule against. So they find the peak and stop:
-    #text(fill: cost-red)[#n4.forgone_pct] of system-optimal scarcity energy undelivered.
+    #text(fill: cost-red)[#n4.forgone_pct] of system-optimal energy undelivered in the
+    tightest decile of load.
   ]
   #v(2mm)
   #text(size: 19pt, fill: ink.lighten(20%))[
@@ -177,11 +178,12 @@ running in France. This study is a measurement of what that choice has to fix.
 #section("2 · Why the Gap Exists, and What It Costs", cost-red)
 
 A profit-optimised #metric[#n4.asset] battery delivers #metric[#n4.forgone_pct]
-#text(size: 17pt)[#n4.forgone_ci] less stress-period energy than the same battery run
-on a system-value objective — #metric[#n4.forgone_mwh]. That
-counterfactual is our own objective, not a NESO instruction.
+#text(size: 17pt)[#n4.forgone_ci] less energy than the same battery run on a system-value
+objective — #metric[#n4.forgone_mwh] — across the *tightest decile of residual load*.
+That is system utilisation, not operator scarcity: sections 3 and 4 use the operator's
+own measures. The counterfactual is our objective, not a NESO instruction.
 
-It is not mistimed: discharge peaks at #metric[#n4.peak_hour], exactly when stress does.
+It is not mistimed: discharge peaks at #metric[#n4.peak_hour], exactly when load does.
 It simply empties, hitting its #metric[#n4.soc_floor] floor by #n4.floor_hour while the system is
 still tight #metric[#n4.tight_at_floor] of the time — because nothing pays it not to. GB prices scarcity as
 #metric[VoLL × LoLP] in the *imbalance* price: across this window that is
@@ -190,7 +192,7 @@ never reaches the day-ahead objective the battery actually maximises.
 
 The gap runs both ways. A battery serves the system by absorbing surplus as well
 as discharging into scarcity, and the profit schedule captures #metric[#n4.surplus_pct] of
-surplus against #metric[#n4.stress_pct] of stress. It does track the system — dispatch
+surplus against #metric[#n4.stress_pct] of top-decile load. It tracks the system — dispatch
 correlates #metric[#n4.dispatch_corr] with residual load — it stops short in both
 directions.
 
@@ -203,8 +205,8 @@ not incentives: a #metric[6 h] battery reaches #metric[#n4.dur6_free] free where
 #metric[2 h] one caps at #metric[#n4.dur2_best] at any price.
 
 #panel("nb04_fig2_diurnal_mismatch.svg", ratio: 62%)[
-  Fig 2 — The mean day across all 34 days containing a stress hour. Discharge
-  peaks at the same hour as stress, so the gap is not one of timing. It is
+  Fig 2 — The mean day across all 34 days containing a top-decile load hour.
+  Discharge peaks at the same hour, so the gap is not one of timing. It is
   duration: the battery reaches its floor by 21:00 while the system is still
   tight #n4.tight_at_floor of the time.
 ]
@@ -336,7 +338,7 @@ contributor to the fleet's response, not an identified cause.
 - *Why a winter?* Operator scarcity does not occur in a GB summer — margin stays
   far above any scarcity threshold throughout. 2019–20 is also the last priceable
   one: no GB day-ahead price is published after the single market ended.
-- *Where the stress line is drawn* barely matters — at the top 5%, 10% and 15%
+- *Where the load line is drawn* barely matters — at the top 5%, 10% and 15%
   of residual load the gap is #metric[#n4.thresh_gap_range].
 - *Cost model against calendar.* Resampling days gives #metric[#n4.resample_range],
   and sweeping degradation #metric[£0–10] with slippage #metric[£0–4/MWh] gives
