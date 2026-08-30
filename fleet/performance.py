@@ -515,6 +515,125 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
     return grouped.sort_values("gbp_per_mw_day", ascending=False).reset_index(drop=True)
 
 
+def infer_soc(mw: pd.Series, capacity_mwh: float, eta_c: float, eta_d: float,
+              reanchor: bool = False, hours_per_period: float = 0.5):
+    """Inferred state of charge (fraction) before each period, from notified MW.
+
+    Returns ``(series, clamp_fraction)``. Elexon publishes no state of charge, so
+    it is integrated from the notified position: charging adds energy at
+    ``eta_c``, discharging removes it at ``1/eta_d``.
+
+    The clip at 0 and capacity is what stops the integration drifting away over
+    months of accumulated error. ``clamp_fraction`` reports how often that safety
+    net was actually load-bearing, which is the diagnostic that decides whether a
+    site's inferred state of charge is usable at all — a series pinned at a bound
+    half the time is not a measurement.
+
+    ``reanchor`` resets to half full at 04:00 daily. That is the sensitivity
+    variant: it stops error accumulating but imposes a level nobody observed, so
+    the two schemes bracket the answer rather than one being correct.
+
+    Lives here rather than in a notebook because notebooks 05 and 07 both need
+    it, and two integrations of the same series would be two answers.
+    """
+    vals = np.nan_to_num(mw.to_numpy(dtype=float))
+    idx = mw.index
+    out = np.empty(len(vals))
+    level = 0.5 * capacity_mwh
+    clamped = 0
+    for i in range(len(vals)):
+        if reanchor and idx[i].hour == 4 and idx[i].minute == 0:
+            level = 0.5 * capacity_mwh
+        out[i] = level
+        v = vals[i]
+        new = level + (
+            max(-v, 0.0) * eta_c - max(v, 0.0) / eta_d
+        ) * hours_per_period
+        if new < 0.0 or new > capacity_mwh:
+            clamped += 1
+        level = min(max(new, 0.0), capacity_mwh)
+    return pd.Series(out / capacity_mwh, index=idx), clamped / max(len(vals), 1)
+
+
+def fleet_state_of_charge(
+    pn: pd.DataFrame,
+    grid: pd.DatetimeIndex,
+    site_mwh: dict,
+    site_mw: dict,
+    eta_c: float,
+    eta_d: float,
+    cycles_min: float = ANCILLARY_CYCLES_THRESHOLD,
+    clamp_max: float = 0.5,
+    hours_per_period: float = 0.5,
+) -> dict:
+    """MWh-weighted fleet state of charge, and the diagnostics behind it.
+
+    Returns a dict with ``soc`` and ``soc_anchored`` (the sensitivity variant),
+    ``diagnostics`` per site, ``usable`` (the sites whose inferred series is
+    trustworthy) and ``skipped_no_mwh``.
+
+    A site qualifies only if it cycles at least ``cycles_min`` and its
+    integration is pinned at a bound no more than ``clamp_max`` of the time.
+    Both filters exist because an inferred series can be arithmetically fine and
+    still carry no information: a site that never moves has a flat line, and one
+    that saturates has a square wave.
+
+    Sites with no published energy capacity are excluded and named, never
+    defaulted — assuming a duration would put a fabricated denominator under
+    every SoC figure.
+    """
+    wide = pn.pivot_table(index="time", columns="site", values="mw", aggfunc="sum")
+    span = pn.groupby("site")["time"].agg(["min", "max"])
+    soc_cols, anchor_cols, rows = {}, {}, []
+    skipped: list[str] = []
+    for site in wide.columns:
+        cap = site_mwh.get(site)
+        # `not cap` does not reject a nan — nan is truthy — so unknown energy
+        # capacity has to be tested for explicitly, or a site with no published
+        # duration divides through by nan and contributes silent nulls.
+        if cap is None or cap != cap or cap <= 0:
+            skipped.append(site)
+            continue
+        sub = grid[(grid >= span.loc[site, "min"]) & (grid <= span.loc[site, "max"])]
+        if len(sub) < 48:
+            continue
+        series = wide[site].reindex(sub).fillna(0.0)
+        soc, clamp = infer_soc(series, cap, eta_c, eta_d, False, hours_per_period)
+        anchored, _ = infer_soc(series, cap, eta_c, eta_d, True, hours_per_period)
+        discharge_mwh = series.clip(lower=0).sum() * hours_per_period
+        cycles = discharge_mwh / cap / (len(sub) * hours_per_period / 24.0)
+        soc_cols[site], anchor_cols[site] = soc, anchored
+        rows.append({"site": site, "capacity_mwh": cap, "cycles_per_day": cycles,
+                     "clamp_frac": clamp,
+                     "usable_soc": (cycles >= cycles_min) and (clamp <= clamp_max),
+                     "periods": len(sub)})
+
+    diagnostics = pd.DataFrame(rows)
+    if len(diagnostics):
+        diagnostics = diagnostics.set_index("site").sort_values(
+            "cycles_per_day", ascending=False
+        )
+    usable = list(diagnostics.index[diagnostics["usable_soc"]]) if len(diagnostics) else []
+
+    def _weighted(frame):
+        if not usable:
+            return pd.Series(index=grid, dtype=float)
+        sub = pd.DataFrame(frame)[usable].reindex(grid)
+        weights = pd.Series({s: site_mwh[s] for s in usable})
+        num = sub.mul(weights, axis=1).sum(axis=1, min_count=1)
+        den = sub.notna().mul(weights, axis=1).sum(axis=1)
+        return num / den.replace(0, np.nan)
+
+    return {
+        "soc": _weighted(soc_cols),
+        "soc_anchored": _weighted(anchor_cols),
+        "diagnostics": diagnostics,
+        "usable": usable,
+        "skipped_no_mwh": skipped,
+        "skipped_mw": sum(site_mw.get(s, 0.0) for s in skipped),
+    }
+
+
 def cycles_per_day(population, sites, days) -> dict[str, float]:
     """Discharge throughput over nameplate energy, per site, across ``days``.
 
