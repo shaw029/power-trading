@@ -160,7 +160,7 @@ differ in whether scarcity reaches the price an asset schedules against.
       balancing a core battery revenue, not a residual cost],
     [*France*], [TURPE 7, live this month: up to €69/MWh to charge in
       solar-heavy zones, rewards for discharge at winter peaks],
-    [*GB*], [VoLL × LoLP in cash-out — #metric[£0.00/MWh] here — and nothing in
+    [*GB*], [VoLL × LoLP in cash-out — #metric[#n4.scarcity_mean] here — and nothing in
       the day-ahead price],
   )
 ]
@@ -185,7 +185,7 @@ It is not mistimed: discharge peaks at #metric[#n4.peak_hour], exactly when stre
 It simply empties, hitting its #metric[#n4.soc_floor] floor by #n4.floor_hour while the system is
 still tight #metric[#n4.tight_at_floor] of the time — because nothing pays it not to. GB prices scarcity as
 #metric[VoLL × LoLP] in the *imbalance* price: across this window that is
-#metric[£0.00/MWh] on average, exactly zero in #metric[99.5%] of periods, and it
+#metric[#n4.scarcity_mean] on average, exactly zero in #metric[#n4.scarcity_zero] of periods, and it
 never reaches the day-ahead objective the battery actually maximises.
 
 The gap runs both ways. A battery serves the system by absorbing surplus as well
@@ -196,8 +196,8 @@ directions.
 
 Sweeping a blended objective prices it. The 2 h profit schedule already delivers
 #metric[#n4.free_share] of everything *that* battery can deliver, and the rest costs under
-#metric[4% of benchmark revenue] — about #metric[£4/MW/day]
-#text(size: 17pt)[(£3–7 across cost models)], under the production model
+#metric[#n4.cost_all_share] — about #metric[#n4.cost_all]
+#text(size: 17pt)[#n4.cost_all_range], under the production model
 (degradation £5/MWh, slippage £2/MWh, 1.5 cycles/day). The ceiling is energy,
 not incentives: a #metric[6 h] battery reaches #metric[#n4.dur6_free] free where a
 #metric[2 h] one caps at #metric[#n4.dur2_best] at any price.
@@ -269,8 +269,8 @@ contributor to the fleet's response, not an identified cause.
   #v(1mm)
   #text(size: 19pt)[
     *Scarcity value never reaches the price batteries schedule against.* It is
-    paid in cash-out, at #metric[£0.00/MWh] across this window, and only inside
-    a declared stress event — #metric[13] of those in eight years. So the fleet
+    paid in cash-out, at #metric[#n4.scarcity_mean] across this window, and only inside
+    a declared stress event — #metric[#n5.n_cmn] of those in eight years. So the fleet
     holds #metric[#n5.dispatch_gap] of its energy at an event's deepest point: nothing
     pays it to spend that energy. Duration bounds what any signal could buy — a
     2 h battery caps at 43% — but the binding problem here is the signal.
@@ -318,7 +318,7 @@ contributor to the fleet's response, not an identified cause.
   unserved energy and reserve procurement are unvalued, and building 6 h is not
   costed: incentives cannot substitute for energy, but energy is not free.
 - *Rare samples are exhibits, not statistics.* Capacity Market Notices
-  (#metric[n=13]) and DRM < 1 GW (#metric[n=39]) carry nothing like the weight
+  (#metric[n=#n5.n_cmn]) and DRM < 1 GW (#metric[n=#n5.n_drm]) carry nothing like the weight
   of tiers with thousands of periods.
 ]
 
@@ -328,18 +328,18 @@ contributor to the fleet's response, not an identified cause.
 #v(2mm)
 #text(size: 16pt)[
 - *Four definitions, one severe winter.* On winter 2019–20 (margin to
-  #metric[213 MW], LoLP #metric[0.371]) the gap lands in #metric[20–24%] across
-  definitions spanning #metric[364] periods down to #metric[21] — and the
+  #metric[#n4.winter_drm], LoLP #metric[#n4.winter_lolp]) the gap lands in #metric[#n4.winter_gap_range] across
+  definitions spanning #metric[#n4.winter_periods_max] periods down to #metric[#n4.winter_periods_min] — and the
   summer's #metric[#n4.forgone_pct] sits inside it.
-- *Why a winter?* Operator scarcity does not occur in a GB summer — margin never
-  falls below #metric[5.1 GW]. 2019–20 is also the last priceable one: no GB
-  day-ahead price is published after the single market ended.
+- *Why a winter?* Operator scarcity does not occur in a GB summer — margin stays
+  far above any scarcity threshold throughout. 2019–20 is also the last priceable
+  one: no GB day-ahead price is published after the single market ended.
 - *Where the stress line is drawn* barely matters — at the top 5%, 10% and 15%
-  of residual load the gap is #metric[22–23%].
-- *Cost model against calendar.* Resampling days gives #metric[£37–63/MW/day],
+  of residual load the gap is #metric[#n4.thresh_gap_range].
+- *Cost model against calendar.* Resampling days gives #metric[#n4.resample_range],
   and sweeping degradation #metric[£0–10] with slippage #metric[£0–4/MWh] gives
-  #metric[£46–54]. Assumptions move it less than the sample does, and the
-  frontier's shape shifts under #metric[6%].
+  #metric[#n4.cost_model_range]. Assumptions move it less than the sample does, and
+  the frontier's shape shifts by #metric[#n4.frontier_shift].
 ]
 
 #colbreak()

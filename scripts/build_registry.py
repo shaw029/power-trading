@@ -31,6 +31,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -58,6 +60,11 @@ Metadata provenance differs across the two groups and the difference matters:
   is the trading party rather than the optimiser proper, and ``region`` to the
   GSP group. Read the *By optimiser* cut with that in mind.
 
+**Sites cycling below {threshold} cycles/day are left out**, measured over
+{window}. That criterion is behaviour rather than identity, so this list moves
+with market conditions as well as with the fleet — which is why the window is
+recorded here. Left out on that basis:{quiet}
+
 Generated {stamp} from a census snapshot by ``scripts/build_registry.py``.
 Regenerate when the fleet moves on; this file is data, not logic.
 """
@@ -68,7 +75,61 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
 '''
 
 
+#: Days of dispatch used to measure how hard a site cycles.
+MEASURE_DAYS = 60
+
+#: Sites cycling below this are left out of the registry entirely.
+#:
+#: **This is the one criterion here that is not a fact about an asset.** BM
+#: registration and a published MWh are static; cycling is behaviour over a
+#: window, so a list filtered on it changes with market conditions and not only
+#: with which batteries exist. That cost is accepted deliberately, because a
+#: site cycling this little is almost certainly earning in ancillary markets the
+#: settlement model cannot see — while it *can* see the energy bought to hold
+#: state of charge for those contracts. Its £ figures are therefore not merely
+#: uncertain, they are systematically negative, and showing them as performance
+#: misleads more than leaving the site out does.
+#:
+#: The window and the measured rate are written into the generated file, so a
+#: reader can always see why a battery is absent rather than guess.
+MIN_CYCLES_PER_DAY = 0.3
+
+
+def _cycles_per_day(population, sites, days) -> dict:
+    """Discharge throughput over nameplate energy, per site, across ``days``.
+
+    Reads the census day-file cache the research tier has already fetched, so
+    this adds no network round of its own for any day already on disk.
+    """
+    from fleet import fetch_fleet
+
+    discharged: dict = {}
+    site_of = population.bmu_to_site()
+    for day in days:
+        try:
+            records = fetch_fleet.fetch_fleet_pn(day, population)
+        except Exception:  # one unavailable day must not skew the rate
+            continue
+        for r in records:
+            site = site_of.get(r.get("bmUnit"))
+            if site is None:
+                continue
+            level = (float(r.get("levelFrom", 0.0)) + float(r.get("levelTo", 0.0))) / 2
+            if level <= 0:
+                continue
+            span_h = (
+                pd.Timestamp(r["timeTo"]) - pd.Timestamp(r["timeFrom"])
+            ).total_seconds() / 3600
+            discharged[site.site] = discharged.get(site.site, 0.0) + level * span_h
+    return {
+        s.site: discharged.get(s.site, 0.0) / s.capacity_mwh / len(days)
+        for s in sites
+        if s.capacity_mwh and not math.isnan(s.capacity_mwh) and s.capacity_mwh > 0
+    }
+
+
 def main() -> int:
+    from fleet import census as census_mod
     from fleet import curated as curated_mod
     from fleet import population as pop_mod
 
@@ -89,9 +150,27 @@ def main() -> int:
             f"file would not be a superset of the metadata table — {missing}"
         )
 
+    end = census_mod.snapshot_date()
+    days = [end - dt.timedelta(days=i) for i in range(MEASURE_DAYS - 1, -1, -1)]
+    rates = _cycles_per_day(census, keep, days)
+    quiet = sorted(
+        (name, rate) for name, rate in rates.items() if rate < MIN_CYCLES_PER_DAY
+    )
+    quiet_names = {name for name, _ in quiet}
+    keep = [s for s in keep if s.site not in quiet_names]
+    print(
+        f"cycling measured over {days[0]} → {days[-1]} ({MEASURE_DAYS} days); "
+        f"{len(quiet)} site(s) below {MIN_CYCLES_PER_DAY} cycles/day removed:"
+    )
+    for name, rate in quiet:
+        print(f"    {name:<38} {rate:.3f} cycles/day")
+
     lines = [
         HEADER.format(
             stamp=dt.date.today().isoformat(),
+            window=f"{days[0]} → {days[-1]}",
+            threshold=MIN_CYCLES_PER_DAY,
+            quiet="".join(f"\n  {n} ({r:.2f}/day)" for n, r in quiet) or " none",
         )
     ]
     for s in keep:

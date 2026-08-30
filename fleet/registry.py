@@ -1,32 +1,45 @@
 """The battery fleet this project analyses — generated, do not hand-edit.
 
 Every BM-registered GB battery the census can identify **whose energy capacity
-is known**, which is what makes every per-site metric computable for every site
+is known**, which is what makes every dashboard metric computable for every site
 shown: cycles per day and the duration bucket both divide by MWh, and a site
 without one would render blank cells rather than a smaller number.
 
-This is *the* registry — the population the live dashboard renders. It is
-generated from :mod:`fleet.census` rather than written by hand, so it is a
-measurement rather than an assertion. :mod:`fleet.curated` is not a rival
-registry: it is a metadata table, supplying hand-researched optimiser, region
-and MWh for the sites it covers.
-
-Every site in :mod:`fleet.curated` is included, so no site ever loses its
-hand-researched metadata. The generator refuses to write a file that is not a
-superset. Sizes are deliberately not written here — count the tuple
+Every site in the curated registry is included: this is a superset of it, so the
+dashboard can never show less than it did before. The generator refuses to write
+a file that is not. Sizes are deliberately not written here — count the tuple
 below, which is the only copy that cannot go stale.
 
 Metadata provenance differs across the two groups and the difference matters:
 
-* Where :mod:`fleet.curated` covers a site, ``optimiser``, ``region`` and
-  ``capacity_mwh`` are hand-researched.
+* For the curated sites, ``optimiser``, ``region`` and
+  ``capacity_mwh`` are hand-verified (see :mod:`fleet.registry`).
 * For the rest, ``power_mw`` is Elexon's declared export capability and
   ``capacity_mwh`` comes from a matched Capacity Market agreement — both
   published figures. ``optimiser`` falls back to the BM Unit's lead party, which
   is the trading party rather than the optimiser proper, and ``region`` to the
   GSP group. Read the *By optimiser* cut with that in mind.
 
-Generated 2026-08-29 from a census snapshot by ``scripts/build_registry.py``.
+**Sites cycling below 0.3 cycles/day are left out**, measured over
+2026-07-02 → 2026-08-30. That criterion is behaviour rather than identity, so this list moves
+with market conditions as well as with the fleet — which is why the window is
+recorded here. Left out on that basis:
+  Capenhurst (0.08/day)
+  Coylton  Greener Grid  Park (0.00/day)
+  Enderby (0.00/day)
+  INDIAN QUEENS BESS (0.00/day)
+  Iron Acton (0.00/day)
+  Monk Fryston BESS BMU-1 (0.00/day)
+  Neilston Battery 1 (0.12/day)
+  Pen y Cymoedd Battery (0.00/day)
+  Roosecote (0.04/day)
+  Sizing John (0.00/day)
+  Thornton (0.11/day)
+  Uskmouth (0.03/day)
+  Whitegate (0.19/day)
+  Wilton (0.25/day)
+
+Generated 2026-08-30 from a census snapshot by ``scripts/build_registry.py``.
 Regenerate when the fleet moves on; this file is data, not logic.
 """
 
@@ -106,14 +119,6 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
         region='Eastern England',
     ),
     FleetSite(
-        site='Capenhurst',
-        bmu_ids=("T_CAPNB-1",),
-        power_mw=57.0,
-        capacity_mwh=165.0,
-        optimiser='HD888CAP Ltd',
-        region='unknown',
-    ),
-    FleetSite(
         site='Capenhurst (Zenobe)',
         bmu_ids=("T_PINFB-1", "T_PINFB-2", "T_PINFB-3", "T_PINFB-4"),
         power_mw=105.1,
@@ -186,28 +191,12 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
         region='unknown',
     ),
     FleetSite(
-        site='Coylton  Greener Grid  Park',
-        bmu_ids=("T_COYLB-1",),
-        power_mw=50.0,
-        capacity_mwh=59.8,
-        optimiser='Statkraft Markets Gmbh',
-        region='unknown',
-    ),
-    FleetSite(
         site='Dollymans',
         bmu_ids=("E_DOLLB-1",),
         power_mw=102.0,
         capacity_mwh=200.0,
         optimiser='Statera',
         region='Eastern England',
-    ),
-    FleetSite(
-        site='Enderby',
-        bmu_ids=("T_ENDRB-1",),
-        power_mw=57.0,
-        capacity_mwh=114.0,
-        optimiser='Flexitricity',
-        region='East Midlands',
     ),
     FleetSite(
         site='Erskine BESS',
@@ -266,22 +255,6 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
         region='Yorkshire',
     ),
     FleetSite(
-        site='INDIAN QUEENS BESS',
-        bmu_ids=("T_INDQB-1",),
-        power_mw=47.5,
-        capacity_mwh=95.0,
-        optimiser='Pivoted Power LLP',
-        region='unknown',
-    ),
-    FleetSite(
-        site='Iron Acton',
-        bmu_ids=("T_IRNAB-1",),
-        power_mw=121.0,
-        capacity_mwh=300.0,
-        optimiser='HD000ACT Ltd',
-        region='unknown',
-    ),
-    FleetSite(
         site='KXP Immingham BESS',
         bmu_ids=("E_STALB-1",),
         power_mw=80.8,
@@ -330,27 +303,11 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
         region='unknown',
     ),
     FleetSite(
-        site='Monk Fryston BESS BMU-1',
-        bmu_ids=("T_MNFRB-1", "T_MNFRB-2", "T_MNFRB-3", "T_MNFRB-4"),
-        power_mw=320.0,
-        capacity_mwh=640.0,
-        optimiser='SSE Battery Monk Fryston Ltd',
-        region='unknown',
-    ),
-    FleetSite(
         site='Native River',
         bmu_ids=("T_NTRVB-1",),
         power_mw=57.0,
         capacity_mwh=138.0,
         optimiser='Arenko Cleantech Limited',
-        region='unknown',
-    ),
-    FleetSite(
-        site='Neilston Battery 1',
-        bmu_ids=("T_NLSTB-1",),
-        power_mw=50.0,
-        capacity_mwh=110.7,
-        optimiser='Statkraft Markets Gmbh',
         region='unknown',
     ),
     FleetSite(
@@ -384,14 +341,6 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
         capacity_mwh=20.0,
         optimiser='Field Oldham Ltd',
         region='North Western',
-    ),
-    FleetSite(
-        site='Pen y Cymoedd Battery',
-        bmu_ids=("T_PNYCB-1",),
-        power_mw=22.0,
-        capacity_mwh=16.0,
-        optimiser='Arenko Cleantech Limited',
-        region='unknown',
     ),
     FleetSite(
         site='Pillswood',
@@ -434,22 +383,6 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
         region='South Scotland',
     ),
     FleetSite(
-        site='Roosecote',
-        bmu_ids=("E_ROOSB-1",),
-        power_mw=49.0,
-        capacity_mwh=98.0,
-        optimiser='Gresham House',
-        region='North West England',
-    ),
-    FleetSite(
-        site='Sizing John',
-        bmu_ids=("T_SZJNB-1",),
-        power_mw=57.0,
-        capacity_mwh=137.5,
-        optimiser='Arenko Cleantech Limited',
-        region='unknown',
-    ),
-    FleetSite(
         site='Skelmersdale Battery',
         bmu_ids=("E_SKELB-1",),
         power_mw=49.9,
@@ -474,28 +407,12 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
         region='unknown',
     ),
     FleetSite(
-        site='Thornton',
-        bmu_ids=("T_BLWNB-1",),
-        power_mw=200.0,
-        capacity_mwh=400.0,
-        optimiser='Statkraft',
-        region='Yorkshire',
-    ),
-    FleetSite(
         site='Tye Lane BESS',
         bmu_ids=("T_TYLNB-1",),
         power_mw=59.2,
         capacity_mwh=114.0,
         optimiser='Pivoted Power LLP',
         region='unknown',
-    ),
-    FleetSite(
-        site='Uskmouth',
-        bmu_ids=("T_USKMB-2", "T_USKMB-3", "T_USKMB-4", "T_USKMB-5"),
-        power_mw=230.0,
-        capacity_mwh=460.0,
-        optimiser='E.ON / UES',
-        region='South Wales',
     ),
     FleetSite(
         site='West Burton B Battery',
@@ -514,28 +431,12 @@ REGISTRY_SITES: tuple[FleetSite, ...] = (
         region='North Western',
     ),
     FleetSite(
-        site='Whitegate',
-        bmu_ids=("T_WTGTB-1",),
-        power_mw=58.0,
-        capacity_mwh=165.0,
-        optimiser='HD144WHI Ltd',
-        region='unknown',
-    ),
-    FleetSite(
         site='Whitelee',
         bmu_ids=("T_WHLWB-1",),
         power_mw=50.2,
         capacity_mwh=50.0,
         optimiser='ScottishPower',
         region='Scotland (South)',
-    ),
-    FleetSite(
-        site='Wilton',
-        bmu_ids=("T_LIONB-1", "T_LIONB-2", "T_LIONB-3"),
-        power_mw=150.0,
-        capacity_mwh=300.0,
-        optimiser='Sembcorp',
-        region='North East England',
     ),
     FleetSite(
         site='Wishaw',
