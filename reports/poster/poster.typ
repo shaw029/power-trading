@@ -206,7 +206,7 @@ not incentives: a #metric[6 h] battery reaches #metric[#n4.dur6_free] free where
   Fig 2 — The mean day across all 34 days containing a stress hour. Discharge
   peaks at the same hour as stress, so the gap is not one of timing. It is
   duration: the battery reaches its floor by 21:00 while the system is still
-  tight 59% of the time.
+  tight #n4.tight_at_floor of the time.
 ]
 
 #panel("nb04_fig_duration_frontier.svg", ratio: 68%)[
@@ -224,9 +224,11 @@ GB fleet discharges in #metric[#n5.discharge_share] of periods, delivering
 #metric[#n5.response] against a #metric[#n5.baseline] baseline. That mean
 hides a tail: #metric[#n5.tail_half] of site-periods run above half of nameplate.
 
-The fleet arrives ready and does not empty. Charge rises into the event, and
-across #metric[#n5.events] events only #metric[#n5.duration_gap] of event time is spent below the
-fleet's own low-water mark.
+The fleet does not empty: across #metric[#n5.events] events only
+#metric[#n5.duration_gap] of event time is spent below its own low-water mark. It charges into
+an event too — but so it does on any ordinary evening. Against controls matched
+on the same half-hour, month *and year*, it arrives no fuller than usual, so the
+run-up is the daily cycle rather than a response to the warning.
 
 Its shortfall is dispatch, not duration: #metric[#n5.dispatch_gap] of usable energy is
 still held at the deepest point of the average event, #n5.dispatch_multiple the
