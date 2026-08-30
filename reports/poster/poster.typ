@@ -17,6 +17,7 @@
 #let n4 = json("../figures/poster/nb04_metrics.json")
 #let n5 = json("../figures/poster/nb05_metrics.json")
 #let n6 = json("../figures/poster/nb06_metrics.json")
+#let n7 = json("../figures/poster/nb07_metrics.json")
 #let n8 = json("../figures/poster/nb08_metrics.json")
 
 #let ink        = rgb("#0b0b0b")
@@ -268,6 +269,14 @@ and now the larger. It trades in ordinary conditions, so less is left in the tan
   answer is duration; for the real fleet it is dispatch.
 ]
 
+#panel("nb07_fig2_regime_by_band.svg", ratio: 66%)[
+  Fig 5 — Modern against skip-era response, same absolute rules, by margin band.
+  The change is largest where the system was #emph[loosest]: at #n7.loosest_band the
+  skip-era fleet sat near zero, so #n7.loosest_ratio is a fleet becoming active at all
+  rather than learning to chase scarcity. Same-site panel moves #n7.panel_ratio against
+  the fleet's #n7.fleet_ratio, so it is behaviour, not new build. Hatched = thin sample.
+]
+
 #section("4 · The Full Revenue Stack", mid-amber)
 
 If scarcity carries no rent, then earning more should *not* buy better scarcity
@@ -279,8 +288,14 @@ Ancillary services do lift earnings — #metric[#n4.anc_site] in #n4.window_days
 #metric[#n4.anc_site_share] of the pound reaches a named site. Participation is a plausible
 contributor to the fleet's response, not an identified cause.
 
-#panel("nb04_fig5_revenue_stack.svg", ratio: 58%)[
-  Fig 5 — The third stream lifts median earnings from #n4.median_base to #n4.median_full per MW per
+#panel("nb04_fig6_money_vs_coverage.svg", ratio: 62%)[
+  Fig 6 — The thesis in one chart. Median revenue rises from #n4.q_low to #n4.q_high
+  between the lowest and highest quartile; coverage does not move from
+  #n4.coverage_range. Paying a battery more does not buy the system more.
+]
+
+#panel("nb04_fig5_revenue_stack.svg", ratio: 55%)[
+  Fig 7 — The third stream lifts median earnings from #n4.median_base to #n4.median_full per MW per
   day, but most of the pound is collected by portfolios naming a trading unit.
 ]
 
