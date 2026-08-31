@@ -86,6 +86,7 @@
     A #n6.census_sites census of GB grid-scale batteries · 2018–2026 · built
     entirely from public Elexon and NESO data · all data as of #n6.snapshot
   ]
+
 ]
 
 #v(4mm)
@@ -124,9 +125,12 @@
     ],
   )
   #v(2.5mm)
-  #text(size: 19pt, fill: ink.lighten(20%))[
-    Nearly free today, because GB barely has scarcity — one negative-margin
-    half-hour in eight winters. The warning is for when that stops being true.
+  #v(1mm)
+  #text(size: 20pt, fill: ink.lighten(20%))[
+    Nearly free today — one negative-margin half-hour in eight winters — and the
+    warning is for when that stops being true. Meanwhile
+    #text(fill: da-blue, weight: "bold")[the reform that made batteries responsive
+    made them arrive empty] (§3).
   ]
 ]
 
@@ -165,7 +169,7 @@ pages, #metric[#n6.mwh_cm] from Capacity Market filings, #metric[#n6.mwh_none] w
 
 #v(6mm)
 
-#section("The gap is a design choice", mid-amber)
+#section("The fix: who already prices it", mid-amber)
 
 Every market here runs the same wholesale, intraday and balancing stack. They
 differ in whether the system's real-time needs reach the price an asset schedules
@@ -280,8 +284,8 @@ not incentives: a #metric[6 h] battery reaches #metric[#n4.dur6_free] free where
 #v(3mm)
 
 *Section 2 is what the incentive alone produces.* The real fleet does better —
-operator signals pull it in where price does not — yet still holds roughly half its
-energy at the deepest point. Two routes, one missing signal.
+operator signals pull it in — yet still holds roughly half its energy at the
+deepest point. Two routes, one missing signal.
 
 Measured against operator-grade scarcity (De-Rated Margin #metric[#n5.drm_threshold]), the
 GB fleet discharges in #metric[#n5.discharge_share] of periods, delivering
@@ -289,10 +293,9 @@ GB fleet discharges in #metric[#n5.discharge_share] of periods, delivering
 hides a tail: #metric[#n5.tail_half] of site-periods run above half of nameplate.
 
 The fleet does not empty: across #metric[#n5.events] events only
-#metric[#n5.duration_gap] of event time is spent below its own low-water mark. It charges into
-an event too — but so it does on any ordinary evening. Against controls matched
-on the same half-hour, month *and year*, it arrives no fuller than usual, so the
-run-up is the daily cycle rather than a response to the warning.
+#metric[#n5.duration_gap] of event time sits below its own low-water mark. It charges into an
+event — but against controls matched on half-hour, month *and year* it arrives no
+fuller than usual, so that run-up is the daily cycle, not a response.
 
 Its shortfall is dispatch, not duration, and declared duration does not predict
 response (#metric[#n5.dur_corr] across #n5.dur_sites sites). Figures are on the primary
@@ -339,11 +342,11 @@ it does not.
   #v(1mm)
   #text(size: 19pt)[
     *Scarcity value never reaches the price batteries schedule against.* It is
-    paid in cash-out, at #metric[#n4.scarcity_mean] across this window, and only inside
-    a declared stress event — #metric[#n5.n_cmn] of those in eight years. So the fleet
-    holds #metric[#n5.dispatch_gap] of its energy at an event's deepest point: nothing
-    pays it to spend that energy. Duration bounds what any signal could buy — a
-    2 h battery caps at #n4.dur2_best — but the binding problem here is the signal.
+    paid in cash-out, at #metric[#n4.scarcity_mean], and only inside a declared stress
+    event — #metric[#n5.n_cmn] in eight years. So the fleet holds
+    #metric[#n5.dispatch_gap] of its energy at an event's deepest point: nothing pays it
+    to spend that energy. Duration bounds what any signal could buy; the binding
+    problem here is the signal.
   ]
 ]
 
