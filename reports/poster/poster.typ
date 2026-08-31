@@ -238,7 +238,7 @@ never reaches the day-ahead objective the battery actually maximises.
 
 The gap runs both ways. A battery serves the system by absorbing surplus as well
 as discharging into scarcity, and the profit schedule captures #metric[#n4.surplus_pct] of
-surplus against #metric[#n4.stress_pct] of top-decile load. It tracks the system — dispatch
+surplus against #metric[#n4.top_decile_pct] of top-decile load. It tracks the system — dispatch
 correlates #metric[#n4.dispatch_corr] with residual load — it stops short in both
 directions.
 
