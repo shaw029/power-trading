@@ -1,4 +1,4 @@
-// Beyond the Spread — A0 portrait research poster.
+// Beyond the Spread — A0 landscape research poster (1189 x 841 mm).
 //
 // Figures are referenced as SVG, not PDF: Typst embeds PNG, JPEG, GIF and SVG,
 // and has no PDF image support. The SVG and PDF exports carry the same vectors,
@@ -30,7 +30,7 @@
 
 #let FIG = "../figures/poster/"
 
-// A0 portrait. Margins are generous because a poster is read standing up and
+// A0 landscape. Margins are generous because a poster is read standing up and
 // crowding the edge is what makes a board feel dense.
 #set page(
   width: 1189mm, height: 841mm,
@@ -38,9 +38,10 @@
   fill: paper,
 )
 
-// Body copy at 26pt. Poster text is read from roughly 1.5 m, where anything
-// under about 24pt starts costing the reader.
-#set text(font: ("Helvetica Neue", "Helvetica", "Arial"), size: 18pt, fill: ink)
+// Body copy at 16pt, read from roughly 1.5 m. Well above the 11pt floor this
+// board sets itself; the columns were tightened first, and this is what bought
+// the footer strip its room.
+#set text(font: ("Helvetica Neue", "Helvetica", "Arial"), size: 16pt, fill: ink)
 #set par(justify: true, leading: 0.62em)
 
 // A metric that must survive being read at a glance.
@@ -76,7 +77,7 @@
   ]
   #v(3mm)
   #text(size: 32pt, fill: da-blue)[
-    Quantifying the Alignment Gap Between Battery Arbitrage and System Scarcity
+    Quantifying the Alignment Gap Between Battery Arbitrage and System Value
   ]
   #v(3mm)
   #line(length: 100%, stroke: 3pt + rule-grey)
@@ -84,10 +85,6 @@
   #text(size: 19pt, fill: ink.lighten(25%))[
     A #n6.census_sites census of GB grid-scale batteries · 2018–2026 · built
     entirely from public Elexon and NESO data · all data as of #n6.snapshot
-  ]
-  #v(2mm)
-  #text(size: 19pt, fill: ink.lighten(35%), style: "italic")[
-    Resilience has many dimensions; this quantifies one — resource-adequacy scarcity — where public GB data measures the gap exactly.
   ]
 ]
 
@@ -101,17 +98,36 @@
   radius: 2pt,
 )[
   #text(size: 24pt, weight: "bold", fill: ink)[
-    GB pays #text(fill: cost-red)[#n4.scarcity_mean] for scarcity across the window
-    studied — and pays it in cash-out, not the day-ahead price batteries
-    schedule against. So they find the peak and stop:
-    #text(fill: cost-red)[#n4.forgone_pct] of system-optimal stress-period energy
-    undelivered — stress here meaning the top decile of residual load.
+    GB does not put scarcity in the price batteries trade against — so the fleet
+    finds the peak and stops.
   ]
-  #v(2mm)
+  #v(2.5mm)
+  // Two different quantities, deliberately in two rows: the modelled gap is a
+  // utilisation figure, the price is a scarcity one, and a reader who merges
+  // them has the argument backwards.
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 12mm,
+    [
+      #text(size: 20pt)[
+        *The gap, modelled.* #text(fill: da-blue, weight: "bold")[#n4.forgone_pct] of
+        stress-period energy left undelivered — stress meaning the top decile of
+        residual load, a utilisation measure.
+      ]
+    ],
+    [
+      #text(size: 20pt)[
+        *The price, measured.* Scarcity itself settles at
+        #text(fill: da-blue, weight: "bold")[#n4.scarcity_mean], inside
+        #text(fill: da-blue, weight: "bold")[#n5.n_cmn] declared events in eight years.
+      ]
+    ],
+  )
+  #v(2.5mm)
   #text(size: 19pt, fill: ink.lighten(20%))[
-    Closing *most* of it costs #text(fill: cost-red)[#n4.cost_all_share]; closing it
-    *fully* is a different order — #text(fill: cost-red)[#n4.resample_range]. And no price
-    closes it entirely: a 2 h battery caps at #n4.dur2_best of what a 6 h one reaches.
+    Nearly free today, because GB barely has scarcity — expected loss of load
+    averages #n8.lole_mean_h a year against a 3 h standard. The warning is for when
+    it does.
   ]
 ]
 
@@ -120,7 +136,7 @@
 // ─── Three columns ───────────────────────────────────────────────────────────
 #columns(3, gutter: 20mm)[
 
-#section("1 · The Problem, and the Fleet to Measure It", da-blue)
+#section("1 · The choice, and the fleet to measure it", da-blue)
 
 Measuring the gap at fleet level needs a fleet, and no public census of GB
 batteries exists — Elexon labels no BM Unit a battery. So we built one:
@@ -131,7 +147,7 @@ Sections 2–4 all measure this population.
 Energy capacity is barely published: #metric[#n6.mwh_hand] read by hand off operator
 pages, #metric[#n6.mwh_cm] from Capacity Market filings, #metric[#n6.mwh_none] with none.
 
-#panel("nb06_fig1_census_composition.svg", ratio: 68%)[
+#panel("nb06_fig1_census_composition.svg", ratio: 78%)[
   Fig 1 — What the census contains. #n6.top_band_sites sites hold #n6.top_band_share of the
   fleet's MW, while its #n6.dist_sites distribution-connected sites hold #n6.dist_share of it.
 ]
@@ -150,7 +166,7 @@ pages, #metric[#n6.mwh_cm] from Capacity Market filings, #metric[#n6.mwh_none] w
 
 #v(6mm)
 
-#section("International Context: Who Prices Scarcity in Real Time", mid-amber)
+#section("The gap is a design choice", mid-amber)
 
 Every market here runs the same wholesale, intraday and balancing stack. They
 differ in whether the system's real-time needs reach the price an asset schedules
@@ -187,7 +203,22 @@ running in France. This study is a measurement of what that choice has to fix.
 
 #colbreak()
 
-#section("2 · Why the Gap Exists, and What It Costs", cost-red)
+#section("2 · Route 1 — the incentive, modelled", cost-red)
+
+#block(
+  width: 100%,
+  fill: cost-red.lighten(93%),
+  stroke: (left: 4pt + cost-red),
+  inset: (x: 5mm, y: 3mm),
+  radius: 2pt,
+)[
+  #text(size: 18pt)[
+    *This is a model of the incentive alone — not the real fleet.* One
+    #n4.asset optimiser, perfect foresight, #n4.window_days.
+  ]
+]
+
+#v(3mm)
 
 A profit-optimised #metric[#n4.asset] battery delivers #metric[#n4.forgone_pct]
 #text(size: 17pt)[#n4.forgone_ci] less energy than the same battery run on a system-value
@@ -216,14 +247,14 @@ Sweeping a blended objective prices it. The 2 h profit schedule already delivers
 not incentives: a #metric[6 h] battery reaches #metric[#n4.dur6_free] free where a
 #metric[2 h] one caps at #metric[#n4.dur2_best] at any price.
 
-#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 57%)[
+#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 66%)[
   Fig 2 — The mean day across all 34 days containing a top-decile load hour.
   Discharge peaks at the same hour, so the gap is not one of timing. It is
   duration: the battery reaches its floor by 21:00 while the system is still
   tight #n4.tight_at_floor of the time.
 ]
 
-#panel("nb04_fig_duration_frontier.svg", ratio: 62%)[
+#panel("nb04_fig_duration_frontier.svg", ratio: 70%)[
   Fig 3 — The frontier is a family. Each curve sweeps the weight on system value
   for one duration; the dot is the profit schedule. Moving up beats moving right.
   It is the ceiling, not the cause: a perfect signal stops at these curves, and
@@ -232,7 +263,22 @@ not incentives: a #metric[6 h] battery reaches #metric[#n4.dur6_free] free where
 
 #colbreak()
 
-#section("3 · Real Fleet Performance Under Stress", discharge)
+#section("3 · Route 2 — the fleet, measured", discharge)
+
+#block(
+  width: 100%,
+  fill: discharge.lighten(93%),
+  stroke: (left: 4pt + discharge),
+  inset: (x: 5mm, y: 3mm),
+  radius: 2pt,
+)[
+  #text(size: 18pt)[
+    *Measured, not modelled.* Every BM-registered GB battery — the
+    #n6.census_sites census — against the operator's own signals, 2018–2026.
+  ]
+]
+
+#v(3mm)
 
 *Section 2 is what the incentive alone produces.* The real fleet does better —
 operator signals pull it in where price does not — yet still holds roughly half its
@@ -249,10 +295,8 @@ an event too — but so it does on any ordinary evening. Against controls matche
 on the same half-hour, month *and year*, it arrives no fuller than usual, so the
 run-up is the daily cycle rather than a response to the warning.
 
-Its shortfall is dispatch, not duration: #metric[#n5.dispatch_gap] of usable energy is
-still held at the deepest point of the average event, #n5.dispatch_multiple the
-duration gap. Declared duration does not predict response either
-(#metric[#n5.dur_corr] across #n5.dur_sites sites). Figures are on the primary
+Its shortfall is dispatch, not duration, and declared duration does not predict
+response (#metric[#n5.dur_corr] across #n5.dur_sites sites). Figures are on the primary
 state-of-charge inference.
 
 *Since #n8.era_start the gap moves.* On the same rules the modern fleet responds
@@ -262,41 +306,26 @@ state-of-charge inference.
 and now the larger. It trades in ordinary conditions, so less is left in the tank
 (#n8.events events).
 
-#panel("nb05_fig_gap_decomposition.svg", ratio: 64%)[
-  Fig 4 — Readiness into the event, and which of the three gaps binds, on the
-  primary state-of-charge inference. These do not sum: three questions, three
-  denominators. For the modelled 2 h battery the
-  answer is duration; for the real fleet it is dispatch.
+#panel("nb07_fig_regime_shift.svg", ratio: 47%)[
+  Fig 4 — The fleet stopped hoarding and started running empty. Modern against
+  skip-era response by margin band, same absolute rules: the change is largest
+  where the system was #emph[loosest] (#n7.loosest_ratio at #n7.loosest_band, from
+  near zero), so this is a fleet becoming active at all rather than learning to
+  chase scarcity. Same-site panel moves #n7.panel_ratio against the fleet's
+  #n7.fleet_ratio. Hatched = thin sample.
 ]
 
-#panel("nb07_fig2_regime_by_band.svg", ratio: 66%)[
-  Fig 5 — Modern against skip-era response, same absolute rules, by margin band.
-  The change is largest where the system was #emph[loosest]: at #n7.loosest_band the
-  skip-era fleet sat near zero, so #n7.loosest_ratio is a fleet becoming active at all
-  rather than learning to chase scarcity. Same-site panel moves #n7.panel_ratio against
-  the fleet's #n7.fleet_ratio, so it is behaviour, not new build. Hatched = thin sample.
-]
+#text(size: 24pt, weight: "bold", fill: ink)[Why it arrives empty]
+#v(2mm)
 
-#section("4 · The Full Revenue Stack", mid-amber)
+If scarcity carries no rent, earning more should *not* buy better coverage — and
+it does not.
 
-If scarcity carries no rent, then earning more should *not* buy better scarcity
-coverage — and it does not. Across revenue quartiles median earnings
-rise from #metric[#n4.q_low] to #metric[#n4.q_high] while median stress coverage
-stays flat at #metric[#n4.coverage_range]. The #n4.coverage_corr correlation is a line through noise.
-
-Ancillary services do lift earnings — #metric[#n4.anc_site] in #n4.window_days — but only
-#metric[#n4.anc_site_share] of the pound reaches a named site. Participation is a plausible
-contributor to the fleet's response, not an identified cause.
-
-#panel("nb04_fig6_money_vs_coverage.svg", ratio: 62%)[
-  Fig 6 — The thesis in one chart. Median revenue rises from #n4.q_low to #n4.q_high
-  between the lowest and highest quartile; coverage does not move from
-  #n4.coverage_range. Paying a battery more does not buy the system more.
-]
-
-#panel("nb04_fig5_revenue_stack.svg", ratio: 55%)[
-  Fig 7 — The third stream lifts median earnings from #n4.median_base to #n4.median_full per MW per
-  day, but most of the pound is collected by portfolios naming a trading unit.
+#panel("nb04_fig_money_vs_coverage.svg", ratio: 42%)[
+  Fig 5 — Paying a battery more does not buy the system more. Revenue rises
+  #n4.revenue_multiple across quartiles while coverage stays flat at
+  #n4.coverage_range (#n4.coverage_corr — a line through noise). The fleet chases
+  merchant value all day, which is why it reaches the next tight period depleted.
 ]
 
 #v(3mm)
@@ -321,88 +350,58 @@ contributor to the fleet's response, not an identified cause.
 
 ]
 
-#v(2mm)
+#v(3mm)
 #line(length: 100%, stroke: 3pt + rule-grey)
 #v(3mm)
 
-#line(length: 100%, stroke: 3pt + rule-grey)
-#v(2mm)
+// A footer strip, not a block: one line per guardrail. Anything that needs a
+// paragraph belongs in the notebooks, which are a QR code away.
+#columns(3, gutter: 16mm)[
 
-// A footer band, because the three columns leave the lower third of an A0
-// empty and a reviewer reads the limitations before the conclusions.
-#columns(4, gutter: 14mm)[
-
-#text(size: 21pt, weight: "bold", fill: ink)[Method & data]
-#v(2mm)
-#text(size: 16pt)[
-- *Public feeds only.* Elexon per-BMU notifications, acceptances and cashflows;
-  NESO capacity, connection and auction registers; PV_Live. No subscription data.
-- *The census is built, not downloaded.* Elexon labels no unit a battery.
-- *Sites are found by symmetry* — declared import ≈ declared export. The rule
-  admits #n6.curated_recovered of the #n6.curated_bmus hand-researched BM Units unaided.
+#text(size: 18pt, weight: "bold", fill: ink)[Methodological guardrails]
+#v(1mm)
+#text(size: 14pt)[
+- *Public feeds only; the census is built, not downloaded.* Elexon labels no unit
+  a battery, so sites are found by symmetry — the rule admits
+  #n6.curated_recovered of #n6.curated_bmus hand-researched BM Units unaided.
+- *State of charge is inferred, not metered* — re-anchoring moves levels about
+  ten points, not the ordering. Duration is declared for a third of the census.
+- *Rare samples are exhibits, never blended* — CMN (#metric[n=#n5.n_cmn]) and
+  DRM < 1 GW (#metric[n=#n5.n_drm]) carry their counts.
+- *Every figure is a strict lower bound.* Perfect foresight, unpriced social
+  value and uncosted duration all push the gap down, not up.
 ]
 
 #colbreak()
 
-#text(size: 21pt, weight: "bold", fill: ink)[What these numbers cannot say]
-#v(2mm)
-#text(size: 16pt)[
-- *State of charge is inferred* from notified position, never metered.
-  Re-anchoring the inference daily moves levels about ten points, not the
-  ordering.
-- *Three quarters of ancillary revenue reaches no site* — portfolios name a
-  trading unit, not an asset. It is quantified and attributed to nobody.
-- *Duration is declared, not metered* — energy capacity for a third of the
-  census rests on operator disclosure rather than a register.
-- *The benchmark has perfect foresight* of realised intraday price — an upper
-  bound; real dispatch tracks these curves from below.
-- *Nothing here is priced socially or in capex.* Avoided balancing cost,
-  unserved energy and reserve procurement are unvalued, and building 6 h is not
-  costed: incentives cannot substitute for energy, but energy is not free.
-- *Rare samples are exhibits, not statistics.* Capacity Market Notices
-  (#metric[n=#n5.n_cmn]) and DRM < 1 GW (#metric[n=#n5.n_drm]) carry nothing like the weight
-  of tiers with thousands of periods.
+#text(size: 18pt, weight: "bold", fill: ink)[Robustness]
+#v(1mm)
+#text(size: 14pt)[
+- *Four definitions, one severe winter.* On 2019–20 (margin to
+  #metric[#n4.winter_drm]) the gap lands in #metric[#n4.winter_gap_range] across
+  definitions — the summer's #n4.forgone_pct sits inside it.
+- *Where the load line is drawn barely matters* — top 5%, 10% and 15% give
+  #metric[#n4.thresh_gap_range].
+- *Cost model against calendar.* Resampling gives #metric[#n4.resample_range];
+  sweeping cost models gives #n4.cost_model_range. The sample moves it more than
+  the assumptions do.
 ]
 
 #colbreak()
 
-#text(size: 21pt, weight: "bold", fill: ink)[Robustness]
-#v(2mm)
-#text(size: 16pt)[
-- *Four definitions, one severe winter.* On winter 2019–20 (margin to
-  #metric[#n4.winter_drm], LoLP #metric[#n4.winter_lolp]) the gap lands in #metric[#n4.winter_gap_range] across
-  definitions spanning #metric[#n4.winter_periods_max] periods down to #metric[#n4.winter_periods_min] — and the
-  summer's #metric[#n4.forgone_pct] sits inside it.
-- *Why a winter?* Operator scarcity does not occur in a GB summer — margin stays
-  far above any scarcity threshold throughout. 2019–20 is also the last priceable
-  one: no GB day-ahead price is published after the single market ended.
-- *Where the load line is drawn* barely matters — at the top 5%, 10% and 15%
-  of residual load the gap is #metric[#n4.thresh_gap_range].
-- *Cost model against calendar.* Resampling days gives #metric[#n4.resample_range],
-  and sweeping degradation #metric[£0–10] with slippage #metric[£0–4/MWh] gives
-  #metric[#n4.cost_model_range]. Assumptions move it less than the sample does, and
-  the frontier's shape shifts by #metric[#n4.frontier_shift].
+#text(size: 18pt, weight: "bold", fill: ink)[Sources & code]
+#v(1mm)
+#text(size: 14pt)[
+*Elexon* BMRS / Insights 2018–2026 · *NESO Data Portal* — Capacity Market
+register and notices, TEC and Embedded registers, per-unit auction results ·
+*PV_Live* · *ENTSO-E* · *Nord Pool N2EX* · *operator disclosures*, each carrying
+its source and read date. Policy: *Ofgem* LDES window 1, *EMRS*, *Terna* MACSE,
+*CRE* TURPE 7, *BNetzA*.
 ]
 
-#colbreak()
-
-#text(size: 21pt, weight: "bold", fill: ink)[Sources & code]
-#v(2mm)
-#grid(
-  columns: (1fr, 30mm), column-gutter: 6mm, align: (left + top, center + top),
-  text(size: 16pt)[
-    *Elexon* BMRS / Insights 2018–2026 · *NESO Data Portal* — Capacity Market
-    register and notices, TEC and Embedded registers, per-unit auction results
-    across all five eras · *PV_Live* · *ENTSO-E* (2018 and 2019–20 day-ahead) · *Nord Pool
-    N2EX* · *operator disclosures* for energy capacity, each carrying its source
-    and read date. Policy: *Ofgem* LDES window 1, *EMRS* capacity-market
-    guidance, *Terna* MACSE, *CRE* TURPE 7, *BNetzA*.
-  ],
-  [
-    #image("../figures/poster/repo_qr.svg", width: 100%)
-    #v(1mm)
-    #text(size: 13pt, fill: ink.lighten(25%), hyphenate: false)[Repo]
-  ],
-)
+#v(1.5mm)
+#align(center)[
+  #image(FIG + "repo_qr.svg", width: 9%)
+]
 
 ]
