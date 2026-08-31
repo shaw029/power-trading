@@ -125,9 +125,8 @@
   )
   #v(2.5mm)
   #text(size: 19pt, fill: ink.lighten(20%))[
-    Nearly free today, because GB barely has scarcity — expected loss of load
-    averages #n8.lole_mean_h a year against a 3 h standard. The warning is for when
-    it does.
+    Nearly free today, because GB barely has scarcity — one negative-margin
+    half-hour in eight winters. The warning is for when that stops being true.
   ]
 ]
 
@@ -247,14 +246,14 @@ Sweeping a blended objective prices it. The 2 h profit schedule already delivers
 not incentives: a #metric[6 h] battery reaches #metric[#n4.dur6_free] free where a
 #metric[2 h] one caps at #metric[#n4.dur2_best] at any price.
 
-#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 66%)[
+#panel("nb04_fig2_diurnal_mismatch.svg", ratio: 74%)[
   Fig 2 — The mean day across all 34 days containing a top-decile load hour.
   Discharge peaks at the same hour, so the gap is not one of timing. It is
   duration: the battery reaches its floor by 21:00 while the system is still
   tight #n4.tight_at_floor of the time.
 ]
 
-#panel("nb04_fig_duration_frontier.svg", ratio: 70%)[
+#panel("nb04_fig_duration_frontier.svg", ratio: 78%)[
   Fig 3 — The frontier is a family. Each curve sweeps the weight on system value
   for one duration; the dot is the profit schedule. Moving up beats moving right.
   It is the ceiling, not the cause: a perfect signal stops at these curves, and
@@ -300,7 +299,7 @@ response (#metric[#n5.dur_corr] across #n5.dur_sites sites). Figures are on the 
 state-of-charge inference.
 
 *Since #n8.era_start the gap moves.* On the same rules the modern fleet responds
-#metric[#n8.ratio_low–#n8.ratio_high] harder but arrives *emptier*: SoC at onset
+#metric[#n8.ratio_low–#n8.ratio_high] harder *under scarcity* but arrives *emptier*: SoC at onset
 #n5.soc_at_onset → #metric[#n8.soc_at_onset], dispatch gap #n5.dispatch_gap →
 #metric[#n8.dispatch_gap], preparedness #n5.preparedness_gap → #metric[#n8.preparedness_gap]
 and now the larger. It trades in ordinary conditions, so less is left in the tank
@@ -308,11 +307,11 @@ and now the larger. It trades in ordinary conditions, so less is left in the tan
 
 #panel("nb07_fig_regime_shift.svg", ratio: 47%)[
   Fig 4 — The fleet stopped hoarding and started running empty. Modern against
-  skip-era response by margin band, same absolute rules: the change is largest
-  where the system was #emph[loosest] (#n7.loosest_ratio at #n7.loosest_band, from
-  near zero), so this is a fleet becoming active at all rather than learning to
-  chase scarcity. Same-site panel moves #n7.panel_ratio against the fleet's
-  #n7.fleet_ratio. Hatched = thin sample.
+  skip-era response #emph[by margin band]: largest where the system was
+  #emph[loosest] (#n7.loosest_ratio at #n7.loosest_band, from near zero), so this is a
+  fleet becoming active at all rather than learning to chase scarcity. Pooled
+  across all conditions the fleet moves #n7.fleet_ratio, and a same-site panel
+  #n7.panel_ratio — three cuts of one change, not three findings. Hatched = thin sample.
 ]
 
 #text(size: 24pt, weight: "bold", fill: ink)[Why it arrives empty]
@@ -321,7 +320,7 @@ and now the larger. It trades in ordinary conditions, so less is left in the tan
 If scarcity carries no rent, earning more should *not* buy better coverage — and
 it does not.
 
-#panel("nb04_fig_money_vs_coverage.svg", ratio: 42%)[
+#panel("nb04_fig_money_vs_coverage.svg", ratio: 44%)[
   Fig 5 — Paying a battery more does not buy the system more. Revenue rises
   #n4.revenue_multiple across quartiles while coverage stays flat at
   #n4.coverage_range (#n4.coverage_corr — a line through noise). The fleet chases
