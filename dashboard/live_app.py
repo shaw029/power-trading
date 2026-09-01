@@ -2108,16 +2108,6 @@ def _page_alignment():
     )
 
     # --- System tightness: operator-grade margin + declared notices -----------
-    st.caption(
-        "Everything above measures **utilisation** — what the fleet did when the "
-        "system worked hardest. This section asks the different question of "
-        "whether the operator was ever **short of capacity**, using its own "
-        "numbers rather than a load proxy. Tier 1 = top-decile load (above); "
-        "tier 2 = Elexon LoLP > 0 or de-rated margin below "
-        f"{resilience.DRM_TIGHT_MW:,.0f} MW; tier 3 = a declared Capacity "
-        "Market Notice. The two are not interchangeable and a number from one "
-        "may not be quoted as the other."
-    )
     lolpdrm = _lolpdrm_window(tuple(dates_shown))
     cmn = _cmn_notices(dt.datetime.now(dt.timezone.utc).date().isoformat())
     window_start = pd.Timestamp(dates_shown[0], tz="UTC")
