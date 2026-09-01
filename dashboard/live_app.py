@@ -2579,10 +2579,14 @@ def _benchmark_parameters() -> tuple:
     # Streamlit owns the top-right toolbar and takes no custom buttons there, so
     # the route to the source sits at the foot of the sidebar, where it is on
     # every page and never competes with a number.
+    #
+    # Named for what the click does. This is a link: it opens the repository. A
+    # "star" or "watch" label would name a GitHub action the button cannot
+    # perform, leaving the reader to find the real control once they arrive.
     with st.sidebar:
         st.divider()
-        st.link_button("⭐  Star on GitHub", REPO_URL, width="stretch")
-        st.caption("Source, method and the research behind these numbers.")
+        st.link_button("View source on GitHub", REPO_URL, width="stretch")
+        st.caption("Code, method and the research behind these numbers.")
 
     p = st.session_state["bench_params"]
     return (
