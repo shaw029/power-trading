@@ -144,6 +144,10 @@ the settlement engine run over published market data.
   replicable returns.
 """
 
+#: Streamlit Cloud's own source icon points at the deployed file. This is the
+#: repository itself, offered in the toolbar menu beside it.
+REPO_URL = "https://github.com/shaw029/power-trading"
+
 RESOLUTION_H = 1.0
 # Nord Pool serves recent GB day-ahead prices without a subscription back to
 # roughly 65 days; 60 leaves a safety margin. Older days simply 401 → their DA
@@ -2597,6 +2601,15 @@ def main():
         page_icon="⚡",
         layout="wide",
         initial_sidebar_state="expanded",
+        menu_items={
+            "Get Help": REPO_URL,
+            "Report a bug": f"{REPO_URL}/issues",
+            "About": (
+                "**Live GB BESS benchmark.** The same dispatch engine the backtest "
+                "runs, settled against current GB day-ahead and intraday prices.\n\n"
+                f"Source, method and caveats: <{REPO_URL}>"
+            ),
+        },
     )
     # Grouped by epistemic status: the model, the observed world, and the
     # analysis that uses both. The Day briefing is the deliberate cross-cutting
