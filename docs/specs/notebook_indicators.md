@@ -1,14 +1,8 @@
 # Notebook indicators — and whether the dashboard has them
 
-Every indicator notebooks 01 to 06 compute, and where it stands on the live dashboard.
+Every indicator the ten notebooks compute, and where it stands on the live dashboard.
 The companion to `docs/specs/dashboard_kpis.md`: that file says what the dashboard shows,
 this one says what the research has that the dashboard does not.
-
-**Scope.** Notebooks 07 to 10 postdate this sheet and are not mapped here. They
-are the regime-shift test, the modern-era re-cut, the model-versus-fleet
-reconciliation and the acceptance correction — all multi-year or full-census work,
-so the expectation is that little of it is promotable. That is an expectation, not
-an audit.
 
 **Status**
 
@@ -141,29 +135,100 @@ than computing them — that is the rule, not an omission.
 | Revenue stack: what is visible and what is not | Partly | Methodology explains which streams are estimated; the priced comparison is notebook work |
 | Ancillary earnings by era | No | *tier boundary* — `fleet.research.ancillary` |
 
+## 07 — Regime shift
+
+Whether notebook 05's rising response is a trend or a step at the Open Balancing
+Platform cutover. The window is 2018–2026 by construction: the question is what
+changed across a break in October 2023, which a rolling 60-day window cannot
+contain. Nothing here is promotable, and that is a property of the question.
+
+| Indicator | On the dashboard? | Note |
+|---|---|---|
+| Fleet position normalised per MW online | Partly | The dashboard plots mean fleet net MW by margin band (*Alignment gap — Fleet response by de-rated margin*); it does not divide by capacity online, which is what makes eras comparable |
+| Composition change across the break | No | *needs data the dashboard does not fetch* — multi-year by construction |
+| Response by era | No | Same |
+| Step vs slope vs step+slope by AIC | No | Same. The preferred model, the break date and the 3.4× fleet ratio are all statements about an eight-year series |
+| Fixed panel of 35 sites reporting in both eras | No | Same — the control for composition needs both eras present |
+| Response at matched de-rated margin | Partly | The dashboard conditions on margin bands, but within one window; the notebook's point is the comparison *between* eras at matched tightness |
+
+## 08 — Stress response, modern era
+
+Notebook 05's measurements re-cut from April 2024. It is the closest of the four
+to the dashboard's window, and still mostly out of reach — because it anchors to
+absolute operator thresholds (`LoLP >= 1e-4`, `DRM < 1 GW`, CMN issued) that a
+rolling summer window does not reach. The dashboard says so itself on ALN-18.
+
+| Indicator | On the dashboard? | Note |
+|---|---|---|
+| Fixed conditioning sets, never re-estimated in-window | No | *needs data the dashboard does not fetch* — the dashboard bands by window quantile precisely because absolute thresholds render empty here (ALN-17) |
+| How far inside the LOLE standard the system sat | Partly | ALN-18 states what the window contained — tightest margin against the 1,000 MW bar, and whether loss of load rose above zero. It does not report LOLE hours against the 3-hour standard |
+| State of charge at scarcity onset | Partly | ALN-4 reports readiness at onset, but for a top-decile **load** block. Different ruler: utilisation, not scarcity |
+| Response by conditioning set | Partly | ALN-15 and ALN-17 answer the same question against de-rated margin, on window quantiles rather than the absolute bar |
+| Events, and how the fleet moves through them | No | *needs data the dashboard does not fetch* — 45 events over two years; a summer window carries none |
+| How hard individual sites push under scarcity | No | Same. The dashboard has per-site money and coverage (ALN-12), not per-site scarcity response |
+| Both eras on one set of rules | No | Multi-year by construction |
+
+## 09 — Model vs fleet, one yardstick
+
+Puts the benchmark and the real fleet on the same ruler. The ruler is on the
+dashboard; the counterfactual that makes the comparison meaningful is not, because
+it needs declared availability (MELS) and the census denominators.
+
+| Indicator | On the dashboard? | Note |
+|---|---|---|
+| The yardstick — top-decile residual load | **Yes** | Alignment gap — ALN-2, the same classifier (`live.resilience.classify_periods`) |
+| What the fleet actually delivered, MWh | Partly | Fleet performance — FLT-8 carries fleet volume on delivery; the notebook restricts it to top-decile hours |
+| Achievable delivery — the MELS counterfactual | No | *needs data the dashboard does not fetch* — declared availability is the one feed that would unlock this, and it is the cheapest promotion left (see below) |
+| Fleet 85% and model 82% of achievable, a 3-point gap | No | The headline; needs the counterfactual above |
+| Ancillary as the competing explanation | No | *tier boundary* — `fleet.research.ancillary` |
+| Denominator sensitivity — declared vs nameplate vs registry | No | *tier boundary* — `fleet.research.coverage`, and the point of the section is that the choice of denominator moves the answer |
+| Availability gap, state-of-charge sensitivity | No | *needs data the dashboard does not fetch* — MELS, plus the inferred-SoC scheme |
+
+## 10 — Acceptances
+
+The one notebook whose central correction the dashboard **already applies**.
+`live_app` fetches BOALF per day and rebuilds the physical position from it,
+falling back to notifications only when acceptances have not published yet.
+
+| Indicator | On the dashboard? | Note |
+|---|---|---|
+| Delivery measured on acceptances, not notifications | **Yes** | Fleet performance — the page computes throughput, cycles and capture spread on the corrected position, and says so in its header |
+| Notified against instructed volume | **Yes** | FLT-8 splits each direction by market, signed, so an accepted bid removes discharge |
+| Size of the correction over a pinned window | Partly | The dashboard states the effect for its own window (~25% below notified); the notebook's 27% is a different, pinned window and is not a dashboard figure |
+| Achievable denominators, declared and nameplate | No | *needs data the dashboard does not fetch* — MELS again |
+| Response under scarcity, notified vs corrected | No | *needs data the dashboard does not fetch* — the scarcity lane needs years |
+| Readiness at onset, notified vs corrected | No | Same |
+| Gate-closure decomposition — planned, delivered, instructed away | Partly | FLT-8 shows the same split as a volume chart; the decomposition into shares is notebook work |
+
 ---
 
 ## What this says
 
-Of the indicators covered here that are **about the GB battery market now** —
-notebooks 03 to 06, setting aside the two virtual-trading notebooks — the
-dashboard carries the operational
-core: the benchmark's earnings and dispatch, the alignment scores, the tier ladder, and
-now the fleet's response to tightening margins.
+Of the indicators about the GB battery market now — notebooks 03 to 10, setting
+aside the two virtual-trading notebooks — the dashboard carries the operational
+core: the benchmark's earnings and dispatch, the alignment scores, the tier ladder,
+the fleet's response to tightening margins, and delivery measured on acceptances
+rather than notifications.
 
-What it does not carry falls into three clean groups, and only one of them is a decision
-still open:
+What it does not carry falls into three groups, and only one is a decision still open:
 
-1. **Multi-year or full-census work** — trends across winters, buildout, the census
-   itself. These are the notebook's reason to exist and should stay there.
-2. **Feeds outside the daily diet** — MELS availability, cashout prices, every forecast
-   horizon. Each is addable at a measured download cost, and each would need to earn it.
+1. **Multi-year or full-census work** — the regime shift, the era comparison, trends
+   across winters, the census itself. Notebook 07 is entirely of this kind, and most of
+   08 is. These are the notebooks' reason to exist and should stay there.
+2. **Feeds outside the daily diet** — declared availability (MELS), cashout prices,
+   every forecast horizon. Each is addable at a measured cost, and each would need to
+   earn it.
 3. **Research-grade uncertainty** — bootstrap intervals, matched controls, sensitivity
    sweeps. The dashboard states point figures; whether that is honest enough for a
    presentation surface is a judgement worth making deliberately rather than by default.
 
-The nearest thing to a free promotion left is **RQ1's availability factor**: one extra
-feed (MELS), reusing `site_limit_profile`, which already exists and is lite-safe. Measured
-cost is +1.02 MB/day and roughly +2s on a 30-day window now that day fetches run
-concurrently — cheap enough that the question is whether the metric earns a page, not
-whether the dashboard can afford it.
+Mapping 09 and 10 sharpens the second group into a single item. **Declared availability
+is the one feed standing between the dashboard and a whole class of results**: it is the
+denominator in notebook 09's counterfactual, in notebook 10's achievable shares, and in
+notebook 05's availability factor. One feed, reusing `site_limit_profile`, which already
+exists and is lite-safe. Measured cost is +1.02 MB/day and roughly +2s on a 30-day window
+now that day fetches run concurrently — so the question is whether those metrics earn a
+page, not whether the dashboard can afford them.
+
+Nothing else on this sheet is a near-term promotion. The rest is either barred by the
+tier boundary, or it is asking a question a 60-day rolling window cannot answer.
