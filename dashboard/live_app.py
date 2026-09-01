@@ -154,6 +154,10 @@ _MAX_HISTORY_DAYS = 60
 _FLEET_FETCH_WORKERS = 6
 # Below this many half-hours the margin quantiles are noise, not bands.
 _MARGIN_BAND_MIN_PERIODS = 96
+# The de-rated margin below which the research treats a period as genuine
+# scarcity (notebooks 05, 07, 08). Stated here so the dashboard can say
+# how far its window sits from that bar instead of implying it reached it.
+_SCARCITY_BAR_MW = 1000.0
 
 
 def _duration_hours(duration: str) -> int:
@@ -1986,11 +1990,16 @@ def _page_alignment():
 
     _page_header("Alignment gap", caption)
     st.caption(
-        "Does profit-optimal dispatch serve the system? Stress = top-decile "
-        "residual load (demand − wind − solar) in the shown window; surplus = "
-        "bottom decile or negative prices. The gap compares this dispatch with a "
-        "resilience-optimal counterfactual under identical physics. Definitions "
-        "on the Methodology page."
+        "Does profit-optimal dispatch serve the system when the system is "
+        "working hardest? **Top-decile load** = the busiest tenth of half-hours "
+        "by residual load (demand − wind − solar) in the shown window; surplus = "
+        "the quietest tenth, or negative prices. The gap compares this dispatch "
+        "with a load-following counterfactual under identical physics.\n\n"
+        "**Top-decile load is not a shortage.** It is when the system works "
+        "hardest, which is a question about utilisation and incentives. Whether "
+        "the operator was ever *short* is a separate measure with its own bar — "
+        "the tier ladder below — and on a rolling 60-day window the answer is "
+        "almost always no. Definitions on the Methodology page."
     )
 
     dates_shown = [d["date"] for d in shown]
@@ -2048,10 +2057,12 @@ def _page_alignment():
 
     cols = st.columns(4)
     cols[0].metric(
-        "Stress coverage",
+        "Top-decile coverage",
         f"{scores['stress_coverage']:.0%}" if scores["stress_coverage"] is not None else "—",
-        help="Share of the benchmark's discharged energy delivered during "
-        "stress periods (top-decile residual load).",
+        help="Share of the benchmark's discharged energy delivered in the "
+        "busiest tenth of half-hours by residual load. A utilisation measure: "
+        "it says the battery showed up when the system worked hardest, not "
+        "that the system was short.",
     )
     cols[1].metric(
         "Surplus absorption",
@@ -2061,24 +2072,24 @@ def _page_alignment():
         "periods (bottom-decile residual load or negative prices).",
     )
     cols[2].metric(
-        "Readiness at stress",
+        "Readiness at onset",
         f"{readiness:.0%}" if readiness is not None else "—",
-        help="Mean state of charge held when a stress block begins — the energy "
-        "actually available when the system tightens.",
+        help="Mean state of charge held when a top-decile load block begins — "
+        "the energy actually available as the system reaches its busiest.",
     )
     cols[3].metric(
         "Cost of full alignment",
         f"£{mean_gap_mw_day:,.0f}/MW/day",
-        f"{stress_forgone:,.0f} MWh stress delivery forgone",
+        f"{stress_forgone:,.0f} MWh top-decile delivery forgone",
         delta_color="off",
         help="DA energy value the profit-optimal dispatch would give up by "
-        "switching to the resilience-optimal schedule (same physics); the "
-        "delta line is the stress-hour energy arbitrage left undelivered.",
+        "switching to the load-following schedule (same physics); the delta "
+        "line is the top-decile energy arbitrage left undelivered.",
     )
 
     # --- Exemplar day: dispatch against system state --------------------------
-    # Auto-selects the window's highest-stress day (the day that tests the
-    # thesis hardest); the picker allows overriding.
+    # Auto-selects the window's busiest day by residual load (the day that
+    # tests the thesis hardest); the picker allows overriding.
     _exemplar = str(flags["residual_mw"].idxmax().date())
     _default_i = dates_shown.index(_exemplar) if _exemplar in dates_shown else len(dates_shown) - 1
     picked = st.selectbox(
@@ -2097,13 +2108,16 @@ def _page_alignment():
         st.info("No overlapping system data for this day.")
 
     # --- System tightness: operator-grade margin + declared notices -----------
-    st.subheader("System tightness")
+    st.subheader("Was the system actually short?")
     st.caption(
-        "The tier ladder checks the relative stress signal against the "
-        "operator's own numbers. Tier 1 = top-decile residual load (above); "
+        "Everything above measures **utilisation** — what the fleet did when the "
+        "system worked hardest. This section asks the different question of "
+        "whether the operator was ever **short of capacity**, using its own "
+        "numbers rather than a load proxy. Tier 1 = top-decile load (above); "
         "tier 2 = Elexon LoLP > 0 or de-rated margin below "
         f"{resilience.DRM_TIGHT_MW:,.0f} MW; tier 3 = a declared Capacity "
-        "Market Notice."
+        "Market Notice. The two are not interchangeable and a number from one "
+        "may not be quoted as the other."
     )
     lolpdrm = _lolpdrm_window(tuple(dates_shown))
     cmn = _cmn_notices(dt.datetime.now(dt.timezone.utc).date().isoformat())
@@ -2144,7 +2158,7 @@ def _page_alignment():
         f"positive, out of {tm['n_tier2_known']} with data.",
     )
     tcols[2].metric(
-        "Tier-2 stress coverage",
+        "Coverage when confirmed tight",
         f"{tm['tier2_coverage']:.0%}" if tm["tier2_coverage"] is not None else "—",
         help="Share of the benchmark's discharged energy delivered while the "
         "system was tight by the operator's measure (LoLP > 0 or DRM below "
@@ -2160,16 +2174,40 @@ def _page_alignment():
         f"last: {_last_cmn.date().isoformat()}" if _last_cmn is not None else None,
         delta_color="off",
         help="Declared shortfall notices from the NESO CMN register — the "
-        "strongest stress signal there is, and rare by design. The delta "
+        "strongest scarcity signal there is, and rare by design. The delta "
         "shows the register's most recent notice regardless of window.",
     )
+
+    # State plainly what this window contained. A rolling 60-day window is
+    # usually a summer one, where the operator's margin never approaches the
+    # bar the research uses for scarcity — so a reader is told that here rather
+    # than left to infer resilience from a page full of load statistics.
+    if tm["min_drm_mw"] is not None:
+        _below = int((lolpdrm["drm_mw"] < _SCARCITY_BAR_MW).sum())
+        if _below:
+            st.warning(
+                f"**{_below} half-hour(s) below the {_SCARCITY_BAR_MW:,.0f} MW "
+                "scarcity bar in this window** — rare, and worth reading with "
+                "the notebooks' full-history study alongside."
+            )
+        else:
+            st.info(
+                f"**No scarcity in this window.** The tightest margin was "
+                f"{tm['min_drm_mw']:,.0f} MW against the "
+                f"{_SCARCITY_BAR_MW:,.0f} MW bar the research uses, and loss of "
+                "load never rose above zero. Everything on this page is "
+                "therefore a *utilisation* finding — what the fleet did when "
+                "the system worked hardest. What it does when the operator is "
+                "genuinely short needs years of history and lives in "
+                "`notebooks/05` and `08`."
+            )
 
     n_unknown = int(len(tiers) - tm["n_tier2_known"])
     if tm["tier2_confirm_rate"] is not None:
         st.caption(
             f"System confirmation: {tm['tier2_confirm_rate']:.0%} of tier-1 "
-            "(top-decile residual load) stress periods were also "
-            "system-confirmed tight (tier 2)."
+            "(top-decile load) periods were also confirmed tight by the "
+            "operator's own margin (tier 2)."
             + (
                 f" {n_unknown} period(s) lacked LoLP/DRM data and are excluded."
                 if n_unknown
@@ -2178,7 +2216,7 @@ def _page_alignment():
         )
     elif tm["n_tier2_known"]:
         st.caption(
-            "System confirmation: no tier-1 stress period had LoLP/DRM data "
+            "System confirmation: no top-decile load period had LoLP/DRM data "
             "to check against."
         )
 
@@ -2236,10 +2274,10 @@ def _page_alignment():
             width="stretch",
         )
         st.caption(
-            "Fleet revenue is the wholesale+BM estimate (£/MW/day); fleet stress "
-            "coverage is computed from each site's Physical Notifications with "
-            "the same classifier as the benchmark. ⚠ sites are ancillary-tilted; "
-            "their revenue is understated."
+            "Fleet revenue is the wholesale+BM estimate (£/MW/day); fleet "
+            "top-decile coverage is computed from each site's Physical "
+            "Notifications with the same classifier as the benchmark. ⚠ sites "
+            "are ancillary-tilted; their revenue is understated."
         )
 
     # --- Does the fleet relieve tight margins, or compete with them? ----------
@@ -2338,7 +2376,7 @@ def _page_alignment():
                 else float("nan"),
             }
         )
-        right.markdown("#### Top stress periods")
+        right.markdown("#### Busiest periods")
         right.dataframe(
             table.style.format(
                 {"Residual (GW)": "{:,.1f}", "Benchmark (MW)": "{:,.0f}",
@@ -2353,17 +2391,30 @@ ALIGNMENT_METHODOLOGY = """
 The Alignment page quantifies the relationship between profit-optimal dispatch
 and system need, from the same public feeds as everything else.
 
+- **Two questions, two rulers — do not mix them.** *Utilisation* asks what the
+  fleet does when the system works **hardest**, and its bar is the top decile
+  of residual load. *Scarcity* asks what it does when the operator has **least
+  slack**, and its bar is the operator's own margin — a de-rated margin under
+  1,000 MW, a positive loss-of-load probability, or a declared notice. Top-decile
+  load is not a shortage: GB reaches its busiest hour every single day and is
+  short in none of them. **No number measured on the load decile may be quoted
+  as a resilience finding**, here or in the research. This dashboard's rolling
+  60-day window is almost always a utilisation window, and the Alignment gap
+  page says so on the page when it is; the scarcity lane needs years of history
+  and lives in `notebooks/05` and `08`.
 - **Residual load** — transmission demand (ITSDO) minus wind (FUELHH) minus
-  embedded solar (PV_Live), half-hourly. **Stress** = top decile of residual
-  load over the shown window; **surplus** = bottom decile, or any
+  embedded solar (PV_Live), half-hourly. **Top-decile load** = the busiest tenth
+  of half-hours over the shown window; **surplus** = the quietest tenth, or any
   negative-price period.
-- **Stress coverage / surplus absorption** — the share of discharged energy
-  delivered in stress periods and of charged energy drawn in surplus periods.
-  The same scorer runs on the benchmark's dispatch and on each fleet site's
-  Physical Notifications, so simulated and real behaviour are comparable.
-- **Readiness** — mean state of charge at the onset of each stress block.
-- **Tier ladder (System tightness)** — stress severity in three tiers. Tier 1
-  is the relative signal above (top-decile residual load). Tier 2 is
+- **Top-decile coverage / surplus absorption** — the share of discharged energy
+  delivered in top-decile load periods and of charged energy drawn in surplus
+  periods. The same scorer runs on the benchmark's dispatch and on each fleet
+  site's Physical Notifications, so simulated and real behaviour are comparable.
+  Both are utilisation measures.
+- **Readiness** — mean state of charge at the onset of each top-decile block.
+- **Tier ladder (Was the system actually short?)** — the crossing of the two
+  rulers, in three tiers. Tier 1 is the load decile above — a proxy, and the
+  utilisation lane. Tier 2 is
   system-confirmed tightness from Elexon's LoLP / de-rated margin feed —
   latest print per settlement period (forecast horizon 1, else the shortest
   published) — tight when LoLP > 0 or the de-rated margin is below 2,000 MW
@@ -2371,17 +2422,17 @@ and system need, from the same public feeds as everything else.
   design, unlike tier 1's window-relative decile). Tier 3 is a declared
   Capacity Market Notice: the half-hour overlaps an issued notice's target
   window (cancellations are not applied in this version — a cancelled CMN can
-  over-shade, never hide stress). Periods without a LoLP/DRM print are
+  over-shade, never hide a tight period). Periods without a LoLP/DRM print are
   *unknown* at tier 2 and excluded from tier-2 shares, never assumed calm.
-- **Alignment gap** — the benchmark's dispatch versus a resilience-optimal
+- **Alignment gap** — the benchmark's dispatch versus a load-following
   counterfactual (identical SOC window, power, efficiency and cycle cap;
-  objective = deliver in stress, absorb in surplus). Both schedules are valued
+  objective = deliver in top-decile load, absorb in surplus). Both are valued
   at the cleared DA price with no intraday layer or fees, plus a symmetric
   terminal-inventory credit (the day's SOC change valued at the day-mean DA
   price), giving the profit cost of full alignment and the stress-hour energy
   pure arbitrage leaves undelivered.
 - **Caveats** — demand is transmission-metered (embedded generation nets off);
-  tier-1 stress is a residual-load proxy while tiers 2–3 are the operator's
+  tier-1 load is a residual-load proxy while tiers 2–3 are the operator's
   own margin and notice data; benchmark dispatch uses the perfect-foresight
   intraday engine.
 """

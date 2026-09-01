@@ -205,7 +205,11 @@ def test_alignment_page_renders_system_tightness(app):
     # path ("None in window" with an empty register).
     assert "Min de-rated margin" in labels
     assert "Capacity Market Notices" in labels
-    assert "Tier-2 stress coverage" in labels
+    assert "Coverage when confirmed tight" in labels
+    # The utilisation lane must not borrow scarcity words: top-decile load is
+    # when the system works hardest, which is not the same as being short.
+    assert "Top-decile coverage" in labels
+    assert not any("stress" in la.lower() for la in labels)
 
 
 def test_regimes_page_renders_the_two_family_charts(app):

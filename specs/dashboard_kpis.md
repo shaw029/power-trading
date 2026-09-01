@@ -273,23 +273,24 @@ The research page, and the busiest one: eight Numbers in two rows.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| ALN-1 | Exemplar day | Filter | Picks the most stressed day automatically; override to inspect another. | Built |
-| ALN-2 | Stress coverage | Number | How much of its discharge landed when the grid was tight. | Built |
+| ALN-1 | Exemplar day | Filter | Picks the window's busiest day by residual load automatically; override to inspect another. | Changed |
+| ALN-2 | Top-decile coverage | Number | How much of its discharge landed in the busiest tenth of half-hours. A utilisation measure — the system working hardest, not the system being short. | Changed |
 | ALN-3 | Surplus absorption | Number | How much of its charging landed when power was abundant. | Built |
-| ALN-4 | Readiness | Number | How full it was when stress began — the energy actually available. | Built |
+| ALN-4 | Readiness at onset | Number | How full it was when a top-decile load block began — the energy actually available. | Changed |
 | ALN-5 | Cost of full alignment | Number | What it would cost to always serve the grid instead of the spread. | Built |
 | ALN-6 | Tightest margin | Number | The thinnest the grid's spare capacity got, and when. | Built |
 | ALN-7 | Risk periods | Number | How many half-hours the operator saw real risk of falling short. | Built |
-| ALN-8 | Coverage at confirmed stress | Number | Same as ALN-2, but judged against the operator's own margin data instead of our proxy. | Built |
+| ALN-8 | Coverage when confirmed tight | Number | Same as ALN-2, but judged against the operator's own margin rather than a load proxy — the scarcity ruler, not the utilisation one. | Changed |
 | ALN-9 | Capacity Market Notices | Number | Formal shortfall warnings. Usually "None in window" — they're rare by design. | Built |
-| ALN-10 | Exemplar day dispatch | Graph | The chosen day against grid stress. | Built |
+| ALN-10 | Exemplar day dispatch | Graph | The chosen day against system load. | Changed |
 | ALN-11 | System tightness | Graph | Spare capacity over the window, with risk periods and warnings marked. | Built |
-| ALN-12 | Profit vs alignment | Graph | Every real site plotted on money against grid service. | Built |
+| ALN-18 | Was the system short? | Note | States what the window actually contained: the tightest margin against the 1,000 MW scarcity bar the research uses, and whether loss of load ever rose above zero. On a rolling summer window the answer is no, which is why nothing on the page may be read as a resilience finding. | Built |
+| ALN-12 | Profit vs alignment | Graph | Every real site plotted on money against top-decile coverage. | Changed |
 | ALN-13 | Cost by day type | Graph | Which days make alignment expensive. | Built |
 | ALN-15 | Fleet response when tightest | Number | Mean fleet net output across the tightest fifth of the window's de-rated margins, with how often it was charging instead. Positive means the fleet discharged into tightness rather than competing with it. | Built |
 | ALN-16 | Swing from loosest to tightest | Number | How far the fleet's net position moves between the loosest and tightest fifth — the size of the response, as against its direction. | Built |
 | ALN-17 | Fleet response by de-rated margin | Graph | Mean fleet net MW in each fifth of the window's margins, tightest first. Answers the alignment question with the operator's own margin data rather than a residual-load proxy. Bands are quantiles of the window, not fixed thresholds — a rolling summer window never reaches a scarcity margin, so absolute bands would render empty. | Built |
-| ALN-14 | Tightest periods | Table | The hardest half-hours, and what each battery did. | Built |
+| ALN-14 | Busiest periods | Table | The highest-load half-hours, and what each battery did. | Changed |
 
 ## Methodology  ·  *About*
 

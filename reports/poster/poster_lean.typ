@@ -253,7 +253,7 @@ are excluded from every state-of-charge figure.
 #lead[How other markets price tightness]
 
 #text(size: 18pt)[
-  Several European markets transmit system tightness into a price batteries
+  Some European markets transmit system tightness into a price batteries
   schedule against, or pay directly for the charging behaviour that GB leaves
   unrewarded.
   #v(1.5mm)
