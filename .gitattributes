@@ -1,0 +1,22 @@
+# Notebook diffs.
+#
+# Re-running a notebook rewrites its whole JSON, so a one-cell change shows up as
+# a multi-megabyte blob and review becomes impossible. nbdime diffs by cell
+# instead, and it does this without stripping outputs: the charts stay committed,
+# because they are what makes a notebook readable on GitHub and they cannot be
+# regenerated from a clone (the store the notebooks read is not in the repo).
+#
+# Enable once per clone:  pip install nbdime && nbdime config-git --enable
+*.ipynb diff=jupyternotebook
+*.ipynb merge=jupyternotebook
+
+# Re-exported SVG panels are coordinate soup: a cosmetic re-run rewrites every
+# path, which buries real changes. Collapse them in review.
+research/poster/assets/*.svg -diff
+
+# The metric JSONs are the opposite. They are small, and they hold the numbers
+# printed on the board, so their diff is the single most reviewable thing here:
+# it shows exactly which headline figure moved. Keep them diffable.
+
+# Keep GitHub's language stats about the library, not the research exports.
+research/poster/assets/* linguist-vendored=true

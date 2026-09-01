@@ -1,0 +1,11 @@
+{
+  "break_date": "October 2023",
+  "fleet_ratio": "3.4x",
+  "loosest_band": "7\u201312 GW",
+  "loosest_ratio": "21x",
+  "panel_mw": "1,708 MW",
+  "panel_ratio": "4.2x",
+  "panel_sites": "35",
+  "preferred_model": "step + slope",
+  "tightest_ratio": "2.5x"
+}

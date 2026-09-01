@@ -1,4 +1,4 @@
-"""Check that specs/dashboard_kpis.md still describes the dashboard.
+"""Check that docs/specs/dashboard_kpis.md still describes the dashboard.
 
 The sheet is the plan and the record, so it is only worth having if it stays
 true. This compares it against ``dashboard/live_app.py`` page by page and
@@ -34,7 +34,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP = REPO_ROOT / "dashboard" / "live_app.py"
-SHEET = REPO_ROOT / "specs" / "dashboard_kpis.md"
+SHEET = REPO_ROOT / "docs" / "specs" / "dashboard_kpis.md"
 
 # Which page each rendering function belongs to. Helpers that draw part of a
 # page are attributed to that page.

@@ -1,174 +1,168 @@
 # Day-Ahead Power Trading
 
-End-to-end quantitative research framework for virtual and physical trading in the GB wholesale electricity market.
+Quantitative research on the GB wholesale electricity market: a trading framework
+for virtual and battery strategies, and a study of what the real GB battery fleet
+does when the system is short.
 
-**Virtual Strategy** — ML-proxied residual load mispricing against the EPEX Day-Ahead auction, with hybrid intraday execution splitting volume between a passive MID hedge and an active TP/SL engine.
+Two things live here, and they answer different questions.
 
-**BESS Strategy** — Battery Energy Storage System dispatch optimisation via LP-based Day-Ahead scheduling and a rolling-horizon intraday re-optimisation that walks the day period by period, trading each settlement period at its observed MID and pricing the still-unseen future from a hurdled DA proxy.
-
-**2018 out-of-sample backtest (Virtual):** — results are upper-bound estimates on a single 2018 window; see notebook 01 §3 (hyperparameter stability), §5 (drawdown context) and §6 (naive-baseline decomposition) for the supporting analysis.
-
-![Virtual Strategy Showcase](notebooks/assets/equity_curve.png)
-
-**Battery Dispatch in DA market:**
-
-![BESS Strategy Showcase](notebooks/assets/bess_strategy_showcase.png)
+| | |
+|---|---|
+| **The framework** | Can a battery be dispatched profitably against GB day-ahead and intraday prices? LP scheduling, rolling-horizon re-optimisation, walk-forward ML, a live benchmark. |
+| **The study** | Does profit-optimal dispatch coincide with what a resilient system needs — and if not, what does closing the gap cost? |
 
 ---
 
-## Quick-Start
+## The finding
+
+**Energy prices already secure about four-fifths of a modelled battery's
+high-load alignment. What remains unpriced is readiness for scarcity.**
+
+| | |
+|---|---|
+| Stress delivery the profit-optimal battery forgoes | **18%** — 481 of 2,656 MWh (CI 9–28%) |
+| Cost of closing that gap completely | **£6/MW/day**, 6% of benchmark revenue |
+| Alignment obtained for free by price signal alone | **81%** |
+| Reserve scarcity price, the signal meant to buy readiness | **£0.00/MWh** mean, exactly zero in **99.5%** of periods |
+
+And the real fleet, measured against the operator's own scarcity instruments
+rather than a price proxy:
+
+| | |
+|---|---|
+| GB BM-registered battery population reconstructed | **87 sites, 124 BM Units, 6,234 MW** |
+| Modern fleet response vs. the 2018–2026 average | **2.5–2.8x harder** (from April 2024, 45 events) |
+| State of charge at scarcity onset, then vs. now | **61% → 47%** |
+| Balancing Mechanism acceptances vs. notified plans | acceptances cut measured delivery **27%** |
+
+The last line is the reason notebook 10 exists: every fleet figure built from
+Final Physical Notifications is a plan, not an outcome, and correcting for what
+the operator actually instructed moves all of them.
+
+Full argument, caveats and method: **[research/](research/)** ·
+the A0 board: **[research/poster/](research/poster/)**
+
+![Virtual strategy](research/notebooks/assets/equity_curve.png)
+![Battery dispatch in the DA market](research/notebooks/assets/bess_strategy_showcase.png)
+
+---
+
+## Layout
+
+```
+src/  fleet/  live/  pipeline.py     the framework
+dashboard/                          Streamlit apps — backtest replay and live benchmark
+research/                           the study: notebooks 01-10, robustness, poster
+docs/                               architecture, data sources, specs
+scripts/                            data store builders and maintenance tooling
+tests/                              603 tests, run in CI
+```
+
+## Quick-start
 
 ```bash
-# 1. Create and activate the environment
 conda create -n quantenv python=3.12 && conda activate quantenv
-
-# 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configure API keys and experiment settings
-cp .env.example .env
+cp .env.example .env                          # add your ENTSO-E API key
 cp configs/config.example.yaml configs/config.yaml
-# Edit .env with your ENTSO-E API key; edit config.yaml for dates, model params, etc.
 
-# 4. Seed sample data
-python bootstrap_data.py
-
-# 5. Install the pre-commit hook (run once — blocks commits that break CI)
-make install-hooks
-
-# 6. Lint, type-check, and run tests
-make check
-
-# 7. Run the full pipeline
-python main.py --config configs/config.yaml
+python bootstrap_data.py                      # seed sample data
+make install-hooks                            # pre-commit hook, blocks CI-breaking commits
+make check                                    # format, lint, type-check, test
+python main.py --config configs/config.yaml   # run the pipeline
 ```
-
----
-
-## How It Works
-
-### Virtual Strategy
-
-- Signal is derived from ML-proxied forecast error in residual load
-- Features pinned to the D-1 10:30 pre-auction vintage
-- Walk-forward validation on sliding 200-day windows adapts to seasonal regime shifts
-- Position sizing scales with equity so drawdowns automatically reduce exposure
-- Intraday execution splits volume between a passive MID hedge and an active TP/SL engine, reducing imbalance tail-risk
-
-### BESS Strategy
-
-- Day-Ahead schedule solved via linear programming (PuLP/HiGHS) against an ML DA price forecast; revenue then settles against the actual cleared DA price, so forecast quality drives PnL
-- **Market allocation lever** (`da_commit_fraction`): the share of the battery's power *and of its daily cycle budget* the Day-Ahead auction may commit — the rest is held back for the intraday stage, free to chase MID without first unwinding a DA position. Scaling power alone would let the auction spread the full discharge budget over more hours; partitioning the energy budget is what makes the reservation real. The allocation-frontier sweep in notebook 03 measures what the optimal DA/intraday split *would have been*
-- SOC operating window (default 10–90%) protects cell longevity, with an optional `target_daily_cycles` cap on daily discharged energy; degradation cost is priced into the LP objective, not just deducted after the fact
-- End-of-day SOC carries forward as the next day's starting level — days are not treated independently
-- Intraday rolling-horizon re-optimisation improves on the locked DA schedule. The intraday market is continuous, so each settlement period's MID becomes **visible shortly before its delivery**: the engine walks the day period by period, re-solving the remaining horizon with the current period at its **observed MID** and the not-yet-visible future at a **DA proxy** (cleared DA price ± a configurable `margin_sell`/`margin_buy` basis). The basis is conservatism on the *guessed* future only — the visible current price carries no hurdle. Only the visible period is executed and locked before rolling forward; each executed deviation settles at its observed MID and is clamped to feasibility, so the day settles with ≈ 0 imbalance
-
-→ Full commercial model, asset state machine, and PnL decomposition in [ARCHITECTURE.md](ARCHITECTURE.md#5-phase-3-physical-asset-bess-optimisation).
 
 ```bash
-# Virtual strategy (default)
-python main.py --config configs/config.yaml                    # full virtual pipeline
-python main.py --config configs/config.yaml --mode download   # fetch raw data only
-python main.py --config configs/config.yaml --mode features   # features only
-python main.py --config configs/config.yaml --mode model      # train & backtest on existing features
-
-# BESS strategy
-python main.py --config configs/config.yaml --mode bess       # full BESS pipeline
-
-# Both strategies sequentially
-python main.py --config configs/config.yaml --mode all
+python main.py --config configs/config.yaml --mode bess   # battery strategy
+python main.py --config configs/config.yaml --mode all    # both, sequentially
+make dashboard                                            # backtest replay
+streamlit run dashboard/live_app.py                       # live GB benchmark
+make poster                                               # compile the A0 board
 ```
 
 ---
 
-## Execution & Backtest Assumptions
+## The strategies
 
-| Assumption | Detail | Notebook |
-|---|---|---|
-| **DA pricing** | Day-Ahead positions are priced at the cleared DA auction price. The model takes directional exposure only when ML-predicted mispricing exceeds a volatility-adjusted threshold, and exposure is capped at the top-N highest-conviction periods per direction per day (`signal.top_n`, default 5). | `01_da_positioning_backtest.ipynb` |
-| **Intraday exit (hybrid)** | Each position is split into two slices. The passive slice (`baseline_hedge_ratio`, default 15% — selected in notebook 02) exits at MID, paying the £2/MWh spread-to-MID friction. The active slice targets MID via a TP/SL engine; if neither trigger fires within the delivery window, it settles at the imbalance price (SSP for longs, SBP for shorts). Imbalance is the deliberate terminal fallback for the active slice, not an unavoidable residual. | `02_hybrid_execution_analysis.ipynb` |
-| **BESS dispatch** | The Day-Ahead schedule is solved via LP optimisation (PuLP/HiGHS) against an ML price forecast, maximising charge/discharge revenue subject to SOC window (`min_soc_pct`–`max_soc_pct`, default 10–90%), power, efficiency, and an optional `target_daily_cycles` cap. End-of-day SOC is unconstrained and carried forward as the next day's starting SOC — days are not treated independently. Revenue settles against the actual cleared DA price. During the intraday window a rolling-horizon LP walks the day period by period: each quarter's MID is observed shortly before its delivery, so the current period is priced at the **observed MID** and the unseen future at a **DA proxy** (cleared DA price ± a configurable `margin_sell`/`margin_buy` basis — the hurdle is conservatism on the guessed future only). Only the visible period is executed and locked before rolling forward, clamped to feasibility and settled at its observed MID. That settled deviation value is the Intraday DA Improvement; imbalance is ≈ 0 by construction. | `03_bess_dispatch_analysis.ipynb` |
-| `04_alignment_gap.ipynb` | Alignment-gap study on the latest ~60 days of live GB data, over the **full BM-registered census**, not the smaller population the dashboard renders: residual-load stress/surplus classification, alignment scores (stress coverage, surplus absorption, readiness) for the benchmark and for each real fleet site's Physical Notifications, a resilience-optimal counterfactual under identical physics, the priced alignment gap by day type, and the fleet on the profit/alignment plane |
-| `05_stress_response_study.ipynb` | What the **real** GB fleet did — the full BM-registered census — under **operator-grade** scarcity signals (Elexon LoLP / de-rated margin, NESO Capacity Market Notices) over eight winters from 2018-01 (the data floor: LoLP/de-rated-margin prints are complete from 2018, while PN and the declared-limit feeds reach back to 2016). Fleet availability and inferred state of charge in the tightest periods, net position by margin band ("cannibalistic" charging), forecast-horizon foresight and dispatch around scarcity triggers against matched controls, and cashout-spike frequency by fleet-discharge quartile at equal stress, and a **direction-of-travel** section: quarterly response to each quarter's own tightest decile (self-normalising, n≈440/quarter) against two fixed panels — one since 2018, one since 2023 — to separate behaviour from commissioning — response roughly doubled, while the operator-grade winter series did not. No prices from subscription feeds, so the window is years rather than the 60 days of notebook 04 |
-| `06_fleet_coverage_census.ipynb` | **What share of the GB fleet the analysis actually covers.** Reconstructs the BM-registered battery population from five public registers — Elexon BMU reference, NESO Capacity Market, TEC and Embedded connection registers, response-auction results — since no source labels a BM Unit as a battery. Identifies batteries by *symmetric* declared import/export capability, a rule that recovers all 47 known registry units and rejects the generators that merely look bidirectional. Reports coverage by site count, MW and MWh, characterises the gap by size, owner, region and connection level, and assigns a persistent asset ID that survives owner, name and BMU changes. Headline: the population the dashboard renders covers most of GB BM-registered battery MW — effectively complete at the top of the fleet, thinnest in the small distribution-connected tail — and the gap is published duration rather than curation effort. The notebook computes the figures; they are not copied here, because the census is rebuilt from live registers and each notebook pins its own vintage |
-| `07_regime_shift.ipynb` | **Did the fleet change, or did the control room?** Tests whether the rising response in notebook 05 is a trend or a step at the Open Balancing Platform cutover (2023-10). Fits mean/slope/step/step+slope by AIC; controls for composition with a fixed panel of sites reporting in both eras, and for system conditions by comparing within de-rated-margin bands. Finds step *and* slope, with the largest change in ordinary conditions rather than the tightest — consistent with a dispatch-tooling constraint lifting. Cannot separate the platform from the contemporaneous collapse in frequency-response revenue, and says so |
-| `08_stress_response_modern.ipynb` | **Notebook 05's measurements on the modern fleet only**, from 2024-04-01, because notebook 07 shows the eight-year window blends two regimes and is weighted toward the old one. Scarcity is anchored to **absolute, operator-anchored thresholds** applied identically to every window — `LoLP >= 1e-4`, `DRM < 1 GW`, `CMN issued` — never percentiles re-estimated inside the era, which would measure a stronger response against a weaker bar. On the same rules the modern fleet responds **2.5–2.8x** harder. The binding constraint reverses: against notebook 05's 48% dispatch / 36% preparedness, the modern fleet reads 30% / 54%, with SoC at onset 61% → 47%. On 45 events, so indicative. Reports GB's 3-hour LOLE standard: the system sat ~3x inside it, only 2022 exceeded it, and the residual-load decile is relabelled **utilisation**, not stress |
+**Virtual** — ML-proxied residual-load mispricing against the EPEX day-ahead
+auction. Features pinned to the D-1 10:30 pre-auction vintage; walk-forward
+validation on sliding 200-day windows; exposure capped at the top-5
+highest-conviction periods per direction per day. Intraday execution splits
+volume between a passive MID hedge (15%, selected in notebook 02) and an active
+TP/SL engine, with imbalance as the deliberate terminal fallback rather than an
+unavoidable residual.
 
-All notebooks live in `notebooks/`. Notebook 05 reads a tidy parquet store built once by
-`scripts/build_stress_store.py` (day-cached, resumable, hours on a cold cache):
+**BESS** — Day-ahead schedule solved by LP (PuLP/HiGHS) against an ML price
+forecast, settling against the actual cleared price, so forecast quality drives
+PnL. Degradation is priced into the objective, not deducted afterwards. SOC
+carries across days. The intraday stage walks the day period by period: the
+current settlement period is priced at its **observed** MID, the still-unseen
+future at a hurdled DA proxy, and only the visible period is executed and locked
+before rolling forward — so new information genuinely arrives at each step and
+the day settles at ≈ 0 imbalance.
 
-```bash
-python scripts/build_stress_store.py --start 2023-10-01 --end 2026-08-16
-```
+The **market-allocation lever** (`da_commit_fraction`) partitions both power and
+the daily cycle budget between the auction and the intraday stage. Partitioning
+energy as well as power is what makes the reservation real; notebook 03 sweeps
+the frontier to find what the optimal constant split would have been.
 
----
+**Backtest results are upper-bound estimates on a single 2018 window.** Notebook
+01 §3, §5 and §6 carry the hyperparameter-stability check, drawdown context and
+the naive-baseline decomposition that separates model skill from imbalance carry.
 
-## Research Notebooks
-
-| Notebook | Contents |
-|---|---|
-| `01_da_positioning_backtest.ipynb` | Full tournament sweep: model shootout, hyperparameter calibration under walk-forward discipline (selection on MAE with an explicit stability check), execution stress-testing with transaction costs, a production tear sheet with drawdown reported against running equity, and a naive-baseline decomposition separating model skill from imbalance-carry |
-| `02_hybrid_execution_analysis.ipynb` | Hedge ratio optimisation sweep: equity curves and performance tear sheet for four archetype fixed points, risk–reward efficient frontier, full `baseline_hedge_ratio` sweep (0.0–1.0), worst drawdown analysis under full imbalance exposure, and the production decision (0.15, the upper edge of the flat risk-adjusted band) |
-| `03_bess_dispatch_analysis.ipynb` | BESS dispatch deep-dive: trader's-alpha PnL waterfall (DA benchmark → intraday DA improvement → execution friction → imbalance → degradation); degradation cost vs. gross revenue timeline; time-of-day SOC heatmap; DA schedule vs. final dispatch rebalancing impact; dispatch efficiency scatter; and the **market-allocation frontier** — a `da_commit_fraction` sweep tracing net PnL against the DA/intraday capacity split, with the ledger decomposition at each point |
-
----
-
-## Interactive Dashboard
-
-The pipeline reports the BESS strategy as aggregate numbers — daily PnL and summary metrics — which tell you *how much* the battery made but not *why* it acted as it did. The dashboard closes that gap: it faithfully replays the exact strategy the pipeline runs and exposes the per-hour decision trail, so you can see why it charged or discharged at each settlement period, how SOC evolved across the month, where the price forecast misled it, and where it hit imbalance or SOC/power limits. It is a model-debugging tool, not a live trading interface.
-
-```bash
-make dashboard          # or: streamlit run dashboard/app.py
-```
-
-- **Monthly overview** — price/dispatch overlay, full-month SOC tracker, DA-schedule-vs-final-dispatch rebalancing, and the trader's-alpha PnL waterfall (DA benchmark → intraday DA improvement → execution friction → imbalance → degradation → net).
-- **Dispatch Explorer** — a date scroller that slides a window of any span across the month; three time-aligned panels show prices (DA actual + forecast — the decision proxy — and the realised MID where intraday deviations settle), the LP plan vs. actual dispatch, and SOC, with the per-hour decision on hover.
-
-→ How it mirrors the pipeline, the out-of-sample month limitation, and usage notes are in [DEVELOPMENT.md](DEVELOPMENT.md#dashboard).
+→ Commercial model, asset state machine and PnL decomposition in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#5-phase-3-physical-asset-bess-optimisation).
 
 ---
 
-## Live Benchmark
+## Dashboards
 
-The strategies above are validated on a historical backtest. The **live GB BESS benchmark** runs the same BESS engine on the most recent GB market data, settling three reference batteries (50 MW at 1h / 2h / 4h duration) against the actual Day-Ahead and intraday prices.
+The pipeline reports aggregate PnL, which tells you how much the battery made
+but not why it acted as it did. Two Streamlit apps close that gap.
 
-It is an **interactive Streamlit dashboard** (`dashboard/live_app.py`) that fetches live data on demand — GB day-ahead prices from **Nord Pool (N2EX)** and intraday MID / generation / demand from **Elexon**, both public, **no API key** — and re-runs the engine as you change the controls. Five levers are adjustable (duration, cycle target, degradation cost, SOC band, and the **DA commitment** market-allocation lever); everything else is a stated fixed assumption. Pages are grouped by epistemic status — the simulated **Benchmark** (a Day briefing and the History), the observed **GB power system** (system overview and real-fleet performance), and **Research** (day-type analysis, benchmark-vs-fleet validation, and the alignment-gap study) — plus a **Methodology** page with the full scope, caveats and design principles.
+**Backtest replay** (`dashboard/app.py`) faithfully replays the strategy the
+pipeline runs and exposes the per-hour decision trail — why it charged or
+discharged in each settlement period, how SOC evolved, where the forecast misled
+it, where it hit limits. A model-debugging tool, not a trading interface.
 
-```bash
-streamlit run dashboard/live_app.py
-```
+**Live GB benchmark** (`dashboard/live_app.py`) runs the same engine on current
+market data, settling three reference batteries (50 MW at 1h/2h/4h) against
+actual day-ahead and intraday prices. Day-ahead from Nord Pool (N2EX), intraday
+MID, generation and demand from Elexon — both public, **no API key**. Pages are
+grouped by epistemic status: the simulated benchmark, the observed GB system, and
+the research layer, plus a methodology page carrying scope and caveats.
 
-It deploys for free on [Streamlit Community Cloud](https://share.streamlit.io) (no secrets needed). → See [DEVELOPMENT.md](DEVELOPMENT.md#live-benchmark) for the deploy steps and how the live `live/` package is structured.
+→ Deploy steps and structure in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#dashboard).
 
 ---
 
 ## Docs
 
-| Document | Contents |
+| | |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Strategy design, market rationale, signal logic, and BESS commercial model |
-| [DATA_SOURCES.md](DATA_SOURCES.md) | Seven datasets across three APIs, CSV fallbacks, and per-day caching |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Environment setup, config reference, project structure, the dashboard, the live benchmark, and VS Code launch configs |
-| [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md) | The two tiers — notebooks as the complete research instrument, the live dashboard as the light presentation surface — how the battery census is built, and what share of the GB fleet the registry represents |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Strategy design, market rationale, signal logic, BESS commercial model |
+| [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) | Seven datasets across three APIs, CSV fallbacks, per-day caching |
+| [docs/DATA_ARCHITECTURE.md](docs/DATA_ARCHITECTURE.md) | The two tiers — notebooks as the full research instrument, the dashboard as a light presentation surface — and how the battery census is built |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Environment, config reference, project structure, dashboards, VS Code launch configs |
+| [research/README.md](research/README.md) | The study: what each notebook asks, and why they are read in order |
 
 ---
 
 ## Roadmap
 
-- [x] **Phase 1 — DA Positioning Engine (complete):** End-to-end ML pipeline for virtual trading in the GB Day-Ahead market. Walk-forward validated XGBoost model predicting residual load mispricing, with signal gating, execution constraints, and dynamic position sizing.
-- [x] **Phase 2 — Intraday Execution (complete):** Hybrid execution engine that splits DA positions between a passive Market Index Price (MID) hedge and an active Take-Profit/Stop-Loss engine. Configurable hedge ratio, TP/SL thresholds, and per-period stop-loss cap reduce tail-risk from full imbalance exposure.
-- [ ] **Phase 3 — Physical Asset Optimisation / BESS (in-progress):** Battery storage dispatch via LP Day-Ahead scheduling (PuLP/HiGHS) and a **rolling-horizon intraday re-optimisation** that walks the day period by period — pricing the current quarter at its observed MID and the still-unseen future from a hurdled DA proxy, executing and locking only the visible period before rolling forward. State-of-charge tracking, separate charge/discharge efficiencies, and cycle degradation costs enforced throughout. New information (one more observed MID) arrives each step, so the re-solve genuinely adapts. Includes the **market-allocation lever** (`da_commit_fraction`): a deterministic answer to "how much capacity should each market get" — the DA auction commits a chosen share of power, the rest is reserved for intraday, and the notebook-03 allocation-frontier sweep measures the optimal constant split empirically. Validated against the **live GB benchmark** (same engine on current data, compared to the real battery fleet).
-- [ ] **Phase 4 — Stochastic Optimisation & MID Forecasting (planned):** Everything uncertain becomes explicitly stochastic. (a) **Stochastic allocation** — replace Phase 3's constant `da_commit_fraction` with a two-stage scenario LP that chooses the DA bid (and hence the per-hour allocation) against candidate MID curves, benchmarked against Phase 3's best-constant frontier point; (b) **MID forecasting** — replace the rolling loop's DA-price proxy for future periods with a genuine, *updating* forecast of the continuous-market MID; then (c) reformulate the replan as a multi-stage **stochastic** programme (scenario trees / DP) modelling MID uncertainty across the remaining delivery window, producing dispatch decisions robust to forecast error rather than point-optimal against a single forecast.
+- [x] **Phase 1 — DA positioning engine.** Walk-forward validated XGBoost on residual-load mispricing, with signal gating, execution constraints and dynamic sizing.
+- [x] **Phase 2 — Intraday execution.** Hybrid passive-MID / active-TP-SL engine with configurable hedge ratio and per-period stop-loss cap.
+- [ ] **Phase 3 — Physical asset optimisation (in progress).** LP day-ahead scheduling plus rolling-horizon intraday re-optimisation, SOC tracking, asymmetric efficiencies, priced degradation, and the market-allocation lever. Validated against the live GB benchmark and the real fleet.
+- [ ] **Phase 4 — Stochastic optimisation and MID forecasting (planned).** Replace the constant `da_commit_fraction` with a two-stage scenario LP; replace the DA-price proxy for unseen periods with a genuine updating MID forecast; then reformulate the replan as a multi-stage stochastic programme, producing dispatch robust to forecast error rather than point-optimal against a single forecast.
 
 ---
 
-## Acknowledgements
+## Data
 
-Data is sourced from open platforms:
+- **[Nord Pool data portal](https://data.nordpoolgroup.com)** — GB (N2EX) day-ahead prices for the live benchmark (recent ~60 days, no key)
+- **[ENTSO-E Transparency Platform](https://transparency.entsoe.eu)** — GB day-ahead prices for the historical backtest
+- **[Elexon BMRS](https://bmrs.elexon.co.uk)** — physical notifications, balancing acceptances, declared limits, LoLP and de-rated margin
+- **[NESO data portal](https://www.neso.energy/data-portal)** — Capacity Market notices and registers
 
-- **[Nord Pool data portal](https://data.nordpoolgroup.com)** — GB (N2EX) Day-Ahead auction prices for the live benchmark (recent ~60 days, no key)
-- **[ENTSO-E Transparency Platform](https://transparency.entsoe.eu)** — GB Day-Ahead auction prices for the historical backtest
-- **[Elexon BMRS](https://bmrs.elexon.co.uk)** — Wind forecasts, generation actuals, demand actuals, market index prices, and imbalance settlement prices
-- **[NESO CKAN API](https://data.nationalgrideso.com)** — Demand forecasts
-
-Built mainly with XGBoost, scikit-learn, pandas, PuLP, and NumPy.
+Licensed under [MIT](LICENSE).

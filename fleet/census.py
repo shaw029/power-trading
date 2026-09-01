@@ -123,7 +123,7 @@ ASSET_ID_ALIASES: dict[str, str] = {}
 #:
 #: To move a notebook's analysis forward, change the date in that notebook's
 #: setup cell and re-run it. If its figures are quoted in ``README.md``,
-#: ``DATA_ARCHITECTURE.md`` or ``reports/poster/poster.typ``, update those too —
+#: ``docs/DATA_ARCHITECTURE.md`` or ``research/poster/poster.typ``, update those too —
 #: and regenerate ``fleet/registry.py`` if the population changed, since the
 #: dashboard's list is derived from this census.
 SNAPSHOT: dt.date | None = None

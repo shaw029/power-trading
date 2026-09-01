@@ -7,7 +7,7 @@ window, registers pulled in full — and a single stray import is enough to drag
 that into the dashboard's process, where it would not fail loudly but would
 quietly push a working app over its memory limit.
 
-`DATA_ARCHITECTURE.md` states the rule; these tests are what keep it true.
+`docs/DATA_ARCHITECTURE.md` states the rule; these tests are what keep it true.
 They read the source rather than importing it, so a forbidden import fails here
 even when the module it points at would work fine locally on a warm cache.
 """
@@ -66,7 +66,7 @@ def test_dashboard_does_not_import_the_full_profile(relative_path):
     leaked = _imported_modules(path) & FULL_PROFILE_MODULES
     assert not leaked, (
         f"{relative_path} imports full-profile module(s) {sorted(leaked)}. "
-        "The dashboard runs on Streamlit's free tier — see DATA_ARCHITECTURE.md."
+        "The dashboard runs on Streamlit's free tier — see docs/DATA_ARCHITECTURE.md."
     )
 
 

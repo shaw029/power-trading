@@ -1,0 +1,15 @@
+{
+  "census_bmus": "124 BM Units",
+  "census_mw": "6,234 MW",
+  "census_sites": "87 sites",
+  "curated_bmus": "47",
+  "curated_recovered": "47",
+  "dist_share": "33%",
+  "dist_sites": "44",
+  "mwh_cm": "18",
+  "mwh_hand": "24 sites",
+  "mwh_none": "22",
+  "snapshot": "24 August 2026",
+  "top_band_share": "33%",
+  "top_band_sites": "7"
+}

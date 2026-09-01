@@ -1,0 +1,17 @@
+{
+  "baseline": "+0.003",
+  "discharge_share": "95%",
+  "dispatch_gap": "48%",
+  "dispatch_multiple": "4x",
+  "drm_threshold": "< 1 GW",
+  "dur_corr": "r = +0.03",
+  "dur_sites": "55",
+  "duration_gap": "11%",
+  "events": "428",
+  "n_cmn": "13",
+  "n_drm": "39",
+  "preparedness_gap": "36%",
+  "response": "+0.051 MW per MW online",
+  "soc_at_onset": "61%",
+  "tail_half": "11%"
+}

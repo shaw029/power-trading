@@ -1,0 +1,23 @@
+{
+  "break_rank": "20 of 29",
+  "corr_raw": "+0.29",
+  "corr_within": "+0.13",
+  "gate_events_total": "345",
+  "gate_outcome": "C",
+  "onset_diff": "-19",
+  "onset_diff_anch": "-6",
+  "onset_diff_ci": "[-22, -13]",
+  "onset_missing": "0+0",
+  "onset_modern": "45%",
+  "onset_modern_anch": "46%",
+  "onset_modern_n": "37",
+  "onset_pre": "64%",
+  "onset_pre_anch": "52%",
+  "onset_pre_n": "308",
+  "resp_mod_ci": "[+0.099, +0.139]",
+  "resp_mod_cl": "+0.117",
+  "resp_pre_ci": "[+0.041, +0.053]",
+  "resp_pre_cl": "+0.047",
+  "skill12_hit": "58%",
+  "skill12_ppv": "61%"
+}
