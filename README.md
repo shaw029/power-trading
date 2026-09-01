@@ -105,13 +105,26 @@ the research layer, plus a methodology page carrying scope and caveats.
 
 ## Research
 
-The framework is also the instrument for a study of the GB battery fleet: whether
-profit-optimal dispatch coincides with what a resilient system needs, and what
-closing the gap would cost. Ten notebooks, the robustness checks behind them, and
-an A0 conference board.
+The framework is also the instrument for a study of the GB battery fleet: does
+profit-optimal dispatch coincide with what a resilient system needs, and what
+would closing the gap cost?
 
-Findings, method and caveats: **[research/](research/)** · the board:
-**[research/poster/](research/poster/)**
+Ten notebooks. Five carry the argument, and each one interrogates the last.
+
+| | | |
+|---|---|---|
+| **04** | Alignment gap | Poses the question against a modelled battery, on a priced benchmark |
+| **05** | Stress response | Takes it to the real fleet, on the operator's own scarcity instruments rather than a price proxy |
+| **07** | Regime shift | **Attacks 05.** Rising response, or a step change at the Open Balancing Platform cutover? |
+| **09** | Model vs fleet | **Concedes 04 and 05 were never comparable** — two rulers, two questions — and rebuilds them onto one |
+| **10** | Acceptances | **Corrects 05, 08 and 09.** A notification is a plan; the Balancing Mechanism instructs units away from it |
+
+The finding: energy prices already secure most of a modelled battery's high-load
+alignment, and what stays unpriced is readiness for scarcity.
+
+The census behind the denominators (06), the modern-era re-cut (08), the strategy
+backtests (01–03), the robustness checks and the A0 board:
+**[research/](research/)**
 
 ---
 
