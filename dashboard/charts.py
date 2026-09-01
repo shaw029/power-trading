@@ -2500,6 +2500,65 @@ def chart_margin_response(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def chart_mean_top_decile_day(df: pd.DataFrame) -> go.Figure:
+    """The average day that contains a top-decile hour, dispatch beneath load.
+
+    ``df`` is indexed by hour of day with ``residual_gw``, ``sim_mw`` and
+    ``top_share`` (the fraction of those days whose hour fell in the top
+    decile). One row per quantity rather than a shared axis: gigawatts of
+    system load and megawatts of one battery have no common scale, and a
+    second y-axis would invite exactly the comparison it cannot support.
+
+    This replaced a single exemplar day. One day is an anecdote, and the
+    dashboard auto-picked the busiest one, so it could illustrate a mechanism
+    but never support a claim. Averaging the days that actually contain a
+    top-decile hour shows the shape that generalises — in particular whether
+    the battery is still delivering at the end of the peak, which is the
+    question a single day cannot answer.
+    """
+    hours = df.index.to_numpy()
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.11,
+        subplot_titles=("Mean residual load", "Mean benchmark dispatch"),
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=hours, y=df["residual_gw"], mode="lines+markers", name="Residual load",
+            line=dict(color=COLORS["net"], width=2), marker=dict(size=5),
+            hovertemplate="Hour %{x}<br>%{y:,.1f} GW<extra></extra>",
+        ),
+        row=1, col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=hours, y=df["sim_mw"], name="Benchmark dispatch",
+            marker_color=_dispatch_bar_colors(df["sim_mw"].to_numpy()),
+            customdata=df["top_share"] * 100,
+            hovertemplate=(
+                "Hour %{x}<br>%{y:+,.1f} MW"
+                "<br>top-decile on %{customdata:.0f}% of these days<extra></extra>"
+            ),
+        ),
+        row=2, col=1,
+    )
+    # Shaded after the traces: add_vrect resolves its axis from the subplot,
+    # and on an empty subplot it silently draws nothing. Both panels get the
+    # same band so "the system is still busy" and "the battery has stopped"
+    # line up vertically, which is the whole reading of the chart.
+    for lo, hi in _flag_spans(pd.Series(df["top_share"].to_numpy() >= 0.5, index=hours)):
+        for row in (1, 2):
+            fig.add_vrect(
+                x0=lo - 0.5, x1=hi - 0.5, row=row, col=1,
+                fillcolor=COLORS["cost"], opacity=0.14, line_width=0, layer="below",
+            )
+    apply_theme(fig, height=HEIGHT_LG, title="The average day that gets busy")
+    fig.update_layout(showlegend=False, hovermode="x unified")
+    fig.update_xaxes(title_text="Hour of day (UTC)", dtick=2, row=2, col=1)
+    fig.update_yaxes(title_text="GW", row=1, col=1)
+    fig.update_yaxes(title_text="MW (+ discharge / − charge)", row=2, col=1)
+    return fig
+
+
 def chart_alignment_scatter(df: pd.DataFrame, sim_coverage: float | None,
                             sim_gbp: float) -> go.Figure:
     """Profit vs alignment: each fleet site by top-decile coverage and £/MW/day.

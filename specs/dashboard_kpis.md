@@ -276,7 +276,6 @@ The research page, and the busiest one: eight Numbers in two rows.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
-| ALN-1 | Exemplar day | Filter | Picks the window's busiest day by residual load automatically; override to inspect another. | Changed |
 | ALN-2 | Top-decile coverage | Number | How much of its discharge landed in the busiest tenth of half-hours. A utilisation measure — the system working hardest, not the system being short. | Changed |
 | ALN-3 | Surplus absorption | Number | How much of its charging landed when power was abundant. | Built |
 | ALN-4 | Readiness at onset | Number | How full it was when a top-decile load block began — the energy actually available. | Changed |
@@ -285,7 +284,7 @@ The research page, and the busiest one: eight Numbers in two rows.
 | ALN-7 | Risk periods | Number | How many half-hours the operator saw real risk of falling short. | Built |
 | ALN-8 | Coverage when confirmed tight | Number | Same as ALN-2, but judged against the operator's own margin rather than a load proxy — the scarcity ruler, not the utilisation one. | Changed |
 | ALN-9 | Capacity Market Notices | Number | Formal shortfall warnings. Usually "None in window" — they're rare by design. | Built |
-| ALN-10 | Exemplar day dispatch | Graph | The chosen day against system load. | Changed |
+| ALN-10 | The average day that gets busy | Graph | Mean residual load and mean benchmark dispatch by hour, across every day in the window containing a top-decile hour, with the usually-top-decile hours shaded on both panels. Replaced a single auto-picked exemplar day: one day is an anecdote, and the busiest one is the most flattering anecdote available. The reading is whether dispatch is still positive where the shading is. | Changed |
 | ALN-11 | System tightness | Graph | Spare capacity over the window, with risk periods and warnings marked. | Built |
 | ALN-18 | Was the system short? | Note | States what the window actually contained: the tightest margin against the 1,000 MW scarcity bar the research uses, and whether loss of load ever rose above zero. On a rolling summer window the answer is no, which is why nothing on the page may be read as a resilience finding. | Built |
 | ALN-12 | Profit vs alignment | Graph | Every real site plotted on money against top-decile coverage. | Changed |

@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from dashboard.charts import (  # noqa: F401
     DEFAULT_CHART_HEIGHT,
     chart_alignment_day,
+    chart_mean_top_decile_day,
     chart_capture_spread_daily,
     chart_alignment_scatter,
     chart_cycles_vs_revenue,
@@ -292,6 +293,42 @@ def test_chart_margin_response_colours_by_sign():
     # the two answers this chart exists to separate.
     assert colours[0] == colours[1] != colours[2]
     assert list(fig.data[0].x) == list(df["band"])
+
+
+def test_chart_mean_top_decile_day_shades_both_panels():
+    """The shading is the argument: it must land on both rows.
+
+    add_vrect resolves its axis from the subplot it names, and on a subplot
+    with no traces yet it silently draws nothing — which is how this shipped
+    broken once. Asserting the shape count catches that, where eyeballing a
+    faint band does not.
+    """
+    df = pd.DataFrame(
+        {
+            "residual_gw": [10.0] * 18 + [24.0, 25.0, 24.0, 23.0] + [20.0] * 2,
+            "top_share": [0.0] * 18 + [0.67, 0.94, 0.83, 0.53] + [0.0] * 2,
+            "sim_mw": [0.0] * 18 + [33.0, 22.0, 3.0, 0.0] + [0.0] * 2,
+        },
+        index=range(24),
+    )
+    fig = chart_mean_top_decile_day(df)
+    assert isinstance(fig, go.Figure)
+    # One band per panel, over the hours that are top-decile on most days.
+    assert len(fig.layout.shapes) == 2
+    assert {(s.x0, s.x1) for s in fig.layout.shapes} == {(17.5, 21.5)}
+    assert {s.yref for s in fig.layout.shapes} == {"y domain", "y2 domain"}
+    # Load and dispatch never share an axis: GW and MW have no common scale.
+    assert fig.layout.yaxis.title.text == "GW"
+    assert fig.layout.yaxis2.title.text.startswith("MW")
+
+
+def test_chart_mean_top_decile_day_without_a_persistent_peak():
+    """No hour top-decile on half the days — no shading, and no crash."""
+    df = pd.DataFrame(
+        {"residual_gw": [10.0] * 24, "top_share": [0.1] * 24, "sim_mw": [0.0] * 24},
+        index=range(24),
+    )
+    assert not chart_mean_top_decile_day(df).layout.shapes
 
 
 def test_chart_generation_mix_stacks_groups_and_demand():

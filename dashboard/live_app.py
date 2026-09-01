@@ -55,7 +55,7 @@ from dashboard.charts import (  # noqa: E402
     chart_stress_frequency,
     chart_stress_vs_demand,
     chart_realized_shape,
-    chart_alignment_day,
+    chart_mean_top_decile_day,
     chart_alignment_scatter,
     chart_gap_by_daytype,
     chart_margin_response,
@@ -2089,25 +2089,40 @@ def _page_alignment():
         "line is the top-decile energy arbitrage left undelivered.",
     )
 
-    # --- Exemplar day: dispatch against system state --------------------------
-    # Auto-selects the window's busiest day by residual load (the day that
-    # tests the thesis hardest); the picker allows overriding.
-    _exemplar = str(flags["residual_mw"].idxmax().date())
-    _default_i = dates_shown.index(_exemplar) if _exemplar in dates_shown else len(dates_shown) - 1
-    picked = st.selectbox(
-        "Exemplar day",
-        options=dates_shown,
-        index=_default_i,
-        help="Auto-selected as the highest residual-load day in the window — "
-        "the day that tests the thesis hardest. Override to inspect any other.",
-    )
-    day_date = dt.date.fromisoformat(picked)
-    day_flags = flags[flags.index.date == day_date]
-    day_dispatch = sim_dispatch[sim_dispatch.index.date == day_date]
-    if not day_flags.empty and not day_dispatch.empty:
-        st.plotly_chart(chart_alignment_day(day_flags, day_dispatch), width="stretch")
+    # --- The average busy day -------------------------------------------------
+    # Was an auto-picked exemplar day. One day is an anecdote, and picking the
+    # busiest one made it the most flattering anecdote available; averaging the
+    # days that contain a top-decile hour shows the shape that generalises.
+    _by_day = flags.assign(day=flags.index.date)
+    _busy_days = {d for d, g in _by_day.groupby("day") if g["stress"].any()}
+    if _busy_days:
+        _sub = _by_day[_by_day["day"].isin(_busy_days)]
+        _disp_busy = sim_dispatch[pd.Series(
+            sim_dispatch.index.date, index=sim_dispatch.index
+        ).isin(_busy_days)]
+        mean_day = pd.DataFrame(
+            {
+                "residual_gw": _sub.groupby(_sub.index.hour)["residual_mw"].mean() / 1000.0,
+                "top_share": _sub.groupby(_sub.index.hour)["stress"].mean(),
+                "sim_mw": _disp_busy.groupby(_disp_busy.index.hour).mean(),
+            }
+        ).dropna()
+        if not mean_day.empty:
+            st.plotly_chart(chart_mean_top_decile_day(mean_day), width="stretch")
+            _shaded = mean_day.index[mean_day["top_share"] >= 0.5]
+            if len(_shaded):
+                _last = int(_shaded.max())
+                _still = float(mean_day.loc[_last, "top_share"])
+                st.caption(
+                    f"Averaged over the {len(_busy_days)} day(s) in this window "
+                    "containing a top-decile hour. Shading marks the hours that "
+                    "are top-decile on at least half of them — the test is "
+                    "whether dispatch is still positive where the shading is, "
+                    f"and at {_last:02d}:00 it is top-decile on "
+                    f"{_still:.0%} of these days."
+                )
     else:
-        st.info("No overlapping system data for this day.")
+        st.info("No day in this window contains a top-decile load hour.")
 
     # --- System tightness: operator-grade margin + declared notices -----------
     st.subheader("Was the system actually short?")
