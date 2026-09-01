@@ -80,44 +80,32 @@ from live.assets import (  # noqa: E402
 from live.settle import settle_day  # noqa: E402
 from src.bess.bess_asset import BESSAsset  # noqa: E402
 
-SCOPE = """
-This dashboard is the **presentation tier** of a two-tier project. It is built to be
-read at a glance and to stay responsive on free hosting, which sets what it can show.
+#: Streamlit Cloud's own source icon points at the deployed file. This is the
+#: repository itself, offered in the toolbar menu beside it.
+REPO_URL = "https://github.com/shaw029/power-trading"
 
-| | **This dashboard** | **Research notebooks** |
+SCOPE = f"""
+**Live, and deliberately light.** Every figure here is fetched from free public
+feeds on demand and settled while you wait — no database, no precomputed
+artifacts, no API keys. That design is also the limit: it runs on free hosting,
+so it carries a rolling 60-day window and the 51 battery sites that can be priced
+from public data, which is 4,091 MW, or 66% of GB BM-registered battery MW.
+
+**The research is not this scaled down.** What is true of the fleet *as a whole*
+needs years of data and the full census — more than an interactive app can hold —
+so those questions are answered in notebooks instead, and the two are built to
+different budgets.
+
+| | Here | In the repository |
 |---|---|---|
-| Purpose | Present and communicate | Detailed research |
-| Battery fleet | 51 sites, 4,091 MW — 66% of GB BM-registered battery MW | Full census — 87 sites, 6,234 MW |
-| Window | Rolling 60 days | 2023-10-01 onward (~1,050 days) |
-| Revenue streams | Wholesale proxy + Balancing Mechanism | Adds per-unit ancillary (response and reserve) |
-| Data | Fetched live, cached per day | Complete day-file archive, backfilled to 100% |
+| Window | rolling 60 days | 2018 onward |
+| Fleet | 51 sites, 4,091 MW | full census, 87 sites, 6,234 MW |
+| Revenue | wholesale proxy + balancing | adds per-unit ancillary |
+| Data | fetched live, cached per day | complete day-file archive |
 
-**Neither tier is a cut-down of the other — they answer different questions.** The
-dashboard shows what the GB market is doing now. The notebooks establish what is true of
-the fleet as a whole, which needs a multi-year window no interactive app can carry.
-
-**What that means when reading these numbers.** The 51 sites here are **66% of GB
-BM-registered battery MW**. Two filters produce that list — a published energy
-capacity, and enough cycling to be priceable from wholesale and BM alone:
-
-| Site size | MW covered |
-|---|---|
-| 200 MW and above | 64% |
-| 100–200 MW | 75% |
-| 50–100 MW | 79% |
-| 20–50 MW | 42% |
-| Under 20 MW | 15% |
-
-So fleet figures here describe GB grid-scale storage closely, and describe the sub-50 MW
-tail poorly. What is missing is not a random sample: it is small sites, plus every
-battery traded behind an aggregator or supplier unit, which has no per-unit feed at all
-and sits outside even the denominator. The census behind these numbers is in
-`research/notebooks/06_fleet_coverage_census.ipynb`; the tier split is in
-`docs/DATA_ARCHITECTURE.md`.
-
-*Coverage figures are computed in the notebook on its pinned register snapshot. This page states
-them rather than recomputing them — keeping the census out of the dashboard's process is
-what keeps this tier light.*
+**[Source, method and the full study on GitHub]({REPO_URL})** — the notebooks are
+under `research/`, the board they feed is `research/poster/`, and the reasoning
+behind the split is `docs/DATA_ARCHITECTURE.md`.
 """
 
 METHODOLOGY = """
@@ -143,10 +131,6 @@ the settlement engine run over published market data.
   the slippage and degradation modelled. Illustrative, not a guarantee of
   replicable returns.
 """
-
-#: Streamlit Cloud's own source icon points at the deployed file. This is the
-#: repository itself, offered in the toolbar menu beside it.
-REPO_URL = "https://github.com/shaw029/power-trading"
 
 RESOLUTION_H = 1.0
 # Nord Pool serves recent GB day-ahead prices without a subscription back to
@@ -1105,7 +1089,24 @@ filters that produce it do different jobs.
   conditions, the window it was measured over is recorded in `fleet/registry.py`
   beside the sites it excluded.
 
-Together they leave out 36 sites — 2,144 MW, 34% of the fleet.
+Together they leave out 36 sites — 2,144 MW, 34% of the fleet. What is missing is
+not a random sample. Coverage is close to complete at the top of the fleet and
+thin at the bottom, so figures here describe GB grid-scale storage well and the
+sub-50 MW tail poorly:
+
+| Site size | MW covered |
+|---|---|
+| 200 MW and above | 64% |
+| 100–200 MW | 75% |
+| 50–100 MW | 79% |
+| 20–50 MW | 42% |
+| Under 20 MW | 15% |
+
+Batteries traded behind an aggregator or supplier unit have no per-unit feed at
+all and sit outside even the denominator. These shares are computed in
+`research/notebooks/06_fleet_coverage_census.ipynb` on its pinned register
+snapshot; this page states them rather than recomputing them, which is what keeps
+the census out of a process sized for free hosting.
 
 **How the list is built.** `scripts/build_registry.py` reads the census offline
 and writes a static `fleet/registry.py`. The dashboard imports that file and
@@ -2450,34 +2451,46 @@ GLOSSARY = _fill_bars(GLOSSARY)
 
 
 def _page_methodology():
-    _page_header("Methodology", "What these numbers are — and what they are not")
-    st.subheader("Scope — this dashboard and the research behind it")
+    _page_header("Methodology", "What these numbers are, and what they are not")
+
+    # Numbered, because the sections answer a reader's questions in order: what
+    # this is, then each of the three things it measures, then how to read the
+    # app, then the words. Full width and in sequence rather than two columns —
+    # the fleet section runs to three times the length of the benchmark one, so
+    # side by side left a column of white space, and prose reads badly set narrow.
     st.markdown(SCOPE)
-    # Full width and in sequence, not two columns: the fleet section runs to more
-    # than twice the length of the benchmark one, so side by side left a column
-    # of white space, and methodology prose is harder to read set narrow.
+
     st.divider()
-    st.subheader("The benchmark battery")
+    st.subheader("1 · The benchmark battery")
+    st.caption("The simulated 50 MW asset every *Benchmark* page reports on.")
     st.markdown(METHODOLOGY)
+
     st.divider()
-    st.subheader("The real GB fleet")
+    st.subheader("2 · The real GB fleet")
+    st.caption("Where the fleet figures come from, and which batteries are in them.")
     st.markdown(FLEET_METHODOLOGY)
+
     st.divider()
-    st.subheader("Alignment, and the two rulers")
+    st.subheader("3 · Alignment, and the two rulers")
+    st.caption("Utilisation and scarcity are different questions with different bars.")
     st.markdown(ALIGNMENT_METHODOLOGY)
+
     st.divider()
-    st.subheader("How the dashboard is arranged")
-    st.markdown("""
-- **Grouping is by epistemic status** — *Benchmark* is simulated, *GB power
-  system* is observed public data, *Research* is analysis using both.
-- **Sidebar filters define the window** (period, day types); the **Day
-  briefing's picker chooses one day within it** and is the app's only day
-  selector. Research pages auto-select their exemplar days and say so.
-- **Benchmark levers appear only on pages they affect**; observed pages carry
-  a note instead.
-""")
+    st.subheader("4 · How to read the dashboard")
+    st.markdown(
+        """
+- **Pages are grouped by epistemic status** — *Benchmark* is simulated,
+  *GB power system* is observed public data, *Research* is analysis using both.
+- **The sidebar defines the window** (period, day types). The Daily summary's
+  picker chooses one day inside it and is the app's only day selector; research
+  pages pick their own exemplar days and say so on the page.
+- **Benchmark levers appear only on the pages they affect.** Observed pages carry
+  a note in their place, so a lever never silently fails to apply.
+"""
+    )
+
     st.divider()
-    st.subheader("Definitions")
+    st.subheader("5 · Definitions")
     st.markdown(GLOSSARY)
 
 
