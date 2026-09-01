@@ -248,7 +248,7 @@ def test_system_page_renders_price_and_stress_kpis(app):
         "Negative price count  \nhours",
         "Max daily P90–P10 spread  \n£/MWh",
         "Max daily peak demand  \nGW",
-        "Max system stress  \nGW",
+        "Peak residual load  \nGW",
     ]
     values = [m.value for m in at.metric]
     assert all("£" not in v and "GW" not in v for v in values)

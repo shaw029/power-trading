@@ -93,7 +93,7 @@ grid did, and what the real fleet did — and ungrouped they read as one undiffe
 | — | **GB system** | — | — | — |
 | DAY-6 | DA P90−P10 spread | Number | Cheapest to dearest decile today — the opportunity a battery could actually work. | Changed |
 | DAY-21 | Peak & floor price | Number | The dearest and cheapest hours the auction cleared. A negative floor means generators paid to keep running. | Added |
-| DAY-18 | Peak residual load | Number | The tightest the grid got today (demand − wind − solar), and how many half-hours were top-decile stress. | Changed |
+| DAY-18 | Peak residual load | Number | The busiest the grid got today (demand − wind − solar), and how many half-hours were in the window's top decile. | Changed |
 | DAY-22 | Renewable share | Number | Wind, solar, hydro and biomass as a share of GB generation today — grounds the price volatility beside it. | Added |
 | — | **Real GB fleet** | — | — | — |
 | DAY-23 | Fleet median PnL | Number | What the typical real battery earned today, with how many sites reported. | Added |
@@ -136,13 +136,16 @@ Sidebar label: **Optimiser performance**  ·  URL `/optimiser`.
 ## System overview — the GB grid itself  ·  *GB power system*
 
 No simulation here, only observed data. The page shifts from "what did GB generate" toward
-"how expensive and how stretched was it" — prices and stress, not just the mix.
+"how expensive and how stretched was it" — prices and load, not just the mix.
 *Data: generation by fuel, demand, solar, day-ahead prices.*
 
 **Prices here are day-ahead** (the auction price the benchmark trades against). Day-ahead is
-hourly, so period counts on this page are hours. **Stress** is a half-hour in the top decile of
-residual load across the window shown, the same definition the Alignment page uses — so it
-moves when the date filter moves.
+hourly, so period counts on this page are hours. **Top-decile load** is a half-hour in the
+busiest tenth of residual load across the window shown, the same definition the Alignment page
+uses — so it moves when the date filter moves. It measures the system working *hardest*, which
+is not the same as the system being *short*; the scarcity ruler (de-rated margin, loss-of-load
+probability, Capacity Market Notices) lives on the Alignment gap page and is never mixed with
+this one.
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|
@@ -156,20 +159,20 @@ moves when the date filter moves.
 | SYS-11 | Negative price count | Number | How many hours cleared below £0. | Built |
 | SYS-12 | Max daily P90–P10 spread | Number | The widest single day between its top and bottom price deciles — the most tradable day in the window. | Built |
 | SYS-13 | Max daily peak demand | Number | The highest demand reached in the window. | Built |
-| SYS-14 | Max system stress | Number | The highest residual load (demand − wind − solar) — the biggest burden the rest of the fleet had to carry. | Built |
+| SYS-14 | Peak residual load | Number | The highest residual load (demand − wind − solar) — the biggest burden the rest of the fleet had to carry. | Changed |
 | SYS-15 | Daily price volatility | Graph | A daily envelope of min, P10, average, P90 and max price, so intraday spread is visible day by day. | Built |
-| SYS-16 | Stress vs total demand | Graph | Daily peak demand against daily peak residual load — the gap between the two lines is what renewables covered. | Built |
-| SYS-17 | Stress & negative-price frequency | Graph | Daily counts of the two ends of the story side by side: top-decile stress periods, and hours that cleared below £0. | Built |
+| SYS-16 | Residual vs total demand | Graph | Daily peak demand against daily peak residual load — the gap between the two lines is what renewables covered. | Changed |
+| SYS-17 | Top-decile & negative-price frequency | Graph | Daily counts of the two ends of the story side by side: top-decile load periods, and hours that cleared below £0. | Changed |
 
 **Placement.** SYS-1 is a badge in the page header beside the date range, not a tile. The eight
 Numbers sit in two rows of four — low-carbon share, average price, highest price, lowest price,
-then negative price count, max P90–P10 spread, max peak demand, max system stress. The five
+then negative price count, max P90–P10 spread, max peak demand, peak residual load. The five
 Graphs run full width beneath them in this order: daily price volatility (directly under the
-numbers, since most of them are prices), generation mix, low-carbon over time, stress vs total
-demand, stress & surplus frequency.
+numbers, since most of them are prices), generation mix, low-carbon over time, residual vs total
+demand, top-decile & negative-price frequency.
 
 Two places the mockup differs from this sheet, decided in favour of the sheet: the page keeps
-the name **System overview** (it now covers prices, demand and stress, not just generation),
+the name **System overview** (it now covers prices, demand and load, not just generation),
 and SYS-17 carries **three** series, not the two its legend showed.
 
 ## Fleet performance — real GB batteries  ·  *GB power system*
@@ -269,7 +272,7 @@ moves, beside how much of the ceiling it caught on each kind of day.
 ## Alignment gap — does profit serve the grid?  ·  *Research*
 
 The research page, and the busiest one: eight Numbers in two rows.
-*Data: grid stress signals, the operator's own margin warnings, the simulation, the fleet.*
+*Data: system load, the operator's own margin and notices, the simulation, the fleet.*
 
 | ID | Shows | Type | What it tells you | Status |
 |---|---|---|---|---|

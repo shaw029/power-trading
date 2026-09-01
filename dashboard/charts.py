@@ -2140,7 +2140,7 @@ def chart_stress_vs_demand(df: pd.DataFrame) -> go.Figure:
             )
         )
     apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
-                title="Stress vs total demand — shaded gap is the renewable contribution")
+                title="Residual vs total demand — shaded gap is the renewable contribution")
     fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text="GW")
     return fig
@@ -2158,7 +2158,7 @@ def chart_stress_frequency(df: pd.DataFrame) -> go.Figure:
     d["date"] = pd.to_datetime(d["date"])
     fig = go.Figure()
     for col, name, colour in (
-        ("stress", "Top-decile stress", COLORS["cost"]),
+        ("stress", "Top-decile load", COLORS["cost"]),
         ("negative", "Negative price", COLORS["soc"]),
     ):
         if col not in d.columns:
@@ -2170,7 +2170,7 @@ def chart_stress_frequency(df: pd.DataFrame) -> go.Figure:
             )
         )
     apply_theme(fig, height=HEIGHT_SM,
-                title="Stress & negative-price frequency — periods per day")
+                title="Top-decile load & negative-price frequency — periods per day")
     fig.update_layout(barmode="group", bargap=0.25, hovermode="x unified")
     fig.update_yaxes(title_text="Periods per day")
     return fig
@@ -2308,7 +2308,7 @@ def _flag_spans(flags: pd.Series) -> list[tuple]:
 
 
 def chart_alignment_day(day_flags: pd.DataFrame, dispatch_mw: pd.Series) -> go.Figure:
-    """One day: residual load with stress/surplus shading over battery dispatch.
+    """One day: residual load with top-decile/surplus shading over battery dispatch.
 
     ``day_flags`` is the half-hourly classification frame (``residual_mw``,
     ``stress``, ``surplus``) for a single day; ``dispatch_mw`` the benchmark's
@@ -2351,7 +2351,7 @@ def chart_alignment_day(day_flags: pd.DataFrame, dispatch_mw: pd.Series) -> go.F
     apply_theme(
         fig,
         height=HEIGHT_LG,
-        title="Dispatch against system state — stress (red) and surplus (green) shaded",
+        title="Dispatch against system load — top decile (red) and surplus (green) shaded",
     )
     fig.update_layout(hovermode="x unified", showlegend=True)
     fig.update_yaxes(title_text="Residual load (GW)", row=1, col=1)
@@ -2502,7 +2502,7 @@ def chart_margin_response(df: pd.DataFrame) -> go.Figure:
 
 def chart_alignment_scatter(df: pd.DataFrame, sim_coverage: float | None,
                             sim_gbp: float) -> go.Figure:
-    """Profit vs alignment: each fleet site by stress coverage and £/MW/day.
+    """Profit vs alignment: each fleet site by top-decile coverage and £/MW/day.
 
     The poster-level view: where do real GB batteries sit on the
     profit/resilience plane, and where does the profit-optimal benchmark sit?
@@ -2527,7 +2527,7 @@ def chart_alignment_scatter(df: pd.DataFrame, sim_coverage: float | None,
                 marker=dict(color=color, size=10, line=dict(width=1, color="white")),
                 customdata=hover,
                 hovertemplate=(
-                    "%{customdata}<br>Stress coverage %{x:.0%} · "
+                    "%{customdata}<br>Top-decile coverage %{x:.0%} · "
                     "£%{y:,.0f}/MW/day<extra></extra>"
                 ),
             )
@@ -2541,17 +2541,17 @@ def chart_alignment_scatter(df: pd.DataFrame, sim_coverage: float | None,
                 name="Benchmark (profit-optimal)",
                 marker=dict(color=COLORS["net"], size=14, symbol="star"),
                 hovertemplate=(
-                    "Benchmark<br>Stress coverage %{x:.0%} · "
+                    "Benchmark<br>Top-decile coverage %{x:.0%} · "
                     "£%{y:,.0f}/MW/day<extra></extra>"
                 ),
             )
         )
     apply_theme(
         fig, height=DEFAULT_CHART_HEIGHT,
-        title="Profit vs alignment — revenue against stress coverage",
+        title="Profit vs alignment — revenue against top-decile coverage",
     )
     fig.update_layout(hovermode="closest")
-    fig.update_xaxes(title_text="Stress coverage (share of discharge in stress hours)",
+    fig.update_xaxes(title_text="Top-decile coverage (share of discharge in the busiest hours)",
                      tickformat=".0%")
     fig.update_yaxes(title_text="Estimated revenue (£/MW/day)")
     return fig
@@ -2667,7 +2667,7 @@ def chart_day_composite(
     apply_theme(
         fig, height=640,
         title="The day on one timeline — prices, action, state, system "
-              "(stress red / surplus green)",
+              "(top decile red / surplus green)",
     )
     fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text="£/MWh", row=1, col=1)

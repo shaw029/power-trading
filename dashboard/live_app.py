@@ -603,7 +603,7 @@ def _page_day():
     )
 
     # Grid context for this day. Stress comes from the window-wide classifier,
-    # so "stressed" means stressed relative to the period on screen.
+    # so "top-decile" is relative to the period on screen.
     flags = _window_flags(tuple(dates))
     day_date = dt.date.fromisoformat(picked)
     day_flags = flags[flags.index.date == day_date] if not flags.empty else flags
@@ -677,11 +677,13 @@ def _page_day():
         sysc[2].metric(
             _unit_label("Peak residual load", "GW"),
             f"{float(day_flags['residual_mw'].max()) / 1000.0:,.1f}",
-            f"{_stress_hh} stress half-hour(s)" if _stress_hh else "no stress periods",
+            f"{_stress_hh} top-decile half-hour(s)" if _stress_hh
+            else "no top-decile periods",
             delta_color="off",
-            help="The tightest the grid got today: demand minus wind and solar, "
-            "the most the rest of the fleet had to carry. Stress is the top "
-            "decile of residual load across the window shown.",
+            help="The busiest the grid got today: demand minus wind and solar, "
+            "the most the rest of the fleet had to carry. Top-decile means the "
+            "busiest tenth of half-hours across the window shown — a "
+            "utilisation measure, not a shortage.",
         )
     else:
         sysc[2].metric(_unit_label("Peak residual load", "GW"), "—")
@@ -1742,7 +1744,7 @@ def _system_summary_day(date_iso: str) -> dict | None:
 
 
 def _stress_frequency(date_isos: tuple, sdf: pd.DataFrame) -> pd.DataFrame:
-    """Per-day counts of stress periods and negative-price hours.
+    """Per-day counts of top-decile load periods and negative-price hours.
 
     Stress is a window-relative decile of residual load, so it is classified
     once across the whole shown window — the same call the Day and Alignment
@@ -1880,7 +1882,7 @@ def _page_system():
         help="The highest half-hourly demand reached in the window (Elexon ITSDO).",
     )
     row2[3].metric(
-        _unit_label("Max system stress", "GW"),
+        _unit_label("Peak residual load", "GW"),
         f"{sdf['peak_residual_gw'].max():.1f}"
         if "peak_residual_gw" in sdf and sdf["peak_residual_gw"].notna().any() else "—",
         help="The highest residual load (demand − wind − solar) — the biggest "
@@ -1900,16 +1902,16 @@ def _page_system():
     # Alignment pages use, so one word cannot mean two things.
     freq = _stress_frequency(tuple(days), sdf)
     if freq.empty:
-        st.info("Not enough system data in this window to classify system stress.")
+        st.info("Not enough system data in this window to classify load periods.")
     else:
         st.plotly_chart(chart_stress_frequency(freq), width="stretch")
 
     st.caption(
         "Sources — generation mix: Elexon FUELHH (transmission-metered); solar: "
         "Sheffield Solar PV_Live (embedded); demand: Elexon ITSDO; day-ahead: "
-        "Nord Pool N2EX. All free, all public. Stress is the top decile of "
-        "residual load across the window shown, so it moves when the date "
-        "filter moves."
+        "Nord Pool N2EX. All free, all public. Top-decile load is the busiest "
+        "tenth of half-hours by residual load across the window shown, so it "
+        "moves when the date filter moves."
     )
 
     st.caption(
@@ -1918,9 +1920,9 @@ def _page_system():
     )
 
 
-@st.cache_data(show_spinner="Classifying system stress…")
+@st.cache_data(show_spinner="Classifying load periods…")
 def _window_flags(date_isos: tuple) -> pd.DataFrame:
-    """Half-hourly residual load + stress/surplus flags over the shown window.
+    """Half-hourly residual load + top-decile/surplus flags over the shown window.
 
     Thresholds are quantiles over this window, so the classification is
     relative to the period on screen. Days whose system data is unavailable

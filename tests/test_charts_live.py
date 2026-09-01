@@ -600,7 +600,7 @@ def test_chart_stress_frequency_two_grouped_series():
     )
     fig = chart_stress_frequency(df)
     assert isinstance(fig, go.Figure)
-    assert [t.name for t in fig.data] == ["Top-decile stress", "Negative price"]
+    assert [t.name for t in fig.data] == ["Top-decile load", "Negative price"]
     # Grouped, not stacked: the two states can coincide, so a stack would imply
     # a total that does not exist.
     assert fig.layout.barmode == "group"
