@@ -82,27 +82,6 @@ the naive-baseline decomposition that separates model skill from imbalance carry
 
 ---
 
-## Dashboards
-
-The pipeline reports aggregate PnL, which tells you how much the battery made
-but not why it acted as it did. Two Streamlit apps close that gap.
-
-**Backtest replay** (`dashboard/app.py`) faithfully replays the strategy the
-pipeline runs and exposes the per-hour decision trail — why it charged or
-discharged in each settlement period, how SOC evolved, where the forecast misled
-it, where it hit limits. A model-debugging tool, not a trading interface.
-
-**Live GB benchmark** (`dashboard/live_app.py`) runs the same engine on current
-market data, settling three reference batteries (50 MW at 1h/2h/4h) against
-actual day-ahead and intraday prices. Day-ahead from Nord Pool (N2EX), intraday
-MID, generation and demand from Elexon — both public, **no API key**. Pages are
-grouped by epistemic status: the simulated benchmark, the observed GB system, and
-the research layer, plus a methodology page carrying scope and caveats.
-
-→ Deploy steps and structure in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#dashboard).
-
----
-
 ## Research
 
 **Strategy — does it make money, and where does the money come from?**
@@ -126,6 +105,27 @@ alignment, and what stays unpriced is readiness for scarcity.
 
 All ten notebooks, the robustness checks behind them and the A0 board:
 **[research/](research/)**
+
+---
+
+## Dashboards
+
+The pipeline reports aggregate PnL, which tells you how much the battery made
+but not why it acted as it did. Two Streamlit apps close that gap.
+
+**Backtest replay** (`dashboard/app.py`) faithfully replays the strategy the
+pipeline runs and exposes the per-hour decision trail — why it charged or
+discharged in each settlement period, how SOC evolved, where the forecast misled
+it, where it hit limits. A model-debugging tool, not a trading interface.
+
+**Live GB benchmark** (`dashboard/live_app.py`) runs the same engine on current
+market data, settling three reference batteries (50 MW at 1h/2h/4h) against
+actual day-ahead and intraday prices. Day-ahead from Nord Pool (N2EX), intraday
+MID, generation and demand from Elexon — both public, **no API key**. Pages are
+grouped by epistemic status: the simulated benchmark, the observed GB system, and
+the research layer, plus a methodology page carrying scope and caveats.
+
+→ Deploy steps and structure in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#dashboard).
 
 ---
 
