@@ -2576,6 +2576,14 @@ def _benchmark_parameters() -> tuple:
                 "the whole simulation."
             )
 
+    # Streamlit owns the top-right toolbar and takes no custom buttons there, so
+    # the route to the source sits at the foot of the sidebar, where it is on
+    # every page and never competes with a number.
+    with st.sidebar:
+        st.divider()
+        st.link_button("⭐  Star on GitHub", REPO_URL, width="stretch")
+        st.caption("Source, method and the research behind these numbers.")
+
     p = st.session_state["bench_params"]
     return (
         p["duration"],

@@ -6,6 +6,9 @@ execution, and battery dispatch optimised by LP with rolling-horizon
 re-optimisation — validated on a 2018 backtest and benchmarked live against the
 real GB battery fleet.
 
+**[Live GB BESS benchmark →](https://power-trading-live-gb-bess.streamlit.app)** — the battery engine running on this week's
+GB market data.
+
 ![Virtual strategy](research/notebooks/assets/equity_curve.png)
 ![Battery dispatch in the DA market](research/notebooks/assets/bess_strategy_showcase.png)
 
@@ -118,7 +121,7 @@ pipeline runs and exposes the per-hour decision trail — why it charged or
 discharged in each settlement period, how SOC evolved, where the forecast misled
 it, where it hit limits. A model-debugging tool, not a trading interface.
 
-**Live GB benchmark** (`dashboard/live_app.py`) runs the same engine on current
+**[Live GB benchmark](https://power-trading-live-gb-bess.streamlit.app)** (`dashboard/live_app.py`) runs the same engine on current
 market data, settling three reference batteries (50 MW at 1h/2h/4h) against
 actual day-ahead and intraday prices. Day-ahead from Nord Pool (N2EX), intraday
 MID, generation and demand from Elexon — both public, **no API key**. Pages are
