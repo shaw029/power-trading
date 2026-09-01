@@ -12,6 +12,7 @@ exception-free when the duration selector changes.
 """
 
 import datetime as dt
+import pathlib
 import threading
 
 import pandas as pd
@@ -19,6 +20,11 @@ import pytest
 
 from fleet import fetch_fleet
 from live import fetch_live
+
+#: Absolute, because streamlit resolves a relative AppTest path against the file
+#: that calls it (from 1.63) rather than the working directory, so "dashboard/
+#: live_app.py" started resolving to tests/dashboard/live_app.py.
+APP = str(pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "live_app.py")
 
 
 def _prices(date):
@@ -177,7 +183,7 @@ def test_prefetch_fleet_days_is_a_noop_on_an_empty_window(monkeypatch):
 def test_app_boots_on_latest_day_page(app):
     from streamlit.testing.v1 import AppTest
 
-    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    at = AppTest.from_file(APP, default_timeout=120)
     at.run()
 
     assert not at.exception
@@ -200,7 +206,7 @@ def test_alignment_page_renders_system_tightness(app):
     from streamlit.testing.v1 import AppTest
     from streamlit.testing.v1.app_test import calc_hash
 
-    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    at = AppTest.from_file(APP, default_timeout=120)
     # Function pages hash on their url_path (st.Page(..., url_path="alignment")),
     # and AppTest.switch_page only accepts file paths — target the hash directly.
     at._page_hash = calc_hash("alignment")
@@ -226,7 +232,7 @@ def test_regimes_page_renders_the_two_family_charts(app):
     from streamlit.testing.v1 import AppTest
     from streamlit.testing.v1.app_test import calc_hash
 
-    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    at = AppTest.from_file(APP, default_timeout=120)
     at._page_hash = calc_hash("regimes")
     at.run()
 
@@ -241,7 +247,7 @@ def test_system_page_renders_price_and_stress_kpis(app):
     from streamlit.testing.v1 import AppTest
     from streamlit.testing.v1.app_test import calc_hash
 
-    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    at = AppTest.from_file(APP, default_timeout=120)
     at._page_hash = calc_hash("system")
     at.run()
 
@@ -277,7 +283,7 @@ def test_fleet_page_kpis_follow_the_metric_switch(app):
     from streamlit.testing.v1 import AppTest
     from streamlit.testing.v1.app_test import calc_hash
 
-    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    at = AppTest.from_file(APP, default_timeout=120)
     at._page_hash = calc_hash("fleet")
     at.run()
 
@@ -324,7 +330,7 @@ def test_filter_days_by_period_and_day_type():
 def test_duration_change_does_not_error(app):
     from streamlit.testing.v1 import AppTest
 
-    at = AppTest.from_file("dashboard/live_app.py", default_timeout=120)
+    at = AppTest.from_file(APP, default_timeout=120)
     at.run()
     # The levers sit in a sidebar form: pick a new duration, then Apply.
     at.radio[0].set_value("4h")

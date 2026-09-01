@@ -12,3 +12,7 @@ shap
 debugpy
 pytest
 qrcode
+# Reads data/reference/battery_energy_capacity.xlsx (fleet.research.coverage).
+openpyxl
+# bootstrap_data.py, step 4 of the README quick-start.
+python-dotenv

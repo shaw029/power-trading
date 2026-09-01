@@ -58,9 +58,14 @@ logger = logging.getLogger(__name__)
 #: Hand-researched energy capacities, built by ``scripts/build_mwh_worksheet.py``
 #: and filled from what operators publish. Optional — everything works without
 #: it, with fewer sites priced.
-ENERGY_WORKSHEET = (
-    Path(__file__).resolve().parents[1] / "data" / "reference" / "battery_energy_capacity.xlsx"
+#: Located by walking up to the marker file rather than by counting parents, so
+#: moving this module does not silently point it at a directory that does not
+#: exist — which is what happened when it moved into fleet/research, and which
+#: this file's own "optional" handling would have hidden indefinitely.
+_REPO_ROOT = next(
+    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
 )
+ENERGY_WORKSHEET = _REPO_ROOT / "data" / "reference" / "battery_energy_capacity.xlsx"
 
 #: Accepted values of the worksheet's ``source_type``. A figure's standing
 #: travels with it rather than being asserted once in a caption.

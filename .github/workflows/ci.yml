@@ -18,7 +18,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt flake8 mypy
+        # requirements-ml.txt is the superset the suite exercises: it pulls
+        # requirements.txt and adds pytest, scikit-learn and xgboost. The old
+        # line installed neither pytest nor the model stack, so `pytest -q`
+        # failed before collecting anything.
+        run: pip install -r requirements-ml.txt flake8 mypy
 
       - name: Lint
         run: flake8 .

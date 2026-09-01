@@ -413,8 +413,8 @@ for scheme, soc in schemes.items():
     blo, bhi = np.percentile(bdiffs, [2.5, 97.5])
     # Influence: largest change in the modern median from dropping one event.
     mvals = np.asarray(per_era["modern"])
-    base = np.median(mvals)
-    infl = max(abs(np.median(np.delete(mvals, i)) - base) for i in range(mvals.size))
+    base_median = np.median(mvals)
+    infl = max(abs(np.median(np.delete(mvals, i)) - base_median) for i in range(mvals.size))
     gate[scheme] = dict(
         stats=stats,
         diff=float(point_diff),
