@@ -189,7 +189,10 @@
     [#text(size: 18pt)[
       #tag("scarcity", discharge) Since #n8.era_start the fleet responds more
       strongly during scarcity but enters events with
-      #text(fill: da-blue, weight: "bold")[less stored energy].
+      #text(fill: da-blue, weight: "bold")[less stored energy]: median charge
+      at onset down #text(fill: da-blue, weight: "bold")[#absn(sx.onset_diff)
+      points], or #absn(sx.onset_diff_anch) under the alternative
+      reconstruction.
     ]],
   )
 ]
