@@ -1072,67 +1072,55 @@ FLEET_METHODOLOGY = """
 Estimated performance of real GB grid-scale batteries, built entirely from free
 public Elexon per-unit data.
 
-- **Revenue = wholesale proxy + Balancing Mechanism.** The wholesale proxy
-  values each unit's Physical Notification at the half-hourly MID price
-  (actual traded prices are private). BM revenue is Elexon's indicative
-  per-unit bid/offer cashflows (`EBOCF`), summed as published.
-- **Excluded here (by design)** — ancillary services, capacity market and
-  private PPAs. Ancillary revenue *is* obtainable per unit from NESO's auction
-  results, and the research notebooks price it, but its history is fragmented
-  across three publishing eras with real gaps — folding that into a live
-  rolling view would mislead more than it informs. This tier scopes to the two
-  streams it can estimate consistently from one source every day; the full
-  stack is in the notebooks. Traded PPA prices are private and out of reach of
-  either tier.
-- **Ancillary-tilted sites can read *negative*, not just low** — energy bought
-  to hold state of charge for an ancillary contract is costed at MID here,
-  while the availability payment that motivated it is invisible. Sites cycling
-  below ~{CYCLES} cycles/day are flagged ⚠ in the site table: their revenue likely
-  comes from markets this model cannot see, so don't read their £ figures as
-  trading performance.
-- **Which batteries are on this dashboard** — every BM-registered GB battery
-  the census can identify **whose energy capacity is known and which cycles
-  enough to price**: 51 sites, 77 BM Units, 4,091 MW, or 66% of BM-registered
-  battery MW.
+**What the revenue figures contain.** The wholesale proxy values each unit's
+Physical Notification at the half-hourly MID price, because actual traded prices
+are private. Balancing Mechanism revenue is Elexon's indicative per-unit bid and
+offer cashflows (`EBOCF`), summed as published. Nothing else: ancillary services,
+capacity market and private PPAs are all outside these numbers.
 
-  Two filters produce that list, and they do different jobs. *BM registration*
-  is a hard data requirement — the free per-unit feeds this dashboard runs on
-  (Physical Notifications, acceptances, cashflows) exist only for registered
-  BM Units, so a battery traded behind an aggregator or supplier unit is
-  invisible at site level and cannot appear whatever we do. *Known energy
-  capacity* is a presentation choice: cycles per day and the duration bucket
-  both divide by MWh, so a site without a published duration would render
-  blank cells rather than a smaller number.
+**Why ancillary is left out, and what it costs.** Ancillary revenue *is*
+obtainable per unit from NESO's auction results, and the research notebooks price
+it, but its history is fragmented across three publishing eras with real gaps —
+folding that into a live rolling view would mislead more than it informs. The
+consequence shows up in one direction only. A site holding state of charge for an
+ancillary contract buys energy this model can see, and earns an availability
+payment it cannot, so its figures are not merely uncertain but **systematically
+negative**. Sites cycling below {CYCLES} cycles a day are flagged ⚠ for that
+reason; read their £ figures as a gap in the data, not as trading performance.
 
-  *Enough cycling* is the second, and it is a judgement about behaviour rather
-  than a fact about an asset. A site turning over less than {CYCLES} cycles a day is
-  almost certainly earning in ancillary markets this model cannot see — and the
-  model *can* see the energy it buys to hold state of charge for those
-  contracts, with no availability payment against it. Its £ figures are
-  therefore not merely uncertain but systematically negative, so showing them as
-  performance would mislead more than leaving the site out does. Because that
-  criterion moves with market conditions, the window it was measured over is
-  recorded in `fleet/registry.py` beside the sites it excluded.
+**Which batteries appear.** Every BM-registered GB battery the census can
+identify whose energy capacity is published and which cycles enough to price:
+**51 sites, 77 BM Units, 4,091 MW — 66% of BM-registered battery MW.** The two
+filters that produce it do different jobs.
 
-  Together the two filters leave out 36 sites — 2,144 MW, 34% of the fleet.
+- *BM registration* is a hard data requirement. The free per-unit feeds this
+  dashboard runs on — notifications, acceptances, cashflows — exist only for
+  registered BM Units, so a battery traded behind an aggregator or supplier unit
+  is invisible at site level and cannot appear whatever we do.
+- *Published energy capacity* is a presentation choice. Cycles per day and the
+  duration bucket both divide by MWh, so a site without one renders blank cells
+  rather than a smaller number.
+- *Enough cycling* is a judgement about behaviour rather than a fact about an
+  asset, for the reason above. Because the criterion moves with market
+  conditions, the window it was measured over is recorded in `fleet/registry.py`
+  beside the sites it excluded.
 
-  The list is built offline by `scripts/build_registry.py`, which reads
-  the census and writes a static `fleet/registry.py`. The dashboard imports
-  that file and never builds a census itself: doing so would pull whole
-  registers into a process sized for free hosting. It is a generated snapshot,
-  so it goes stale as units commission — regenerate it when the fleet moves.
+Together they leave out 36 sites — 2,144 MW, 34% of the fleet.
 
-  Metadata quality is not uniform across the list, and the difference shows up in
-  one place. For the sites `fleet/curated.py` covers, optimiser and region
-  are hand-researched — cross-checked against operator disclosure rather than
-  derived, though hand-researched is not the same as authoritative.
-  For the rest, `power_mw` and `capacity_mwh` are published figures
-  (Elexon's declared capability; a matched Capacity Market agreement), but the
-  *optimiser* falls back to the BM Unit's lead party — the trading party rather
-  than the optimiser proper. Read the **By optimiser** cut on Fleet performance
-  with that caveat; every MW- and MWh-based number is unaffected.
-- **Metadata** — optimiser, region and approximate MWh are a hand-curated
-  snapshot and can go stale; cycle counts are indicative.
+**How the list is built.** `scripts/build_registry.py` reads the census offline
+and writes a static `fleet/registry.py`. The dashboard imports that file and
+never builds a census itself: doing so would pull whole registers into a process
+sized for free hosting. It is a generated snapshot, so it goes stale as units
+commission — regenerate it when the fleet moves.
+
+**Where the metadata is weakest.** For sites `fleet/curated.py` covers, optimiser
+and region are hand-researched and cross-checked against operator disclosure —
+which is not the same as authoritative. For the rest, `power_mw` and
+`capacity_mwh` are published figures (Elexon's declared capability, or a matched
+Capacity Market agreement) but the *optimiser* falls back to the BM Unit's lead
+party, which is the trading party rather than the optimiser proper. Read the
+**By optimiser** cut on Fleet performance with that caveat; every MW- and
+MWh-based number is unaffected. Cycle counts throughout are indicative.
 """
 
 
@@ -1141,6 +1129,18 @@ public Elexon per-unit data.
 FLEET_METHODOLOGY = FLEET_METHODOLOGY.replace(
     "{CYCLES}", str(fleet_perf.ANCILLARY_CYCLES_THRESHOLD)
 )
+
+
+def _fill_bars(text: str) -> str:
+    """Substitute the two margin thresholds from the constants that enforce them.
+
+    They are different bars for different jobs and the prose says so, but only
+    if the numbers stay right: written by hand they drift the moment either
+    constant moves.
+    """
+    return text.replace("{TIER2_BAR}", f"{resilience.DRM_TIGHT_MW:,.0f}").replace(
+        "{SCARCITY_BAR}", f"{_SCARCITY_BAR_MW:,.0f}"
+    )
 
 
 # Quick-pick period presets for the global filter bar, in display order.
@@ -2385,7 +2385,7 @@ and system need, from the same public feeds as everything else.
   fleet does when the system works **hardest**, and its bar is the top decile
   of residual load. *Scarcity* asks what it does when the operator has **least
   slack**, and its bar is the operator's own margin — a de-rated margin under
-  1,000 MW, a positive loss-of-load probability, or a declared notice. Top-decile
+  {SCARCITY_BAR} MW, a positive loss-of-load probability, or a declared notice. Top-decile
   load is not a shortage: GB reaches its busiest hour every single day and is
   short in none of them. **No number measured on the load decile may be quoted
   as a resilience finding**, here or in the research. This dashboard's rolling
@@ -2407,9 +2407,12 @@ and system need, from the same public feeds as everything else.
   utilisation lane. Tier 2 is
   system-confirmed tightness from Elexon's LoLP / de-rated margin feed —
   latest print per settlement period (forecast horizon 1, else the shortest
-  published) — tight when LoLP > 0 or the de-rated margin is below 2,000 MW
+  published) — tight when LoLP > 0 or the de-rated margin is below {TIER2_BAR} MW
   (roughly one large CCGT plus operating reserve; an absolute threshold by
-  design, unlike tier 1's window-relative decile). Tier 3 is a declared
+  design, unlike tier 1's window-relative decile). **This is a looser bar than
+  the {SCARCITY_BAR} MW scarcity threshold above, deliberately**: the dashboard's job
+  is to show the margin tightening, and the research's is to certify that the
+  system was genuinely short. A tier-2 period is not a scarcity event. Tier 3 is a declared
   Capacity Market Notice: the half-hour overlaps an issued notice's target
   window (cancellations are not applied in this version — a cancelled CMN can
   over-shade, never hide a tight period). Periods without a LoLP/DRM print are
@@ -2426,6 +2429,7 @@ and system need, from the same public feeds as everything else.
   own margin and notice data; benchmark dispatch uses the perfect-foresight
   intraday engine.
 """
+ALIGNMENT_METHODOLOGY = _fill_bars(ALIGNMENT_METHODOLOGY)
 
 GLOSSARY = """
 | Term | Definition |
@@ -2439,25 +2443,30 @@ GLOSSARY = """
 | **LoLP** | Loss of load probability — Elexon's per-period chance that demand exceeds available supply |
 | **De-rated margin** | Spare supply after de-rating for reliability (MW); the operator's tightness measure |
 | **CMN** | Capacity Market Notice — NESO's declared warning of a possible capacity shortfall |
-| **Tier 1 / 2 / 3** | Stress: relative (top-decile residual) / confirmed (LoLP > 0, DRM < 2,000 MW) / declared (CMN) |
+| **Tier 1 / 2 / 3** | Relative (top-decile load) / tightening (LoLP > 0, DRM < {TIER2_BAR} MW) / declared (CMN) |
+| **Scarcity bar** | DRM under {SCARCITY_BAR} MW — the research's stricter bar. Not tier 2 |
 """
+GLOSSARY = _fill_bars(GLOSSARY)
 
 
 def _page_methodology():
     _page_header("Methodology", "What these numbers are — and what they are not")
     st.subheader("Scope — this dashboard and the research behind it")
     st.markdown(SCOPE)
+    # Full width and in sequence, not two columns: the fleet section runs to more
+    # than twice the length of the benchmark one, so side by side left a column
+    # of white space, and methodology prose is harder to read set narrow.
     st.divider()
-    left, right = st.columns(2, gap="large")
-    with left:
-        st.subheader("Benchmark battery")
-        st.markdown(METHODOLOGY)
-    with right:
-        st.subheader("Live GB fleet")
-        st.markdown(FLEET_METHODOLOGY)
-    st.subheader("Alignment")
+    st.subheader("The benchmark battery")
+    st.markdown(METHODOLOGY)
+    st.divider()
+    st.subheader("The real GB fleet")
+    st.markdown(FLEET_METHODOLOGY)
+    st.divider()
+    st.subheader("Alignment, and the two rulers")
     st.markdown(ALIGNMENT_METHODOLOGY)
-    st.subheader("Design principles")
+    st.divider()
+    st.subheader("How the dashboard is arranged")
     st.markdown("""
 - **Grouping is by epistemic status** — *Benchmark* is simulated, *GB power
   system* is observed public data, *Research* is analysis using both.
@@ -2467,6 +2476,7 @@ def _page_methodology():
 - **Benchmark levers appear only on pages they affect**; observed pages carry
   a note instead.
 """)
+    st.divider()
     st.subheader("Definitions")
     st.markdown(GLOSSARY)
 
