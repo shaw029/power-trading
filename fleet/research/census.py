@@ -108,7 +108,7 @@ SYMMETRY_BAND = (0.75, 1.35)
 #: as one asset rather than two.
 ASSET_ID_ALIASES: dict[str, str] = {}
 
-#: Optional freeze for the live feeds this module and :mod:`fleet.ancillary`
+#: Optional freeze for the live feeds this module and :mod:`fleet.research.ancillary`
 #: read. ``None`` — the default — means "use today", which is the live behaviour
 #: every library caller and the dashboard rely on. **Nothing in the repo pins
 #: this.**
@@ -519,7 +519,7 @@ def census_sites(
     One row per ``asset_id`` — the persistent key — carrying the site's BM
     Units, declared MW, owner, region, confidence grade and whether the curated
     registry covers it. This is the frame every statistic in
-    :mod:`fleet.coverage` is computed from.
+    :mod:`fleet.research.coverage` is computed from.
 
     ``confidence`` selects which grades qualify, defaulting to
     :data:`ANALYSIS_CONFIDENCE`. Pass ``None`` to keep every unit the physical

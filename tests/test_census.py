@@ -13,7 +13,7 @@ from unittest import mock
 import pandas as pd
 import pytest
 
-from fleet import census, coverage
+from fleet.research import census, coverage
 
 
 def _bmu(elexon, ng, name, party, demand, generation, fuel=None, unit_type="T", gsp=None):

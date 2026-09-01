@@ -80,7 +80,7 @@ dashboard parse 2.7x the records it needs on every page, which is exactly the
 failure the split exists to prevent.
 
 `fleet/population.py` imports the census **lazily, inside the function**. It sits
-on the dashboard's import chain, so a top-level `fleet.census` import would drag
+on the dashboard's import chain, so a top-level `fleet.research.census` import would drag
 the whole research tier into a Streamlit process; `tests/test_population.py`
 parses the module and fails if that import ever moves to the top.
 
@@ -95,7 +95,7 @@ the dashboard, never a reason to leave it out of the research.
 Ancillary revenue is the worked example. Its per-unit history is fragmented
 across three NESO publishing eras with real gaps, which makes it unfit for a
 live rolling view and *essential* to an honest revenue stack. So it lives in
-`fleet/ancillary.py`, the notebooks price it in full, and the dashboard says
+`fleet/research/ancillary.py`, the notebooks price it in full, and the dashboard says
 plainly that it is out of scope there and where to find it.
 
 ### Expensive multi-year work is pre-baked, never fetched on a page load
@@ -109,11 +109,19 @@ disk, so the dashboard's cost does not grow as its cache does.
 
 ### The boundary is a test, not a convention
 
-`tests/test_profile_boundary.py` fails the build if `dashboard/` or `live/` import
-`fleet.census`, `fleet.coverage`, `fleet.ancillary` or either store builder; if the
-curated registry stops being 23 sites; if the dashboard's rolling window grows past 90
-days; or if cached reads stop being scoped to the requested window. The dashboard's
-weight is therefore a property the build checks, not a habit maintained by care.
+`tests/test_profile_boundary.py` fails the build if anything on the dashboard's
+import surface reaches the research tier; if the curated registry stops being 23
+sites; if the dashboard's rolling window grows past 90 days; or if cached reads
+stop being scoped to the requested window. The dashboard's weight is therefore a
+property the build checks, not a habit maintained by care.
+
+Both sides of that rule are read off the directory rather than listed. The
+forbidden set is every module under `fleet/research/`, and the guarded surface is
+every file in `dashboard/` and `live/`. That matters more than it sounds: while
+both were hand-maintained sets, a new file on either side walked straight through
+a green test — a module added to `fleet/` was not forbidden because nobody had
+named it, and a new dashboard module was not checked because nobody had listed
+it. Deriving both from disk means a file is covered the day it is written.
 
 This is also why the dashboard *states* its coverage figures as text rather than
 computing them: importing the census to render one number would pull the whole
@@ -129,7 +137,7 @@ after a run. An analysis that cannot state its coverage is not finished.
 ### Assets have a persistent identity
 
 Sites change owner, name and BM Unit registration. Keying on any of those
-splits one asset into two across a multi-year window. `fleet.census` assigns
+splits one asset into two across a multi-year window. `fleet.research.census` assigns
 `GB-BESS-<root>`, keyed on the National Grid BMU root, which is tied to the
 physical connection point rather than the commercial arrangement around it.
 
@@ -140,9 +148,9 @@ physical connection point rather than the commercial arrangement around it.
 | `fleet/population.py` | The population parameter: sites, BM Units, cache suffix | both |
 | `fleet/curated.py` | Hand-researched optimiser, region and MWh — a metadata table, not a fleet | presentation |
 | `fleet/registry.py` | Census sites with a known MWh, generated — **the fleet, and what the dashboard renders** | presentation |
-| `fleet/census.py` | Every BM-registered battery, reconstructed from five public sources | research |
-| `fleet/coverage.py` | What share of the census the registry represents, and how it is biased | research |
-| `fleet/ancillary.py` | Per-unit response/reserve revenue, joined to the census by `asset_id` | research |
+| `fleet/research/census.py` | Every BM-registered battery, reconstructed from five public sources | research |
+| `fleet/research/coverage.py` | What share of the census the registry represents, and how it is biased | research |
+| `fleet/research/ancillary.py` | Per-unit response/reserve revenue, joined to the census by `asset_id` | research |
 | `src/data/coverage.py` | Per-feed per-day cache accounting | both |
 | `scripts/backfill_market_data.py` | Fills the gaps the dashboard's window never needed | research |
 | `fleet/performance.py` | Every existing metric, unchanged | both |
@@ -179,10 +187,10 @@ built from, and NESO's auction results. Unpinned, two runs on different days ret
 different population *and* a different revenue stack, so every count below would disagree
 with the next run.
 
-`fleet.census.SNAPSHOT` exists to fix that, and **defaults to `None`, meaning live** —
+`fleet.research.census.SNAPSHOT` exists to fix that, and **defaults to `None`, meaning live** —
 nothing in the library or the dashboard pins anything. Each research notebook sets it in
 its own setup cell, so the freeze is a property of a notebook rather than of the repo.
-`fleet.ancillary` reads the same constant, so a notebook's population and the revenue
+`fleet.research.ancillary` reads the same constant, so a notebook's population and the revenue
 joined to it are always the same vintage.
 
 Notebooks 04, 05 and 06 are aligned on one vintage and one window end, so their results
@@ -234,7 +242,7 @@ closing the gap.
 
 ## The revenue stack tells the same story from the other side
 
-Adding per-unit ancillary revenue (`fleet/ancillary.py`) was meant only to complete the
+Adding per-unit ancillary revenue (`fleet/research/ancillary.py`) was meant only to complete the
 earnings picture, but it independently corroborates the coverage finding. Over the most recent
 window carrying the full service stack, £52.9m of battery ancillary revenue splits:
 

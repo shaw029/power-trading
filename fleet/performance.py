@@ -414,7 +414,7 @@ def battery_era_start(
     exports 1,385 MW against a 41 MW nameplate — the coal plant, wearing the
     battery's identity.
 
-    This is the counterpart to :func:`fleet.census.asset_id`. The asset ID is
+    This is the counterpart to :func:`fleet.research.census.asset_id`. The asset ID is
     stable across *owner* and *name* changes, which is what makes it the right
     key; it cannot distinguish a change of *technology* at the same connection
     point, because nothing in the identifier does. So the physics is used

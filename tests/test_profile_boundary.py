@@ -19,12 +19,25 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+
+def _modules_in(package: str) -> set[str]:
+    """Every importable module name under a package directory."""
+    return {
+        f"{package}.{p.stem}"
+        for p in (REPO_ROOT / Path(package.replace(".", "/"))).glob("*.py")
+        if p.stem != "__init__"
+    }
+
+
 #: Modules that assume the full profile — a large population, a long window, or
 #: a register pulled in its entirety. None may be reachable from the dashboard.
-FULL_PROFILE_MODULES = {
-    "fleet.ancillary",
-    "fleet.census",
-    "fleet.coverage",
+#:
+#: The fleet half is read off the directory rather than listed, so a research
+#: module added tomorrow is forbidden the day it is written instead of the day
+#: someone remembers to extend this set. The rest are named individually because
+#: they are the heavy exceptions inside otherwise-light packages.
+FULL_PROFILE_MODULES = _modules_in("fleet.research") | {
+    "fleet.research",
     "src.data.coverage",
     "build_stress_store",
     "scripts.build_stress_store",
@@ -32,17 +45,20 @@ FULL_PROFILE_MODULES = {
 }
 
 #: Everything the live dashboard loads at import time.
-LITE_SURFACE = [
-    "dashboard/live_app.py",
-    "dashboard/app.py",
-    "dashboard/charts.py",
-    # Generated from the census by scripts/build_registry.py, but it is
-    # the dashboard's population and therefore part of its import surface: it
-    # must stay a plain data module.
-    "fleet/registry.py",
-] + [
-    str(p.relative_to(REPO_ROOT)) for p in (REPO_ROOT / "live").glob("*.py")
-]
+#:
+#: Globbed, not listed. A hardcoded list silently stops covering the file someone
+#: adds next, which is the failure mode this whole test exists to prevent.
+LITE_SURFACE = sorted(
+    str(p.relative_to(REPO_ROOT))
+    for p in [
+        *(REPO_ROOT / "dashboard").glob("*.py"),
+        *(REPO_ROOT / "live").glob("*.py"),
+        # Generated from the census by scripts/build_registry.py, but it is
+        # the dashboard's population and therefore part of its import surface:
+        # it must stay a plain data module.
+        REPO_ROOT / "fleet" / "registry.py",
+    ]
+)
 
 
 def _imported_modules(path: Path) -> set[str]:

@@ -1,6 +1,6 @@
 """Regenerate ``fleet/registry.py`` — the fleet this project analyses.
 
-The dashboard cannot build a census. ``fleet.census`` and ``fleet.coverage``
+The dashboard cannot build a census. ``fleet.research.census`` and ``fleet.research.coverage``
 pull whole registers and are barred from its process by
 ``tests/test_profile_boundary.py``, so the population it runs on has to be a
 plain static list, exactly as ``fleet.registry`` is.
@@ -99,7 +99,7 @@ MEASURE_DAYS = 60
 
 
 def main() -> int:
-    from fleet import census as census_mod
+    from fleet.research import census as census_mod
     from fleet import curated as curated_mod
     from fleet import performance as fleet_perf
     from fleet import population as pop_mod

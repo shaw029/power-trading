@@ -18,7 +18,7 @@ This script writes the worksheet that keeps them apart. One row per site the
 census cannot price, pre-filled with everything already known — the BM Units,
 declared MW, and whatever REPD offers by way of operator, commissioning date
 and postcode, which is what makes the site findable — and blank columns for the
-figure, its source and the date it was read. `fleet.coverage` reads the sheet
+figure, its source and the date it was read. `fleet.research.coverage` reads the sheet
 back and records the provenance beside every value, so the notebooks can report
 "published by the operator" and "settled through a capacity agreement" as the
 distinct claims they are.
@@ -46,7 +46,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from fleet import census, coverage  # noqa: E402
+from fleet.research import census, coverage  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

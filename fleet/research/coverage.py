@@ -1,6 +1,6 @@
 """How much of the GB battery fleet the curated registry actually represents.
 
-:mod:`fleet.curated` is a hand-researched table of sites. :mod:`fleet.census`
+:mod:`fleet.curated` is a hand-researched table of sites. :mod:`fleet.research.census`
 reconstructs the population those sites are drawn from. This module is the arithmetic between them,
 and it exists to replace an assumption with a measurement.
 
@@ -51,7 +51,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from fleet import census
+from fleet.research import census
 
 logger = logging.getLogger(__name__)
 

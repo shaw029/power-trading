@@ -13,7 +13,7 @@ from unittest import mock
 import pandas as pd
 import pytest
 
-from fleet import ancillary
+from fleet.research import ancillary
 
 
 def _rows():

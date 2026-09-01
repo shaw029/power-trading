@@ -28,7 +28,7 @@ REPO_ROOT = next(
 sys.path.insert(0, str(REPO_ROOT))
 warnings.filterwarnings("ignore")
 
-from fleet import census  # noqa: E402
+from fleet.research import census  # noqa: E402
 from fleet import fetch_fleet  # noqa: E402
 from fleet import performance as fleet_perf  # noqa: E402
 from fleet.population import census_population  # noqa: E402

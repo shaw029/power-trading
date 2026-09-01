@@ -11,7 +11,7 @@ assumed.
 **It joins cleanly, which is the reason this is possible at all.** NESO's
 auction results identify the winning unit by its National Grid BM Unit name —
 ``KILSB-5``, ``CLAYB-1``, ``THURB-3`` — which is exactly what
-:func:`fleet.census.asset_id` is keyed on. Ancillary revenue therefore attaches
+:func:`fleet.research.census.asset_id` is keyed on. Ancillary revenue therefore attaches
 to the same persistent asset ID as dispatch and BM cashflow, with no fuzzy
 matching anywhere in the path. Aggregator-run units use house codes instead
 (``AG-GBL0EN``, ``HAB-15``, ``ANSC-001``); those cannot resolve to a site and
@@ -57,7 +57,7 @@ from dataclasses import dataclass
 import pandas as pd
 import requests
 
-from fleet import census
+from fleet.research import census
 from src.utils.config import RAW_DATA_DIR
 
 logger = logging.getLogger(__name__)

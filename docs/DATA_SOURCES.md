@@ -113,7 +113,7 @@ happened*, but *which assets exist*. They are not day-partitioned, so each is ca
 | NESO EAC results by unit | CKAN `a63ab354-…` | Explicit `Batteries` technology type per response/reserve participant |
 
 > **Elexon publishes no battery fuel type.** 2,470 of 3,055 BM Units carry `fuelType: null` and
-> not one row says "battery", so the population cannot be downloaded — `fleet/census.py`
+> not one row says "battery", so the population cannot be downloaded — `fleet/research/census.py`
 > constructs it. A unit qualifies when it is physical (not a supplier portfolio or
 > interconnector), carries no conflicting fuel label, and declares import and export capability
 > **symmetrically**. Symmetry is the discriminating condition: all 47 BM Units of the curated
@@ -125,9 +125,9 @@ happened*, but *which assets exist*. They are not day-partitioned, so each is ca
 ## Ancillary service revenue (per unit)
 
 Frequency response and reserve have historically been the dominant GB battery revenue stream,
-so wholesale plus BM cashflow is a knowingly incomplete stack. `fleet/ancillary.py` adds the
+so wholesale plus BM cashflow is a knowingly incomplete stack. `fleet/research/ancillary.py` adds the
 third stream at unit level. It joins with no fuzzy matching: NESO names the winning unit by its
-National Grid BM Unit name (`KILSB-5`, `CLAYB-1`), which is what `fleet.census` already keys on.
+National Grid BM Unit name (`KILSB-5`, `CLAYB-1`), which is what `fleet.research.census` already keys on.
 
 | Source | CKAN resource | Period | Services |
 |---|---|---|---|

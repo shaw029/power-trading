@@ -15,7 +15,7 @@ this one says what the research has that the dashboard does not.
 
 | Reason | Meaning |
 |---|---|
-| *tier boundary* | Needs `fleet.census`, `fleet.coverage` or `fleet.ancillary`, which the dashboard may not import — see `docs/DATA_ARCHITECTURE.md` and `tests/test_profile_boundary.py`. |
+| *tier boundary* | Needs `fleet.research.census`, `fleet.research.coverage` or `fleet.research.ancillary`, which the dashboard may not import — see `docs/DATA_ARCHITECTURE.md` and `tests/test_profile_boundary.py`. |
 | *needs data the dashboard does not fetch* | A feed or horizon outside the rolling 60-day, four-feed diet. Addable, at a download cost. |
 | *out of scope* | A different asset or question from "what is the GB battery market doing now". |
 
@@ -90,7 +90,7 @@ The priced-benchmark narrative. Most of the headline numbers are on the Alignmen
 | Duration moves the frontier further than money | No | Needs the frontier at several durations |
 | Dispatch–residual correlation | No | A single scalar the page's charts already imply |
 | Coverage–revenue correlation | No | Same — the scatter shows it, the number is not printed |
-| Third revenue stream (ancillary) | No | *tier boundary* — `fleet.ancillary` |
+| Third revenue stream (ancillary) | No | *tier boundary* — `fleet.research.ancillary` |
 | Winter cross-check on 2018 prices | No | *needs data the dashboard does not fetch* — outside the rolling window |
 | Bootstrap confidence intervals on the headlines | No | Research-grade uncertainty; the dashboard states point figures |
 
@@ -127,13 +127,13 @@ than computing them — that is the rule, not an omission.
 |---|---|---|
 | Representativeness — sites, MW, MWh covered | **Yes**, as a statement | Methodology — the `SCOPE` block quotes the MW share and points at this notebook |
 | Gap characterised by size band | **Yes**, as a statement | Same block: 70% coverage above 200 MW, 14% in the 20–50 MW band |
-| Census build and BMU classification | No | *tier boundary* — `fleet.census` |
+| Census build and BMU classification | No | *tier boundary* — `fleet.research.census` |
 | Coverage funnel / Tier-1 table | No | *tier boundary* |
 | Symmetry-rule audit, recall check | No | *tier boundary* — census build quality |
 | Persistent asset ID | No | *tier boundary* |
 | Robustness to the size threshold | No | *tier boundary* |
 | Revenue stack: what is visible and what is not | Partly | Methodology explains which streams are estimated; the priced comparison is notebook work |
-| Ancillary earnings by era | No | *tier boundary* — `fleet.ancillary` |
+| Ancillary earnings by era | No | *tier boundary* — `fleet.research.ancillary` |
 
 ---
 

@@ -45,7 +45,7 @@ def test_populations_cache_into_separate_directories():
 def test_census_is_not_imported_at_module_scope():
     """`population` is imported by the dashboard's dependency chain.
 
-    A top-level `fleet.census` import here would pull the whole research tier —
+    A top-level `fleet.research.census` import here would pull the whole research tier —
     registers, the full BMU reference, the coverage join — into a Streamlit
     process. The import must stay inside `census_population`.
     """
@@ -59,7 +59,7 @@ def test_census_is_not_imported_at_module_scope():
         alias.name for node in tree.body if isinstance(node, ast.Import)
         for alias in node.names
     }
-    assert not {"fleet.census", "fleet.coverage"} & top_level
+    assert not {"fleet.research.census", "fleet.research.coverage"} & top_level
 
 
 def test_fetchers_request_the_populations_own_units():
@@ -117,7 +117,7 @@ def test_census_population_carries_machine_derived_metadata():
         )
     ]
     table.itertuples.return_value = rows
-    with mock.patch("fleet.coverage.coverage_table", return_value=table):
+    with mock.patch("fleet.research.coverage.coverage_table", return_value=table):
         from fleet.population import census_population
 
         population = census_population()

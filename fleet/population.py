@@ -22,7 +22,7 @@ as an argument. Two exist:
     always wrote to.
 
 ``census_population()``
-    Every BM-registered battery :mod:`fleet.census` can identify. The research
+    Every BM-registered battery :mod:`fleet.research.census` can identify. The research
     tier's population; its size depends on the register vintage the caller pins,
     so it is not quoted here. Its metadata is machine-derived
     rather than hand-checked, which matters for some metrics and not others; see
@@ -34,7 +34,7 @@ the curated fetch keeps ``FLEET_PN/`` untouched. Merging them would silently mak
 the dashboard parse three times the records it needs, which is the opposite of
 what the two-tier split is for.
 
-This module deliberately does **not** import :mod:`fleet.census` at module
+This module deliberately does **not** import :mod:`fleet.research.census` at module
 level. ``fetch_fleet`` and ``performance`` import this module, and the dashboard
 imports those; a top-level census import would drag the entire research tier
 into a Streamlit process. The import is therefore made inside
@@ -106,7 +106,7 @@ def census_population(refresh: bool = False) -> Population:
     The census is imported here rather than at module scope so that importing
     this module stays cheap for the dashboard.
     """
-    from fleet import coverage  # noqa: PLC0415 - deliberately lazy
+    from fleet.research import coverage  # noqa: PLC0415 - deliberately lazy
 
     table = coverage.coverage_table(refresh)
 
