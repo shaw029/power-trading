@@ -128,9 +128,7 @@ def test_generation_aggregates_raises_when_no_data_for_day():
     # Generation rows exist, but all fall on a different day, so after the
     # delivery-day window filter nothing remains and a ValueError is raised.
     times = pd.date_range("2024-02-01T00:00:00Z", periods=48, freq="30min")
-    other_day = pd.DataFrame(
-        {"startTime": times, "fuelType": "WIND", "generation": 1000.0}
-    )
+    other_day = pd.DataFrame({"startTime": times, "fuelType": "WIND", "generation": 1000.0})
     with mock.patch.object(fetch_live, "fetch_generation_actual", return_value=other_day):
         with pytest.raises(ValueError):
             fetch_live._generation_aggregates(_DAY)
@@ -152,9 +150,7 @@ def test_group_generation_collapses_and_conserves():
     )
     grouped = fetch_live.group_generation(system)
     # Fixed order, only groups with data.
-    assert list(grouped.columns) == [
-        "Wind", "Solar", "Gas", "Interconnectors", "Other"
-    ]
+    assert list(grouped.columns) == ["Wind", "Solar", "Gas", "Interconnectors", "Other"]
     assert grouped["Gas"].tolist() == [2100.0, 2020.0]  # CCGT + OCGT
     assert grouped["Interconnectors"].tolist() == [700.0, -100.0]  # net, signed
     assert grouped["Other"].tolist() == [0.0, 10.0]  # coal folded in

@@ -14,6 +14,7 @@ The entry point is ``main.py``, which supplies the config and the mode. Calling
 ``run_full_pipeline()`` directly works too, but it then falls back to whatever
 ``configs/config.yaml`` holds.
 """
+
 import pandas as pd
 import numpy as np
 import logging
@@ -511,9 +512,7 @@ def _run_bess_pipeline(config: dict) -> dict:
                 "degradation_cost": result["total_degradation_cost"],
                 "intraday_throughput_mwh": result["accumulated_intraday_throughput_mwh"],
                 "discharge_mwh": sum(
-                    e["final_mw"] * duration_h
-                    for e in result["dispatch_log"]
-                    if e["final_mw"] > 0
+                    e["final_mw"] * duration_h for e in result["dispatch_log"] if e["final_mw"] > 0
                 ),
                 "net_pnl": result["net_pnl"],
             }

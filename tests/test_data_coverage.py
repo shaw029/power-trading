@@ -68,9 +68,7 @@ def test_summary_counts_only_days_inside_the_window(raw_dir):
 def test_backfill_requests_only_missing_days():
     asked = []
     with (
-        mock.patch.object(
-            backfill.cov, "missing_days", return_value=[dt.date(2024, 1, 2)]
-        ),
+        mock.patch.object(backfill.cov, "missing_days", return_value=[dt.date(2024, 1, 2)]),
         mock.patch.dict(backfill.DAY_FETCHERS, {"MID": asked.append}),
     ):
         result = backfill.backfill_feed("MID", dt.date(2024, 1, 1), dt.date(2024, 1, 3))

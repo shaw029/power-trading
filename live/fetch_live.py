@@ -93,9 +93,7 @@ def get_day_prices(date: dt.date, da_source: str = _DA_SOURCE) -> pd.DataFrame:
     prices = prices.resample(_RESAMPLE_RULE).mean()
     # Only the day-ahead price is essential; a missing mid_price must not throw
     # away an otherwise valid day-ahead row, so drop on that column alone.
-    prices = prices[["day_ahead_price", "mid_price"]].dropna(
-        subset=["day_ahead_price"]
-    )
+    prices = prices[["day_ahead_price", "mid_price"]].dropna(subset=["day_ahead_price"])
     # A missing intraday MID for an otherwise valid period falls back to that
     # period's day-ahead price (MID == DA → zero intraday spread, so the engine
     # simply won't deviate). Leaving it NaN would crash the intraday LP
@@ -118,9 +116,7 @@ def _generation_aggregates(date: dt.date) -> tuple[float, float]:
     start, end = _day_window(date)
     date_str = date.isoformat()
 
-    gen = process_generation_mix(
-        fetch_generation_actual(start_date=date_str, end_date=date_str)
-    )
+    gen = process_generation_mix(fetch_generation_actual(start_date=date_str, end_date=date_str))
     gen = gen[(gen.index >= start) & (gen.index < end)]
     if gen.empty:
         raise ValueError("no generation data for the requested day")
@@ -140,9 +136,7 @@ def _solar_aggregate(date: dt.date) -> float:
     start, end = _day_window(date)
     date_str = date.isoformat()
 
-    solar = process_solar_actual(
-        fetch_solar_actual(start_date=date_str, end_date=date_str)
-    )
+    solar = process_solar_actual(fetch_solar_actual(start_date=date_str, end_date=date_str))
     solar = solar[(solar.index >= start) & (solar.index < end)]
     if solar.empty:
         raise ValueError("no PV_Live solar data for the requested day")
@@ -154,9 +148,7 @@ def _demand_aggregate(date: dt.date) -> float:
     start, end = _day_window(date)
     date_str = date.isoformat()
 
-    demand = process_demand_actual(
-        fetch_demand_actual(start_date=date_str, end_date=date_str)
-    )
+    demand = process_demand_actual(fetch_demand_actual(start_date=date_str, end_date=date_str))
     demand = demand[(demand.index >= start) & (demand.index < end)]
     if demand.empty:
         raise ValueError("no demand data for the requested day")
@@ -228,9 +220,7 @@ GENERATION_GROUP_ORDER: tuple[str, ...] = (
     "Other",
 )
 # Groups counted as low-carbon for the System page headline share.
-LOW_CARBON_GROUPS: frozenset[str] = frozenset(
-    {"Wind", "Solar", "Nuclear", "Hydro", "Biomass"}
-)
+LOW_CARBON_GROUPS: frozenset[str] = frozenset({"Wind", "Solar", "Nuclear", "Hydro", "Biomass"})
 # Renewable is low-carbon without nuclear: same clean electricity, different
 # question — one asks about carbon, the other about a fuel that replenishes.
 # Pumped storage is deliberately absent from both: it is storage, only as clean
@@ -266,9 +256,7 @@ def group_generation(system: pd.DataFrame) -> pd.DataFrame:
         groups["Interconnectors"] = system[int_cols].sum(axis=1)
         assigned.update(int_cols)
 
-    other_cols = [
-        c for c in system.columns if c.startswith("gen_") and c not in assigned
-    ]
+    other_cols = [c for c in system.columns if c.startswith("gen_") and c not in assigned]
     if other_cols:
         groups["Other"] = system[other_cols].sum(axis=1)
 
@@ -302,17 +290,13 @@ def get_day_system(date: dt.date) -> pd.DataFrame:
         logger.warning("System generation unavailable for %s: %s", date, exc)
 
     try:
-        solar = process_solar_actual(
-            fetch_solar_actual(start_date=date_str, end_date=date_str)
-        )
+        solar = process_solar_actual(fetch_solar_actual(start_date=date_str, end_date=date_str))
         frames.append(_windowed(solar))
     except Exception as exc:
         logger.warning("System solar unavailable for %s: %s", date, exc)
 
     try:
-        demand = process_demand_actual(
-            fetch_demand_actual(start_date=date_str, end_date=date_str)
-        )
+        demand = process_demand_actual(fetch_demand_actual(start_date=date_str, end_date=date_str))
         frames.append(_windowed(demand[["demand_actual"]]))
     except Exception as exc:
         logger.warning("System demand unavailable for %s: %s", date, exc)

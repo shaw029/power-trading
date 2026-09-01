@@ -91,20 +91,36 @@ def _daily_fixture() -> pd.DataFrame:
     for date, a_gbp, b_gbp in ((_DATE, 10_000.0, 2_000.0), ("2024-01-02", 6_000.0, 4_000.0)):
         rows.append(
             {
-                "date": date, "site": "A", "optimiser": "OptX", "region": "North",
+                "date": date,
+                "site": "A",
+                "optimiser": "OptX",
+                "region": "North",
                 "duration": "2h",
-                "power_mw": 100.0, "capacity_mwh": 200.0, "discharge_mwh": 200.0,
-                "charge_mwh": 220.0, "wholesale_gbp": a_gbp, "bm_gbp": 0.0,
-                "total_gbp": a_gbp, "gbp_per_mw": a_gbp / 100.0,
+                "power_mw": 100.0,
+                "capacity_mwh": 200.0,
+                "discharge_mwh": 200.0,
+                "charge_mwh": 220.0,
+                "wholesale_gbp": a_gbp,
+                "bm_gbp": 0.0,
+                "total_gbp": a_gbp,
+                "gbp_per_mw": a_gbp / 100.0,
             }
         )
         rows.append(
             {
-                "date": date, "site": "B", "optimiser": "OptY", "region": "South",
+                "date": date,
+                "site": "B",
+                "optimiser": "OptY",
+                "region": "South",
                 "duration": "1h",
-                "power_mw": 50.0, "capacity_mwh": 50.0, "discharge_mwh": 50.0,
-                "charge_mwh": 55.0, "wholesale_gbp": b_gbp / 2, "bm_gbp": b_gbp / 2,
-                "total_gbp": b_gbp, "gbp_per_mw": b_gbp / 50.0,
+                "power_mw": 50.0,
+                "capacity_mwh": 50.0,
+                "discharge_mwh": 50.0,
+                "charge_mwh": 55.0,
+                "wholesale_gbp": b_gbp / 2,
+                "bm_gbp": b_gbp / 2,
+                "total_gbp": b_gbp,
+                "gbp_per_mw": b_gbp / 50.0,
             }
         )
     return pd.DataFrame(rows)
@@ -114,9 +130,7 @@ def test_filter_daily_no_filters_returns_everything():
     daily = _daily_fixture()
     assert len(performance.filter_daily(daily)) == len(daily)
     # Empty lists (the dashboard's untouched multiselects) are also no-ops.
-    assert len(performance.filter_daily(daily, sites=[], optimisers=[], day_types=[])) == len(
-        daily
-    )
+    assert len(performance.filter_daily(daily, sites=[], optimisers=[], day_types=[])) == len(daily)
 
 
 def test_filter_daily_by_period_site_optimiser_region():
@@ -220,8 +234,14 @@ def test_fleet_daily_splits_components():
     assert day1["cycles"] == pytest.approx(250.0 / 250.0)
 
 
-def _limit_record(bmu: str, t_from: str, t_to: str, level: float,
-                  notified: str = "2024-01-01T00:00:00Z", seq: int = 1) -> dict:
+def _limit_record(
+    bmu: str,
+    t_from: str,
+    t_to: str,
+    level: float,
+    notified: str = "2024-01-01T00:00:00Z",
+    seq: int = 1,
+) -> dict:
     return {
         "bmUnit": bmu,
         "settlementDate": _DATE,
@@ -252,10 +272,8 @@ def test_site_limit_profile_time_weights_partial_spans():
 def test_site_limit_profile_later_notification_overrides():
     # A redeclaration posted later overwrites the original across the overlap.
     records = [
-        _limit_record("E_PILLB-1", "18:00", "18:30", 50.0,
-                      notified="2024-01-01T10:00:00Z", seq=1),
-        _limit_record("E_PILLB-1", "18:00", "18:30", 10.0,
-                      notified="2024-01-01T17:00:00Z", seq=2),
+        _limit_record("E_PILLB-1", "18:00", "18:30", 50.0, notified="2024-01-01T10:00:00Z", seq=1),
+        _limit_record("E_PILLB-1", "18:00", "18:30", 10.0, notified="2024-01-01T17:00:00Z", seq=2),
     ]
     profile = performance.site_limit_profile(records)
     assert profile["mw"].iloc[0] == pytest.approx(10.0)
@@ -298,10 +316,18 @@ def _two_site_daily() -> pd.DataFrame:
     ):
         rows.append(
             {
-                "date": date, "site": site, "optimiser": f"Opt{site}",
-                "region": "R", "duration": "2h", "power_mw": power,
-                "capacity_mwh": cap, "discharge_mwh": disch, "charge_mwh": disch,
-                "wholesale_gbp": gbp, "bm_gbp": 0.0, "total_gbp": gbp,
+                "date": date,
+                "site": site,
+                "optimiser": f"Opt{site}",
+                "region": "R",
+                "duration": "2h",
+                "power_mw": power,
+                "capacity_mwh": cap,
+                "discharge_mwh": disch,
+                "charge_mwh": disch,
+                "wholesale_gbp": gbp,
+                "bm_gbp": 0.0,
+                "total_gbp": gbp,
                 "gbp_per_mw": gbp / power,
             }
         )
@@ -343,9 +369,7 @@ def test_fleet_daily_distribution_spreads_across_sites():
 
 
 def test_fleet_daily_distribution_empty_input():
-    empty = performance.fleet_daily_distribution(
-        _two_site_daily().iloc[0:0], "revenue"
-    )
+    empty = performance.fleet_daily_distribution(_two_site_daily().iloc[0:0], "revenue")
     assert list(empty.columns) == ["date", "median", "p25", "p75", "min", "max"]
     assert empty.empty
 
@@ -380,8 +404,12 @@ def test_capture_spread_pools_a_week_before_dividing():
         charging = i % 2 == 0
         rows.append(
             {
-                "date": f"2026-08-{i + 1:02d}", "site": "A", "optimiser": "X",
-                "region": "R", "duration": "2h", "power_mw": 100.0,
+                "date": f"2026-08-{i + 1:02d}",
+                "site": "A",
+                "optimiser": "X",
+                "region": "R",
+                "duration": "2h",
+                "power_mw": 100.0,
                 "capacity_mwh": 200.0,
                 "discharge_mwh": 5.0 if charging else 195.0,
                 "charge_mwh": 195.0 if charging else 5.0,
@@ -406,12 +434,18 @@ def test_capture_spread_pools_a_week_before_dividing():
 def test_capture_spread_drops_negligible_throughput():
     rows = [
         {
-            "date": f"2026-08-{i + 1:02d}", "site": "A", "optimiser": "X",
-            "region": "R", "duration": "2h", "power_mw": 100.0,
+            "date": f"2026-08-{i + 1:02d}",
+            "site": "A",
+            "optimiser": "X",
+            "region": "R",
+            "duration": "2h",
+            "power_mw": 100.0,
             "capacity_mwh": 200.0,
-            "discharge_mwh": 0.1,          # far below the cycle floor
+            "discharge_mwh": 0.1,  # far below the cycle floor
             "charge_mwh": 0.1,
-            "wholesale_gbp": 0.0, "bm_gbp": 5000.0, "total_gbp": 5000.0,
+            "wholesale_gbp": 0.0,
+            "bm_gbp": 5000.0,
+            "total_gbp": 5000.0,
             "gbp_per_mw": 50.0,
         }
         for i in range(10)
@@ -423,10 +457,14 @@ def test_capture_spread_drops_negligible_throughput():
 
 def _boalf(bmu: str, t_from: str, t_to: str, level: float, seq: int = 1) -> dict:
     return {
-        "bmUnit": bmu, "settlementDate": _DATE,
-        "timeFrom": f"{_DATE}T{t_from}:00Z", "timeTo": f"{_DATE}T{t_to}:00Z",
-        "levelFrom": level, "levelTo": level,
-        "acceptanceTime": f"{_DATE}T17:00:00Z", "acceptanceNumber": seq,
+        "bmUnit": bmu,
+        "settlementDate": _DATE,
+        "timeFrom": f"{_DATE}T{t_from}:00Z",
+        "timeTo": f"{_DATE}T{t_to}:00Z",
+        "levelFrom": level,
+        "levelTo": level,
+        "acceptanceTime": f"{_DATE}T17:00:00Z",
+        "acceptanceNumber": seq,
     }
 
 
@@ -435,13 +473,15 @@ def test_physical_profile_lets_an_acceptance_override_the_notification():
     # The operator instructs 50 MW where the unit notified 10.
     boalf = [_boalf("E_PILLB-1", "18:00", "18:30", 50.0)]
     physical = performance.site_physical_profile(pn, boalf)
-    assert physical.loc[physical["time"] == pd.Timestamp(f"{_DATE}T18:00:00Z"),
-                        "mw"].iloc[0] == pytest.approx(50.0)
+    assert physical.loc[physical["time"] == pd.Timestamp(f"{_DATE}T18:00:00Z"), "mw"].iloc[
+        0
+    ] == pytest.approx(50.0)
     # Untouched periods keep the notified level.
     pn2 = pn + [_pn_record("E_PILLB-1", 19, 0, 10.0)]
     physical2 = performance.site_physical_profile(pn2, boalf)
-    assert physical2.loc[physical2["time"] == pd.Timestamp(f"{_DATE}T19:00:00Z"),
-                         "mw"].iloc[0] == pytest.approx(10.0)
+    assert physical2.loc[physical2["time"] == pd.Timestamp(f"{_DATE}T19:00:00Z"), "mw"].iloc[
+        0
+    ] == pytest.approx(10.0)
 
 
 def test_physical_profile_without_acceptances_is_the_notification():
@@ -456,13 +496,11 @@ def test_day_site_metrics_measures_throughput_on_delivery_not_the_plan():
     delivered = performance.day_site_metrics(
         _DATE, pn, {"bid": [], "offer": []}, _mid(100.0), boalf
     )
-    assert plan.iloc[0]["discharge_mwh"] == pytest.approx(5.0)    # 10 MW × 0.5 h
+    assert plan.iloc[0]["discharge_mwh"] == pytest.approx(5.0)  # 10 MW × 0.5 h
     assert delivered.iloc[0]["discharge_mwh"] == pytest.approx(25.0)  # 50 MW × 0.5 h
     # Revenue still prices the notified position; the acceptance is paid
     # separately through BM cashflows, so it must not move.
-    assert plan.iloc[0]["wholesale_gbp"] == pytest.approx(
-        delivered.iloc[0]["wholesale_gbp"]
-    )
+    assert plan.iloc[0]["wholesale_gbp"] == pytest.approx(delivered.iloc[0]["wholesale_gbp"])
 
 
 def test_fleet_daily_without_notified_volumes():
@@ -492,12 +530,14 @@ def test_battery_era_start_finds_the_repurposed_connection_point():
     the coal plant wearing the battery's identity.
     """
     times = pd.date_range("2018-01-01", periods=6, freq="30min", tz="UTC")
-    profile = pd.DataFrame({
-        "site": ["Repurposed"] * 6,
-        "time": times,
-        # Coal-era output, then plausible battery output at the same site.
-        "mw": [1385.0, 900.0, 40.0, -38.0, 41.0, -20.0],
-    })
+    profile = pd.DataFrame(
+        {
+            "site": ["Repurposed"] * 6,
+            "time": times,
+            # Coal-era output, then plausible battery output at the same site.
+            "mw": [1385.0, 900.0, 40.0, -38.0, 41.0, -20.0],
+        }
+    )
     era = performance.battery_era_start(profile, {"Repurposed": 41.0})
     assert era == {"Repurposed": times[1]}
 
@@ -505,11 +545,13 @@ def test_battery_era_start_finds_the_repurposed_connection_point():
 def test_battery_era_start_ignores_ordinary_declared_drift():
     """Declared capability routinely exceeds curated nameplate by 10-20%."""
     times = pd.date_range("2024-01-01", periods=3, freq="30min", tz="UTC")
-    profile = pd.DataFrame({
-        "site": ["Drifty"] * 3,
-        "time": times,
-        "mw": [49.0, -48.0, 45.0],          # 1.2x a 40 MW plate — not repurposing
-    })
+    profile = pd.DataFrame(
+        {
+            "site": ["Drifty"] * 3,
+            "time": times,
+            "mw": [49.0, -48.0, 45.0],  # 1.2x a 40 MW plate — not repurposing
+        }
+    )
     assert performance.battery_era_start(profile, {"Drifty": 40.0}) == {}
 
 

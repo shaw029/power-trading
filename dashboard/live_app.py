@@ -169,8 +169,7 @@ def _dates() -> tuple:
     """Every settlement date the app covers, oldest first."""
     yesterday = dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=1)
     return tuple(
-        (yesterday - dt.timedelta(days=i)).isoformat()
-        for i in range(_MAX_HISTORY_DAYS - 1, -1, -1)
+        (yesterday - dt.timedelta(days=i)).isoformat() for i in range(_MAX_HISTORY_DAYS - 1, -1, -1)
     )
 
 
@@ -364,7 +363,7 @@ def _prefetch_fleet_days(date_isos: list[str], bar) -> None:
             except Exception:
                 pass
         try:
-            fetch_fleet.fetch_day_mid_prices(date)   # market-wide, no population
+            fetch_fleet.fetch_day_mid_prices(date)  # market-wide, no population
         except Exception:
             pass
         return iso
@@ -462,9 +461,9 @@ def _da_sched_frame(dispatch_df: pd.DataFrame) -> pd.DataFrame:
 def _pnl_row(date_iso, dur_result) -> dict:
     # Throughput comes from the dispatch log rather than the result summary,
     # so the benchmark can report the same capture spread the fleet page does.
-    discharge_mwh = sum(
-        max(entry["final_mw"], 0.0) for entry in dur_result.dispatch_log
-    ) * RESOLUTION_H
+    discharge_mwh = (
+        sum(max(entry["final_mw"], 0.0) for entry in dur_result.dispatch_log) * RESOLUTION_H
+    )
     return {
         "date": date_iso,
         "benchmark_da_revenue": dur_result.benchmark_da_revenue,
@@ -479,8 +478,7 @@ def _pnl_row(date_iso, dur_result) -> dict:
         # meaningful: subtracting wear from the margin and then comparing that
         # margin to wear counts it twice.
         "capture_spread": (
-            (dur_result.benchmark_da_revenue + dur_result.intraday_da_improvement)
-            / discharge_mwh
+            (dur_result.benchmark_da_revenue + dur_result.intraday_da_improvement) / discharge_mwh
             if discharge_mwh > 0
             else float("nan")
         ),
@@ -507,7 +505,7 @@ def _settle_window(date_isos: tuple, start: str, end: str) -> tuple:
     if not selected:
         return tuple(selected)
     first = date_isos.index(selected[0])
-    return tuple(date_isos[max(0, first - _SETTLE_WARMUP_DAYS):date_isos.index(selected[-1]) + 1])
+    return tuple(date_isos[max(0, first - _SETTLE_WARMUP_DAYS) : date_isos.index(selected[-1]) + 1])
 
 
 def _benchmark_view():
@@ -587,17 +585,14 @@ def _page_day():
         options=dates,
         index=len(dates) - 1,
         key="briefing_day",
-        help="Defaults to the latest settled day — pick any other day for its "
-        "full briefing.",
+        help="Defaults to the latest settled day — pick any other day for its " "full briefing.",
     )
     record = next(d for d in shown if d["date"] == picked)
     dur_result = record["result"].durations[duration]
     if record["labels"]:
         st.write(" ".join(f"`{label}`" for label in record["labels"]))
 
-    window_mean = sum(
-        d["result"].durations[duration].net_pnl for d in shown
-    ) / len(shown)
+    window_mean = sum(d["result"].durations[duration].net_pnl for d in shown) / len(shown)
     row = _pnl_row(record["date"], dur_result)
     _da_prices_day = [e["da_price_actual"] for e in dur_result.dispatch_log]
     # P90−P10 rather than high−low: one freak print sets the peak-to-trough, and
@@ -605,9 +600,7 @@ def _page_day():
     # spread a full charge/discharge block could actually reach. The outright
     # extremes stay visible in the peak & floor tile beside it.
     _da_px = pd.Series(_da_prices_day, dtype=float)
-    _da_spread = (
-        float(_da_px.quantile(0.90) - _da_px.quantile(0.10)) if len(_da_px) else 0.0
-    )
+    _da_spread = float(_da_px.quantile(0.90) - _da_px.quantile(0.10)) if len(_da_px) else 0.0
 
     # Grid context for this day. Stress comes from the window-wide classifier,
     # so "top-decile" is relative to the period on screen.
@@ -630,8 +623,11 @@ def _page_day():
     opt[1].metric(
         _unit_label("Intraday improvement", "£/MW"),
         f"{dur_result.intraday_da_improvement / REFERENCE_POWER_MW:,.0f}",
-        f"{dur_result.intraday_da_improvement / dur_result.net_pnl:.0%} of net PnL"
-        if dur_result.net_pnl else None,
+        (
+            f"{dur_result.intraday_da_improvement / dur_result.net_pnl:.0%} of net PnL"
+            if dur_result.net_pnl
+            else None
+        ),
         delta_color="off",
         help="What re-optimising against the realised intraday price added on top "
         "of the frozen day-ahead schedule. The engine has perfect foresight of "
@@ -639,8 +635,7 @@ def _page_day():
     )
     _da_committed = sum(mw for mw in dur_result.da_schedule if mw > 0)
     _da_budget = (
-        params["cycle_target"] * REFERENCE_POWER_MW * _duration_hours(duration)
-        * params["commit"]
+        params["cycle_target"] * REFERENCE_POWER_MW * _duration_hours(duration) * params["commit"]
     )
     opt[2].metric(
         "Cycles",
@@ -674,8 +669,7 @@ def _page_day():
     )
     sysc[1].metric(
         _unit_label("Peak & floor price", "£/MWh"),
-        f"{max(_da_prices_day):,.0f} / {min(_da_prices_day):,.0f}"
-        if _da_prices_day else "—",
+        f"{max(_da_prices_day):,.0f} / {min(_da_prices_day):,.0f}" if _da_prices_day else "—",
         help="The dearest and cheapest hours the day-ahead auction cleared today. "
         "A negative floor means generators paid to keep running.",
     )
@@ -684,8 +678,7 @@ def _page_day():
         sysc[2].metric(
             _unit_label("Peak residual load", "GW"),
             f"{float(day_flags['residual_mw'].max()) / 1000.0:,.1f}",
-            f"{_stress_hh} top-decile half-hour(s)" if _stress_hh
-            else "no top-decile periods",
+            f"{_stress_hh} top-decile half-hour(s)" if _stress_hh else "no top-decile periods",
             delta_color="off",
             help="The busiest the grid got today: demand minus wind and solar, "
             "the most the rest of the fleet had to carry. Top-decile means the "
@@ -720,9 +713,7 @@ def _page_day():
         flt[2].metric("Fleet median cycles", "—")
         flt[3].metric("Top real site", "—")
     else:
-        fleet_day = fleet_day.assign(
-            cycles=fleet_day["discharge_mwh"] / fleet_day["capacity_mwh"]
-        )
+        fleet_day = fleet_day.assign(cycles=fleet_day["discharge_mwh"] / fleet_day["capacity_mwh"])
         median_gbp = float(fleet_day["gbp_per_mw"].median())
         best = fleet_day.loc[fleet_day["gbp_per_mw"].idxmax()]
         flt[0].metric(
@@ -735,10 +726,7 @@ def _page_day():
             "is invisible here, so sites trading it read low.",
         )
         _spread = fleet_day["gbp_per_mw"]
-        _iqr = (
-            float(_spread.quantile(0.75) - _spread.quantile(0.25))
-            if len(_spread) >= 4 else None
-        )
+        _iqr = float(_spread.quantile(0.75) - _spread.quantile(0.25)) if len(_spread) >= 4 else None
         flt[1].metric(
             _unit_label("Operator dispersion", "£/MW"),
             f"{_iqr:,.0f}" if _iqr is not None else "—",
@@ -768,9 +756,7 @@ def _page_day():
     da_sched = _da_sched_frame(dispatch)
 
     left, right = st.columns(2)
-    left.plotly_chart(
-        chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch"
-    )
+    left.plotly_chart(chart_realized_shape(dispatch, prices_hourly, da_sched), width="stretch")
     right.plotly_chart(
         chart_pnl_waterfall(pd.DataFrame([_pnl_row(record["date"], dur_result)])),
         width="stretch",
@@ -800,14 +786,13 @@ def _page_day():
         if fleet_day.empty:
             st.info("No fleet data available for this day.")
         else:
-            top = fleet_day.nlargest(5, "gbp_per_mw")[
-                ["site", "optimiser", "gbp_per_mw"]
-            ].rename(
-                columns={"site": "Site", "optimiser": "Optimiser",
-                         "gbp_per_mw": "£/MW"}
+            top = fleet_day.nlargest(5, "gbp_per_mw")[["site", "optimiser", "gbp_per_mw"]].rename(
+                columns={"site": "Site", "optimiser": "Optimiser", "gbp_per_mw": "£/MW"}
             )
-            st.caption("Top real sites by estimated £/MW on this day "
-                       "(wholesale + BM; see Fleet performance for scope).")
+            st.caption(
+                "Top real sites by estimated £/MW on this day "
+                "(wholesale + BM; see Fleet performance for scope)."
+            )
             st.dataframe(
                 top.style.format({"£/MW": "£{:,.0f}"}),
                 width="stretch",
@@ -868,9 +853,7 @@ def _page_history():
     )
 
     st.plotly_chart(chart_daily_attribution(results_df), width="stretch")
-    st.plotly_chart(
-        chart_capture_spread_daily(results_df, params["degradation"]), width="stretch"
-    )
+    st.plotly_chart(chart_capture_spread_daily(results_df, params["degradation"]), width="stretch")
 
     # Price-capture profile over the whole range, as a per-day average: totals
     # here would say more about how many days were selected than about the
@@ -1012,9 +995,7 @@ def _page_day_types():
     shape_col, market_col = st.columns(2)
     families = dict(zip(memberships["tag"], memberships["family"]))
     profiles_df = pd.DataFrame(profile_rows)
-    shape_col.plotly_chart(
-        chart_daytype_profiles(profiles_df, families=families), width="stretch"
-    )
+    shape_col.plotly_chart(chart_daytype_profiles(profiles_df, families=families), width="stretch")
     if reliance.empty:
         market_col.info("No regime earned enough to split day-ahead from intraday.")
     else:
@@ -1043,14 +1024,18 @@ def _page_day_types():
     )
 
     st.markdown("#### Days behind the tags")
-    table = pd.DataFrame(table_rows).sort_values("date", ascending=False).rename(
-        columns={
-            "date": "Date",
-            "tags": "Tags",
-            "gbp_per_mw": "£/MW/day",
-            "capture": "Capture",
-            "cycles": "Cycles",
-        }
+    table = (
+        pd.DataFrame(table_rows)
+        .sort_values("date", ascending=False)
+        .rename(
+            columns={
+                "date": "Date",
+                "tags": "Tags",
+                "gbp_per_mw": "£/MW/day",
+                "capture": "Capture",
+                "cycles": "Cycles",
+            }
+        )
     )
     st.dataframe(
         table.style.format({"£/MW/day": "£{:,.0f}", "Capture": "{:.0%}", "Cycles": "{:.2f}"}),
@@ -1187,9 +1172,7 @@ def _global_filters(date_isos: tuple) -> tuple[str, str, list[str]]:
         # One compact control for all twelve tags, ordered drivers → price
         # character → untagged so the taxonomy reads top to bottom.
         tag_options = (
-            sorted(classify_mod.DRIVER_TAGS)
-            + sorted(classify_mod.PRICE_TAGS)
-            + ["untagged"]
+            sorted(classify_mod.DRIVER_TAGS) + sorted(classify_mod.PRICE_TAGS) + ["untagged"]
         )
         day_types = st.multiselect(
             "Market regimes",
@@ -1219,9 +1202,7 @@ def _matches_day_types(labels: list[str] | None, day_types: list[str]) -> bool:
 def _filter_days(days: list, start: str, end: str, day_types: list[str]) -> list:
     """Apply the global filters to the settled benchmark days (view only)."""
     return [
-        d
-        for d in days
-        if start <= d["date"] <= end and _matches_day_types(d["labels"], day_types)
+        d for d in days if start <= d["date"] <= end and _matches_day_types(d["labels"], day_types)
     ]
 
 
@@ -1263,9 +1244,7 @@ def _fleet_filters(
 ) -> tuple[list[str], list[str], list[str], list[str]]:
     """The fleet's own filter row: which assets, not which days."""
     cols = st.columns(4)
-    sites = cols[0].multiselect(
-        "Sites", sorted(fleet_df["site"].unique()), placeholder="All sites"
-    )
+    sites = cols[0].multiselect("Sites", sorted(fleet_df["site"].unique()), placeholder="All sites")
     optimisers = cols[1].multiselect(
         "Optimisers", sorted(fleet_df["optimiser"].unique()), placeholder="All optimisers"
     )
@@ -1364,8 +1343,7 @@ def _render_fleet(
             best["site"],
             f"{best['optimiser']} · {fmt.format(values.max())} {unit}",
             delta_color="off",
-            help="The best visible site for the selected metric, and the party "
-            "trading it.",
+            help="The best visible site for the selected metric, and the party " "trading it.",
         )
     else:
         cols[3].metric("Top performer", "—")
@@ -1395,8 +1373,17 @@ def _render_fleet(
         )
     table = site_df.assign(flag=site_df["likely_ancillary"].map({True: "⚠", False: ""}))[
         [
-            "site", "optimiser", "region", "duration", "power_mw", "capacity_mwh",
-            "days", "gbp_per_mw_day", "total_gbp", "total_cycles", "capture_spread",
+            "site",
+            "optimiser",
+            "region",
+            "duration",
+            "power_mw",
+            "capacity_mwh",
+            "days",
+            "gbp_per_mw_day",
+            "total_gbp",
+            "total_cycles",
+            "capture_spread",
             "flag",
         ]
     ].rename(
@@ -1528,8 +1515,7 @@ def _page_sim_vs_fleet():
     # Cycles per site-day, weighted the same way the money is, so the physical
     # gap and the earnings gap are computed over the same population.
     fleet_cycles = float(
-        (comp_sites["cycles_per_day"] * comp_sites["days"]).sum()
-        / comp_sites["days"].sum()
+        (comp_sites["cycles_per_day"] * comp_sites["days"]).sum() / comp_sites["days"].sum()
     )
 
     st.markdown("**The headline gap**")
@@ -1581,9 +1567,11 @@ def _page_sim_vs_fleet():
             "date": common,
             "sim": [sim_gbp_by_day[d] for d in common],
             "fleet": [
-                float(per_day.loc[d, "wholesale_gbp"] / per_day.loc[d, "mw"])
-                if d in per_day.index
-                else 0.0
+                (
+                    float(per_day.loc[d, "wholesale_gbp"] / per_day.loc[d, "mw"])
+                    if d in per_day.index
+                    else 0.0
+                )
                 for d in common
             ],
         }
@@ -1596,12 +1584,8 @@ def _page_sim_vs_fleet():
         sim_hours: dict[int, list[float]] = {}
         for d in common:
             for i, entry in enumerate(sim_by_date[d].dispatch_log):
-                sim_hours.setdefault(i % 24, []).append(
-                    entry["final_mw"] / REFERENCE_POWER_MW
-                )
-        shape["sim"] = shape["hour"].map(
-            lambda h: float(pd.Series(sim_hours.get(h, [0.0])).mean())
-        )
+                sim_hours.setdefault(i % 24, []).append(entry["final_mw"] / REFERENCE_POWER_MW)
+        shape["sim"] = shape["hour"].map(lambda h: float(pd.Series(sim_hours.get(h, [0.0])).mean()))
 
     labels = _day_labels(tuple(date_isos))
     fleet_by_day = dict(zip(daily["date"], daily["fleet"]))
@@ -1631,9 +1615,7 @@ def _page_sim_vs_fleet():
     else:
         when_col.plotly_chart(chart_shape_overlay(shape), width="stretch")
     if ratio_rows:
-        ratio_col.plotly_chart(
-            chart_daytype_ratio(pd.DataFrame(ratio_rows)), width="stretch"
-        )
+        ratio_col.plotly_chart(chart_daytype_ratio(pd.DataFrame(ratio_rows)), width="stretch")
     else:
         ratio_col.info("No day in this window carries a regime tag.")
 
@@ -1645,9 +1627,7 @@ def _page_sim_vs_fleet():
         width="stretch",
     )
     scatter = site_df.assign(excluded=site_df["site"].isin(excluded))
-    st.plotly_chart(
-        chart_cycles_vs_revenue(scatter, sim_cycles, sim_gbp), width="stretch"
-    )
+    st.plotly_chart(chart_cycles_vs_revenue(scatter, sim_cycles, sim_gbp), width="stretch")
 
 
 # --------------------------------------------------------------------------- #
@@ -1795,9 +1775,7 @@ def _page_system():
     _warm_fetch(window)
     labels = _day_labels(window)
     days = [
-        d
-        for d in date_isos
-        if start <= d <= end and _matches_day_types(labels.get(d), day_types)
+        d for d in date_isos if start <= d <= end and _matches_day_types(labels.get(d), day_types)
     ]
     tags = ", ".join(day_types) if day_types else "all regimes"
     _page_header(
@@ -1811,8 +1789,10 @@ def _page_system():
 
     summaries = [s for s in (_system_summary_day(d) for d in days) if s is not None]
     if not summaries:
-        st.warning("No system data could be fetched for the window — the Elexon or "
-                   "PV_Live feeds may be temporarily unavailable.")
+        st.warning(
+            "No system data could be fetched for the window — the Elexon or "
+            "PV_Live feeds may be temporarily unavailable."
+        )
         return
     sdf = pd.DataFrame(summaries)
     group_cols = [g for g in fetch_live.GENERATION_GROUP_ORDER if g in sdf.columns]
@@ -1830,9 +1810,7 @@ def _page_system():
     )
     da_hours = float(sdf["da_hours"].sum()) if "da_hours" in sdf else 0.0
     # Hour-weighted so DST days (23 or 25 hours) don't distort the mean.
-    avg_da = (
-        float((sdf["avg_da"] * sdf["da_hours"]).sum() / da_hours) if da_hours > 0 else None
-    )
+    avg_da = float((sdf["avg_da"] * sdf["da_hours"]).sum() / da_hours) if da_hours > 0 else None
     spread = (sdf["da_p90"] - sdf["da_p10"]) if "da_p90" in sdf else pd.Series(dtype=float)
 
     # Units live on a second label line, not in the value, so the eye can run
@@ -1890,8 +1868,11 @@ def _page_system():
     )
     row2[3].metric(
         _unit_label("Peak residual load", "GW"),
-        f"{sdf['peak_residual_gw'].max():.1f}"
-        if "peak_residual_gw" in sdf and sdf["peak_residual_gw"].notna().any() else "—",
+        (
+            f"{sdf['peak_residual_gw'].max():.1f}"
+            if "peak_residual_gw" in sdf and sdf["peak_residual_gw"].notna().any()
+            else "—"
+        ),
         help="The highest residual load (demand − wind − solar) — the biggest "
         "burden the dispatchable fleet had to carry.",
     )
@@ -2014,8 +1995,10 @@ def _page_alignment():
     dates_shown = [d["date"] for d in shown]
     flags = _window_flags(tuple(dates_shown))
     if flags.empty:
-        st.warning("No system data available for the shown window — the Elexon or "
-                   "PV_Live feeds may be temporarily unavailable.")
+        st.warning(
+            "No system data available for the shown window — the Elexon or "
+            "PV_Live feeds may be temporarily unavailable."
+        )
         return
 
     hourly_flags = pd.DataFrame(
@@ -2078,8 +2061,7 @@ def _page_alignment():
     )
     cols[1].metric(
         "Surplus absorption",
-        f"{scores['surplus_absorption']:.0%}"
-        if scores["surplus_absorption"] is not None else "—",
+        f"{scores['surplus_absorption']:.0%}" if scores["surplus_absorption"] is not None else "—",
         help="Share of the benchmark's charged energy drawn during surplus "
         "periods (bottom-decile residual load or negative prices).",
     )
@@ -2107,9 +2089,9 @@ def _page_alignment():
     _busy_days = {d for d, g in _by_day.groupby("day") if g["stress"].any()}
     if _busy_days:
         _sub = _by_day[_by_day["day"].isin(_busy_days)]
-        _disp_busy = sim_dispatch[pd.Series(
-            sim_dispatch.index.date, index=sim_dispatch.index
-        ).isin(_busy_days)]
+        _disp_busy = sim_dispatch[
+            pd.Series(sim_dispatch.index.date, index=sim_dispatch.index).isin(_busy_days)
+        ]
         mean_day = pd.DataFrame(
             {
                 "residual_gw": _sub.groupby(_sub.index.hour)["residual_mw"].mean() / 1000.0,
@@ -2156,12 +2138,8 @@ def _page_alignment():
     if not cmn_issued.empty:
         # Issued notices normally have no end yet (the end arrives on the
         # cancellation row), so an open notice counts as its target half-hour.
-        _eff_end = cmn_issued["end_utc"].fillna(
-            cmn_issued["start_utc"] + pd.Timedelta(minutes=30)
-        )
-        cmn_win = cmn_issued[
-            (cmn_issued["start_utc"] < window_end) & (_eff_end > window_start)
-        ]
+        _eff_end = cmn_issued["end_utc"].fillna(cmn_issued["start_utc"] + pd.Timedelta(minutes=30))
+        cmn_win = cmn_issued[(cmn_issued["start_utc"] < window_end) & (_eff_end > window_start)]
     else:
         cmn_win = pd.DataFrame()
     tiers = resilience.classify_tiers(flags, lolpdrm, cmn_win)
@@ -2192,9 +2170,7 @@ def _page_alignment():
         f"{resilience.DRM_TIGHT_MW:,.0f} MW). '—' when no tier-2 tight period "
         "or no discharge fell in periods with LoLP/DRM data.",
     )
-    _last_cmn = (
-        cmn_issued["posted_utc"].dropna().max() if not cmn_issued.empty else None
-    )
+    _last_cmn = cmn_issued["posted_utc"].dropna().max() if not cmn_issued.empty else None
     tcols[3].metric(
         "Capacity Market Notices",
         f"{len(cmn_win)} in window" if len(cmn_win) else "None in window",
@@ -2243,8 +2219,7 @@ def _page_alignment():
         )
     elif tm["n_tier2_known"]:
         st.caption(
-            "System confirmation: no top-decile load period had LoLP/DRM data "
-            "to check against."
+            "System confirmation: no top-decile load period had LoLP/DRM data " "to check against."
         )
 
     if tm["n_tier2_known"]:
@@ -2268,9 +2243,7 @@ def _page_alignment():
         fleet_df = fleet_df[fleet_df["date"].isin(dates_shown)]
     if not fleet_df.empty:
         site_df = fleet_perf.summarise_by_site(fleet_df)
-        profiles = pd.concat(
-            [_fleet_profile_day(iso) for iso in dates_shown], ignore_index=True
-        )
+        profiles = pd.concat([_fleet_profile_day(iso) for iso in dates_shown], ignore_index=True)
         rows = []
         for _, site in site_df.iterrows():
             mine = profiles[profiles["site"] == site["site"]]
@@ -2291,11 +2264,10 @@ def _page_alignment():
             )
         scatter_df = pd.DataFrame(rows)
     if not scatter_df.empty:
-        sim_gbp = float(
-            pd.Series(
-                [d["result"].durations[duration].net_pnl for d in shown]
-            ).mean()
-        ) / REFERENCE_POWER_MW
+        sim_gbp = (
+            float(pd.Series([d["result"].durations[duration].net_pnl for d in shown]).mean())
+            / REFERENCE_POWER_MW
+        )
         st.plotly_chart(
             chart_alignment_scatter(scatter_df, scores["stress_coverage"], sim_gbp),
             width="stretch",
@@ -2322,7 +2294,7 @@ def _page_alignment():
             bands = [
                 {
                     "band": f"{sub['drm_mw'].min() / 1000:.1f}–"
-                            f"{sub['drm_mw'].max() / 1000:.1f} GW",
+                    f"{sub['drm_mw'].max() / 1000:.1f} GW",
                     "mean_fleet_mw": float(sub["fleet_mw"].mean()),
                     "charging_share": float((sub["fleet_mw"] < 0).mean()),
                     "periods": int(len(sub)),
@@ -2375,39 +2347,35 @@ def _page_alignment():
             slot["days"] += 1
     left, right = st.columns(2)
     if tag_rows:
-        by_tag = pd.DataFrame(
-            [
-                {**v, "gap": v["gap_sum"] / v["days"]}
-                for v in tag_rows.values()
-            ]
-        )
+        by_tag = pd.DataFrame([{**v, "gap": v["gap_sum"] / v["days"]} for v in tag_rows.values()])
         left.plotly_chart(chart_gap_by_daytype(by_tag), width="stretch")
 
     stress_events = flags[flags["stress"]].nlargest(10, "residual_mw").copy()
     if not stress_events.empty:
-        hourly_dispatch = sim_dispatch.reindex(
-            stress_events.index.floor("1h")
-        ).to_numpy()
+        hourly_dispatch = sim_dispatch.reindex(stress_events.index.floor("1h")).to_numpy()
         fleet_net = (
-            profiles.groupby("time")["mw"].sum()
-            if not profiles.empty
-            else pd.Series(dtype=float)
+            profiles.groupby("time")["mw"].sum() if not profiles.empty else pd.Series(dtype=float)
         )
         table = pd.DataFrame(
             {
                 "Time (UTC)": stress_events.index.strftime("%Y-%m-%d %H:%M"),
                 "Residual (GW)": stress_events["residual_mw"] / 1000.0,
                 "Benchmark (MW)": hourly_dispatch,
-                "Fleet net (MW)": fleet_net.reindex(stress_events.index).to_numpy()
-                if not fleet_net.empty
-                else float("nan"),
+                "Fleet net (MW)": (
+                    fleet_net.reindex(stress_events.index).to_numpy()
+                    if not fleet_net.empty
+                    else float("nan")
+                ),
             }
         )
         right.markdown("#### Busiest periods")
         right.dataframe(
             table.style.format(
-                {"Residual (GW)": "{:,.1f}", "Benchmark (MW)": "{:,.0f}",
-                 "Fleet net (MW)": "{:,.0f}"}
+                {
+                    "Residual (GW)": "{:,.1f}",
+                    "Benchmark (MW)": "{:,.0f}",
+                    "Fleet net (MW)": "{:,.0f}",
+                }
             ),
             width="stretch",
             hide_index=True,
@@ -2495,8 +2463,7 @@ def _page_methodology():
     st.subheader("Alignment")
     st.markdown(ALIGNMENT_METHODOLOGY)
     st.subheader("Design principles")
-    st.markdown(
-        """
+    st.markdown("""
 - **Grouping is by epistemic status** — *Benchmark* is simulated, *GB power
   system* is observed public data, *Research* is analysis using both.
 - **Sidebar filters define the window** (period, day types); the **Day
@@ -2504,8 +2471,7 @@ def _page_methodology():
   selector. Research pages auto-select their exemplar days and say so.
 - **Benchmark levers appear only on pages they affect**; observed pages carry
   a note instead.
-"""
-    )
+""")
     st.subheader("Definitions")
     st.markdown(GLOSSARY)
 

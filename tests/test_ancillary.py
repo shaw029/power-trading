@@ -21,26 +21,44 @@ def _rows():
     return pd.DataFrame(
         [
             # 4-hour EFA block, BM-named unit: 10 MW x GBP 5/MW/h x 4h = GBP 200
-            {"unit": "TESTB-1", "service": "DCL", "volume_mw": 10.0,
-             "price_gbp_mw_h": 5.0,
-             "block_start": pd.Timestamp("2023-10-01T00:00Z"),
-             "block_end": pd.Timestamp("2023-10-01T04:00Z"),
-             "source": "response_dc_dr_dm", "era": "DC/DR/DM",
-             "stated_revenue_gbp": float("nan"), "site_attributed_only": False},
+            {
+                "unit": "TESTB-1",
+                "service": "DCL",
+                "volume_mw": 10.0,
+                "price_gbp_mw_h": 5.0,
+                "block_start": pd.Timestamp("2023-10-01T00:00Z"),
+                "block_end": pd.Timestamp("2023-10-01T04:00Z"),
+                "source": "response_dc_dr_dm",
+                "era": "DC/DR/DM",
+                "stated_revenue_gbp": float("nan"),
+                "site_attributed_only": False,
+            },
             # 30-minute block, same unit: 10 MW x GBP 5/MW/h x 0.5h = GBP 25
-            {"unit": "TESTB-1", "service": "Response", "volume_mw": 10.0,
-             "price_gbp_mw_h": 5.0,
-             "block_start": pd.Timestamp("2026-04-01T00:00Z"),
-             "block_end": pd.Timestamp("2026-04-01T00:30Z"),
-             "source": "eac_response_reserve", "era": "EAC",
-             "stated_revenue_gbp": float("nan"), "site_attributed_only": False},
+            {
+                "unit": "TESTB-1",
+                "service": "Response",
+                "volume_mw": 10.0,
+                "price_gbp_mw_h": 5.0,
+                "block_start": pd.Timestamp("2026-04-01T00:00Z"),
+                "block_end": pd.Timestamp("2026-04-01T00:30Z"),
+                "source": "eac_response_reserve",
+                "era": "EAC",
+                "stated_revenue_gbp": float("nan"),
+                "site_attributed_only": False,
+            },
             # Aggregator house code — a trading unit, not a site.
-            {"unit": "AG-GBL0EN", "service": "Response", "volume_mw": 20.0,
-             "price_gbp_mw_h": 5.0,
-             "block_start": pd.Timestamp("2026-04-01T00:00Z"),
-             "block_end": pd.Timestamp("2026-04-01T00:30Z"),
-             "source": "eac_response_reserve", "era": "EAC",
-             "stated_revenue_gbp": float("nan"), "site_attributed_only": False},
+            {
+                "unit": "AG-GBL0EN",
+                "service": "Response",
+                "volume_mw": 20.0,
+                "price_gbp_mw_h": 5.0,
+                "block_start": pd.Timestamp("2026-04-01T00:00Z"),
+                "block_end": pd.Timestamp("2026-04-01T00:30Z"),
+                "source": "eac_response_reserve",
+                "era": "EAC",
+                "stated_revenue_gbp": float("nan"),
+                "site_attributed_only": False,
+            },
         ]
     )
 
@@ -48,11 +66,18 @@ def _rows():
 @pytest.fixture
 def offline_census():
     """Stub the census lookups `classify_units` needs, so tests never hit the network."""
-    sites = pd.DataFrame({"asset_id": ["GB-BESS-TESTB"], "site_name": ["Testville BESS"],
-                          "lead_party": ["Test Storage Ltd"], "declared_export_mw": [50.0],
-                          "in_registry": [True]})
-    reference = pd.DataFrame({"nationalGridBmUnit": ["TESTB-1"], "elexonBmUnit": ["T_TESTB-1"],
-                              "bmUnitType": ["T"]})
+    sites = pd.DataFrame(
+        {
+            "asset_id": ["GB-BESS-TESTB"],
+            "site_name": ["Testville BESS"],
+            "lead_party": ["Test Storage Ltd"],
+            "declared_export_mw": [50.0],
+            "in_registry": [True],
+        }
+    )
+    reference = pd.DataFrame(
+        {"nationalGridBmUnit": ["TESTB-1"], "elexonBmUnit": ["T_TESTB-1"], "bmUnitType": ["T"]}
+    )
     with (
         mock.patch.object(ancillary.census, "census_sites", return_value=sites),
         mock.patch.object(ancillary.census, "fetch_bmu_reference", return_value=reference),
@@ -64,8 +89,11 @@ def offline_census():
 def cached(tmp_path):
     """Run fetch_all's derivation over the fixture rows, without network or cache."""
     with (
-        mock.patch.object(ancillary, "_fetch_source", side_effect=lambda s: _rows()
-                          if s.name == "response_dc_dr_dm" else pd.DataFrame()),
+        mock.patch.object(
+            ancillary,
+            "_fetch_source",
+            side_effect=lambda s: _rows() if s.name == "response_dc_dr_dm" else pd.DataFrame(),
+        ),
         mock.patch.object(ancillary, "_CACHE_DIR", str(tmp_path)),
     ):
         yield ancillary.fetch_all(refresh=True)
@@ -129,9 +157,7 @@ def test_every_source_declares_the_columns_it_needs():
 
 def test_units_are_classified_by_what_they_actually_are(cached, offline_census):
     """Half of ancillary revenue is earned by units that are not sites at all."""
-    classes = ancillary.classify_units(
-        pd.Series(["TESTB-1", "AG-GBL0EN", "NOSUCH-1"])
-    )
+    classes = ancillary.classify_units(pd.Series(["TESTB-1", "AG-GBL0EN", "NOSUCH-1"]))
     assert list(classes) == ["census site", "aggregator portfolio", "unknown"]
 
 
@@ -146,18 +172,28 @@ def test_vlp_and_supplier_units_are_not_called_a_census_gap(offline_census):
 
 def test_stated_revenue_is_preferred_over_reconstructing_it():
     """NESO states settled revenue for the Dynamic Containment masterdata."""
-    rows = pd.DataFrame([{
-        "unit": "TESTB-1", "service": "DC LF", "volume_mw": 49.0,
-        "price_gbp_mw_h": 15.03,
-        "block_start": pd.Timestamp("2021-01-01T00:00Z"),
-        "block_end": pd.Timestamp("2021-01-02T00:00Z"),
-        "source": "dc_masterdata", "era": "DC masterdata",
-        "stated_revenue_gbp": 17675.28, "site_attributed_only": True,
-    }])
+    rows = pd.DataFrame(
+        [
+            {
+                "unit": "TESTB-1",
+                "service": "DC LF",
+                "volume_mw": 49.0,
+                "price_gbp_mw_h": 15.03,
+                "block_start": pd.Timestamp("2021-01-01T00:00Z"),
+                "block_end": pd.Timestamp("2021-01-02T00:00Z"),
+                "source": "dc_masterdata",
+                "era": "DC masterdata",
+                "stated_revenue_gbp": 17675.28,
+                "site_attributed_only": True,
+            }
+        ]
+    )
     with (
-        mock.patch.object(ancillary, "_fetch_source",
-                          side_effect=lambda s: rows if s.name == "dc_masterdata"
-                          else pd.DataFrame()),
+        mock.patch.object(
+            ancillary,
+            "_fetch_source",
+            side_effect=lambda s: rows if s.name == "dc_masterdata" else pd.DataFrame(),
+        ),
         mock.patch.object(ancillary, "_CACHE_DIR", "/tmp/anc-test"),
     ):
         out = ancillary.fetch_all(refresh=True)
@@ -170,6 +206,9 @@ def test_unlabelled_sources_contribute_batteries_only():
     """FFR and the DC masterdata carry every technology in their auction."""
     units = pd.Series(["TESTB-1", "DBESS-22", "GASENGINE-4", "AG-KNOWN01"])
     flags = ancillary._is_battery(units, {"AG-KNOWN01", "TESTB"})
-    assert list(flags) == [True, True, False, True], (
-        "known unit, name says BESS, gas engine, whitelisted aggregator"
-    )
+    assert list(flags) == [
+        True,
+        True,
+        False,
+        True,
+    ], "known unit, name says BESS, gas engine, whitelisted aggregator"

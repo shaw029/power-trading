@@ -32,9 +32,7 @@ def _lolpdrm_payload(date="2026-08-10", periods=2, horizons=(12, 8, 4, 2, 1)):
         for h in horizons:
             records.append(
                 {
-                    "publishTime": (start - pd.Timedelta(hours=h)).strftime(
-                        "%Y-%m-%dT%H:%M:%SZ"
-                    ),
+                    "publishTime": (start - pd.Timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "startTime": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "settlementDate": date,
                     "settlementPeriod": p + 1,

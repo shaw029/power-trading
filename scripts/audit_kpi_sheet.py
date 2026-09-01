@@ -51,9 +51,14 @@ OWNER = {
     "_page_methodology": "MTH",
 }
 PAGE_NAMES = {
-    "DAY": "Daily summary", "HIS": "Optimiser performance", "SYS": "GB system overview",
-    "FLT": "Fleet performance", "DTY": "Market regimes", "SVF": "Execution gap",
-    "ALN": "Alignment gap", "MTH": "Methodology",
+    "DAY": "Daily summary",
+    "HIS": "Optimiser performance",
+    "SYS": "GB system overview",
+    "FLT": "Fleet performance",
+    "DTY": "Market regimes",
+    "SVF": "Execution gap",
+    "ALN": "Alignment gap",
+    "MTH": "Methodology",
 }
 
 
@@ -110,9 +115,11 @@ def main() -> int:
     if problems:
         print("KPI sheet disagrees with the dashboard:")
         print("\n".join(problems))
-        print("\nFilters and Notes are not counted: one row often covers several "
-              "widgets on purpose (the fleet's four site multiselects), and a "
-              "Note has no single call to match.")
+        print(
+            "\nFilters and Notes are not counted: one row often covers several "
+            "widgets on purpose (the fleet's four site multiselects), and a "
+            "Note has no single call to match."
+        )
         return 1
     print("KPI sheet matches the dashboard on every page.")
     return 0

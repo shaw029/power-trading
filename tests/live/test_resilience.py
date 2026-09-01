@@ -73,10 +73,10 @@ def test_classify_periods_quantiles_and_negative_prices():
     prices = pd.Series([50.0] * 9 + [50.0], index=idx)
     prices.iloc[4] = -5.0  # mid-residual period, negative price
     flags = resilience.classify_periods(residual, prices)
-    assert flags.loc[idx[9], "stress"]        # top decile
+    assert flags.loc[idx[9], "stress"]  # top decile
     assert not flags.loc[idx[4], "stress"]
-    assert flags.loc[idx[0], "surplus"]       # bottom decile
-    assert flags.loc[idx[4], "surplus"]       # negative price ⇒ surplus
+    assert flags.loc[idx[0], "surplus"]  # bottom decile
+    assert flags.loc[idx[4], "surplus"]  # negative price ⇒ surplus
     assert not flags.loc[idx[5], "surplus"]
 
 
@@ -135,8 +135,8 @@ def test_resilience_dispatch_targets_stress_and_surplus():
     stress = [False, False, False, True, True, False]
     surplus = [True, True, False, False, False, False]
     schedule = resilience.optimize_resilience_dispatch(stress, surplus, _asset(soc=0.0))
-    assert schedule[0] < 0 and schedule[1] < 0            # charges in surplus
-    assert schedule[3] > 0 or schedule[4] > 0             # discharges in stress
+    assert schedule[0] < 0 and schedule[1] < 0  # charges in surplus
+    assert schedule[3] > 0 or schedule[4] > 0  # discharges in stress
     assert all(abs(mw) <= 50.0 + 1e-6 for mw in schedule)
     # Stays quiet outside flagged periods (tie-break penalty).
     assert schedule[2] == pytest.approx(0.0, abs=1e-6)
@@ -164,12 +164,8 @@ def test_alignment_gap_signs_and_valuation():
     assert gap["profit_arb"] == pytest.approx(50 * 100 - 50 * 10)
     assert gap["stress_mwh_arb"] == pytest.approx(0.0)
     assert gap["stress_mwh_res"] > 0.0
-    assert gap["profit_cost_of_alignment"] == pytest.approx(
-        gap["profit_arb"] - gap["profit_res"]
-    )
-    assert gap["stress_mwh_forgone"] == pytest.approx(
-        gap["stress_mwh_res"] - gap["stress_mwh_arb"]
-    )
+    assert gap["profit_cost_of_alignment"] == pytest.approx(gap["profit_arb"] - gap["profit_res"])
+    assert gap["stress_mwh_forgone"] == pytest.approx(gap["stress_mwh_res"] - gap["stress_mwh_arb"])
 
 
 def test_alignment_gap_credits_terminal_inventory():
@@ -195,10 +191,14 @@ def test_resilience_dispatch_serves_stress_under_cycle_cap_no_churn():
     stress = [False] * 19 + [True] + [False] * 4
     surplus = [False] * 9 + [True] * 7 + [False] * 8
     asset = BESSAsset(
-        capacity_mwh=100.0, power_mw=50.0,
-        charge_efficiency=0.94, discharge_efficiency=0.94,
-        degradation_cost_per_mwh=5.0, initial_soc_pct=0.10,
-        min_soc_pct=0.10, max_soc_pct=0.90,
+        capacity_mwh=100.0,
+        power_mw=50.0,
+        charge_efficiency=0.94,
+        discharge_efficiency=0.94,
+        degradation_cost_per_mwh=5.0,
+        initial_soc_pct=0.10,
+        min_soc_pct=0.10,
+        max_soc_pct=0.90,
     )
     schedule = resilience.optimize_resilience_dispatch(
         stress, surplus, asset, target_daily_cycles=1.5
@@ -321,9 +321,9 @@ def test_tier_metrics_none_denominators_and_no_cmn():
 def _blend_inputs(n: int = 24):
     """A day with a clear price peak that does not coincide with stress."""
     prices = [20.0] * n
-    for h in (10, 11):          # the profitable hours
+    for h in (10, 11):  # the profitable hours
         prices[h] = 200.0
-    stress = [h in (18, 19) for h in range(n)]   # ...are not the tight ones
+    stress = [h in (18, 19) for h in range(n)]  # ...are not the tight ones
     surplus = [h in (3, 4) for h in range(n)]
     return prices, stress, surplus
 
@@ -349,9 +349,7 @@ def test_large_blend_reproduces_the_resilience_schedule():
         prices, stress, surplus, asset, lam=1e6, duration_h=1.0, target_daily_cycles=1.5
     )
     pure = resilience.optimize_resilience_dispatch(stress, surplus, asset, 1.0, 1.5)
-    stress_mwh = lambda d: sum(  # noqa: E731
-        max(x, 0.0) for x, s in zip(d, stress) if s
-    )
+    stress_mwh = lambda d: sum(max(x, 0.0) for x, s in zip(d, stress) if s)  # noqa: E731
     assert stress_mwh(blended) == pytest.approx(stress_mwh(pure), rel=1e-6)
 
 
@@ -390,14 +388,10 @@ def test_blend_never_churns_at_any_weight():
 def test_blend_rejects_a_negative_weight():
     prices, stress, surplus = _blend_inputs()
     with pytest.raises(ValueError, match="non-negative"):
-        resilience.optimize_blended_dispatch(
-            prices, stress, surplus, _asset(), lam=-1.0
-        )
+        resilience.optimize_blended_dispatch(prices, stress, surplus, _asset(), lam=-1.0)
 
 
 def test_blend_rejects_mismatched_input_lengths():
     prices, stress, surplus = _blend_inputs()
     with pytest.raises(ValueError, match="same length"):
-        resilience.optimize_blended_dispatch(
-            prices[:-1], stress, surplus, _asset(), lam=1.0
-        )
+        resilience.optimize_blended_dispatch(prices[:-1], stress, surplus, _asset(), lam=1.0)

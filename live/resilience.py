@@ -218,11 +218,7 @@ def classify_tiers(
     # tier2_known mask is what keeps them out of every denominator.
     tiers["tier2"] = (tiers["lolp"] > 0.0) | (tiers["drm_mw"] < drm_tight_mw)
     tiers["tier3"] = cmn_flags(flags.index, cmn_windows)
-    tiers["tier"] = (
-        tiers["tier1"].astype(int)
-        .where(~tiers["tier2"], 2)
-        .where(~tiers["tier3"], 3)
-    )
+    tiers["tier"] = tiers["tier1"].astype(int).where(~tiers["tier2"], 2).where(~tiers["tier3"], 3)
     return tiers
 
 
@@ -315,9 +311,7 @@ def optimize_resilience_dispatch(
     discharge = [pulp.LpVariable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
     min_soc = asset.min_soc_pct * asset.capacity_mwh
     max_soc = asset.max_soc_pct * asset.capacity_mwh
-    soc = [
-        pulp.LpVariable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)
-    ]
+    soc = [pulp.LpVariable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)]
 
     w_stress, w_surplus, w_block, tie_break = 2.0, 1.0, 2.0, 1e-3
 
@@ -330,8 +324,7 @@ def optimize_resilience_dispatch(
         return -w_block if stress[h] else -tie_break
 
     prob += pulp.lpSum(
-        discharge[h] * duration_h * _coeff_discharge(h)
-        + charge[h] * duration_h * _coeff_charge(h)
+        discharge[h] * duration_h * _coeff_discharge(h) + charge[h] * duration_h * _coeff_charge(h)
         for h in periods
     )
 
@@ -362,8 +355,9 @@ def optimize_resilience_dispatch(
         logger.warning("Resilience LP failed; returning idle dispatch")
         return [0.0] * n
     if pulp.LpStatus[status] != "Optimal":
-        logger.warning("Resilience LP non-optimal (%s); returning idle dispatch",
-                       pulp.LpStatus[status])
+        logger.warning(
+            "Resilience LP non-optimal (%s); returning idle dispatch", pulp.LpStatus[status]
+        )
         return [0.0] * n
 
     return [discharge[h].varValue - charge[h].varValue for h in periods]
@@ -431,7 +425,8 @@ def optimize_blended_dispatch(
     prob += pulp.lpSum(
         (discharge[h] - charge[h]) * day_ahead_prices[h] * duration_h
         - (discharge[h] + charge[h]) * asset.degradation_cost_per_mwh * duration_h
-        + lam * (
+        + lam
+        * (
             discharge[h] * duration_h * _credit_discharge(h)
             + charge[h] * duration_h * _credit_charge(h)
         )
@@ -465,8 +460,11 @@ def optimize_blended_dispatch(
         logger.warning("Blended LP failed (lam=%s); returning idle dispatch", lam)
         return [0.0] * n
     if pulp.LpStatus[status] != "Optimal":
-        logger.warning("Blended LP non-optimal (%s, lam=%s); returning idle dispatch",
-                       pulp.LpStatus[status], lam)
+        logger.warning(
+            "Blended LP non-optimal (%s, lam=%s); returning idle dispatch",
+            pulp.LpStatus[status],
+            lam,
+        )
         return [0.0] * n
 
     return [discharge[h].varValue - charge[h].varValue for h in periods]
@@ -500,9 +498,7 @@ def alignment_gap(
     # worthless — without this, a schedule that absorbs surplus and holds it
     # reads as pure cost. Both schedules get the same treatment: the SOC change
     # over the day is valued at the day's mean DA price.
-    mean_price = (
-        sum(day_ahead_prices) / len(day_ahead_prices) if day_ahead_prices else 0.0
-    )
+    mean_price = sum(day_ahead_prices) / len(day_ahead_prices) if day_ahead_prices else 0.0
 
     def value(dispatch: list[float]) -> float:
         energy = sum(mw * p * duration_h for mw, p in zip(dispatch, day_ahead_prices))

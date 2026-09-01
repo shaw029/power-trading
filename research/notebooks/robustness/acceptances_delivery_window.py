@@ -12,6 +12,7 @@ is the answer. The achievable denominators are untouched, so the whole change
 is attributable to the correction.
 
 """
+
 import datetime as dt
 import sys
 import warnings
@@ -22,9 +23,7 @@ import pandas as pd
 
 # Located from this file, not the working directory, so the script runs the
 # same from anywhere.
-REPO_ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
-)
+REPO_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
 sys.path.insert(0, str(REPO_ROOT))
 warnings.filterwarnings("ignore")
 
@@ -42,9 +41,11 @@ POP = census_population()
 SITE_MW = {s.site: s.power_mw for s in POP.sites}
 S = bss.load_store(bss.store_for(POP))
 
-resid = S["system"]["residual_mw"].loc[
-    pd.Timestamp(WIN_START, tz="UTC"):pd.Timestamp(WIN_END, tz="UTC") + pd.Timedelta(days=1)
-].dropna()
+resid = (
+    S["system"]["residual_mw"]
+    .loc[pd.Timestamp(WIN_START, tz="UTC") : pd.Timestamp(WIN_END, tz="UTC") + pd.Timedelta(days=1)]
+    .dropna()
+)
 thresh = float(resid.quantile(0.90))
 stress_hh = resid >= thresh
 
@@ -60,6 +61,7 @@ def _publish(**kv):
     rest of the robustness outputs.
     """
     import json
+
     p = REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_metrics.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     cur = json.loads(p.read_text()) if p.exists() else {}
@@ -78,7 +80,7 @@ for i, day in enumerate(days, 1):
     try:
         pn_rec = fetch_fleet.fetch_fleet_pn(day, POP)
         bo_rec = fetch_fleet.fetch_fleet_boalf(day, POP)
-    except Exception as exc:                      # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         print(f"  {day}: fetch failed ({exc})")
         continue
     if not pn_rec:
@@ -113,27 +115,39 @@ pn_mwh = float(by_basis.get("pn", np.nan))
 boa_mwh = float(by_basis.get("boa", np.nan))
 print(f"Delivered, final PN only          : {pn_mwh:>10,.0f} MWh")
 print(f"Delivered, PN + BM acceptances    : {boa_mwh:>10,.0f} MWh")
-print(f"Correction                        : {boa_mwh - pn_mwh:>+10,.0f} MWh "
-      f"({(boa_mwh / pn_mwh - 1) * 100:+.1f}%)")
+print(
+    f"Correction                        : {boa_mwh - pn_mwh:>+10,.0f} MWh "
+    f"({(boa_mwh / pn_mwh - 1) * 100:+.1f}%)"
+)
 
 print("\nWhat that does to section 3's published shares (denominators unchanged):")
 for label, achievable in (("vs nameplate", 264_469.0), ("vs declared (MELS)", 143_389.0)):
-    print(f"  {label:<20}  PN {pn_mwh / achievable:5.0%}   "
-          f"BOA-corrected {boa_mwh / achievable:5.0%}   "
-          f"({(boa_mwh - pn_mwh) / achievable * 100:+.1f} points)")
+    print(
+        f"  {label:<20}  PN {pn_mwh / achievable:5.0%}   "
+        f"BOA-corrected {boa_mwh / achievable:5.0%}   "
+        f"({(boa_mwh - pn_mwh) / achievable * 100:+.1f} points)"
+    )
 
 if {"pn", "boa"} <= set(by_site.columns):
     d = by_site.dropna()
     d = d[d["pn"] > 0]
     d["delta_pct"] = (d["boa"] / d["pn"] - 1) * 100
-    print(f"\nPer site (n={len(d)}): median change {d['delta_pct'].median():+.1f}%, "
-          f"IQR {d['delta_pct'].quantile(.25):+.1f}% to {d['delta_pct'].quantile(.75):+.1f}%")
+    print(
+        f"\nPer site (n={len(d)}): median change {d['delta_pct'].median():+.1f}%, "
+        f"IQR {d['delta_pct'].quantile(.25):+.1f}% to {d['delta_pct'].quantile(.75):+.1f}%"
+    )
     print("Most instructed UP in top-decile hours:")
-    print(d.nlargest(5, "delta_pct")[["pn", "boa", "delta_pct"]]
-          .to_string(float_format=lambda v: f"{v:,.1f}"))
+    print(
+        d.nlargest(5, "delta_pct")[["pn", "boa", "delta_pct"]].to_string(
+            float_format=lambda v: f"{v:,.1f}"
+        )
+    )
     print("Most instructed DOWN:")
-    print(d.nsmallest(5, "delta_pct")[["pn", "boa", "delta_pct"]]
-          .to_string(float_format=lambda v: f"{v:,.1f}"))
+    print(
+        d.nsmallest(5, "delta_pct")[["pn", "boa", "delta_pct"]].to_string(
+            float_format=lambda v: f"{v:,.1f}"
+        )
+    )
     d.to_csv(REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_sites.csv")
     print("\nsaved -> research/notebooks/robustness/_outputs/boalf_sites.csv")
 

@@ -134,9 +134,29 @@ _DURATION_RE = re.compile(r"Duration\s*([\d.]+)\s*h", re.I)
 
 # Words that carry no identity when matching a project name to a BM Unit name.
 _NOISE_TOKENS = {
-    "BESS", "BATTERY", "ENERGY", "STORAGE", "SYSTEM", "FACILITY", "PROJECT",
-    "LIMITED", "LTD", "UK", "PHASE", "SITE", "POWER", "SUBSTATION", "GRID",
-    "THE", "AND", "OF", "MW", "SOLAR", "FARM", "STATION", "DEVELOPMENTS",
+    "BESS",
+    "BATTERY",
+    "ENERGY",
+    "STORAGE",
+    "SYSTEM",
+    "FACILITY",
+    "PROJECT",
+    "LIMITED",
+    "LTD",
+    "UK",
+    "PHASE",
+    "SITE",
+    "POWER",
+    "SUBSTATION",
+    "GRID",
+    "THE",
+    "AND",
+    "OF",
+    "MW",
+    "SOLAR",
+    "FARM",
+    "STATION",
+    "DEVELOPMENTS",
 }
 
 
@@ -170,7 +190,8 @@ def snapshot_date(probe: str | None = None) -> dt.date:
         "SNAPSHOT is pinned to %s but %s does not exist; fetching live instead. "
         "Results will differ from the figures this notebook's outputs, and any "
         "document quoting them, were computed on.",
-        SNAPSHOT.isoformat(), os.path.basename(probe),
+        SNAPSHOT.isoformat(),
+        os.path.basename(probe),
     )
     return dt.date.today()
 
@@ -262,10 +283,7 @@ def fetch_cm_storage(refresh: bool = False) -> pd.DataFrame:
     frame = frame[frame["CMU Technology"].astype(str).str.startswith("Storage")].copy()
 
     frame["duration_h"] = (
-        frame["CMU Technology"]
-        .astype(str)
-        .str.extract(_DURATION_RE, expand=False)
-        .astype(float)
+        frame["CMU Technology"].astype(str).str.extract(_DURATION_RE, expand=False).astype(float)
     )
     for col in ("Connection / DSR Capacity", "De-Rated Capacity", "Delivery Year"):
         frame[col] = pd.to_numeric(frame[col], errors="coerce")
@@ -290,9 +308,7 @@ def fetch_cm_storage(refresh: bool = False) -> pd.DataFrame:
     return frame
 
 
-def _fetch_connection_register(
-    resource_id: str, cache_name: str, refresh: bool
-) -> pd.DataFrame:
+def _fetch_connection_register(resource_id: str, cache_name: str, refresh: bool) -> pd.DataFrame:
     """Shared shape of the TEC and Embedded registers, filtered to storage."""
 
     def build() -> list[dict]:
@@ -459,9 +475,7 @@ def battery_bmus(refresh: bool = False) -> pd.DataFrame:
         "elexonBmUnit"
     ].fillna("").str.contains(_BMU_BATTERY_ID_RE)
 
-    cm_roots = {
-        re.sub(r"[^A-Z0-9]", "", str(n).upper()) for n in cm["cm_unit_name"].dropna()
-    }
+    cm_roots = {re.sub(r"[^A-Z0-9]", "", str(n).upper()) for n in cm["cm_unit_name"].dropna()}
     cm_roots |= {re.sub(r"\d+$", "", c) for c in cm_roots}
     ref["sig_cm"] = ref["root"].isin(cm_roots)
 
@@ -556,9 +570,7 @@ def census_sites(
     best = grouped["confidence"].apply(lambda s: max(s, key=lambda c: order.get(c, 0)))
     sites["confidence"] = sites["asset_id"].map(best)
 
-    sites["connection_level"] = sites["bmu_type"].map(
-        {"T": "Transmission", "E": "Distribution"}
-    )
+    sites["connection_level"] = sites["bmu_type"].map({"T": "Transmission", "E": "Distribution"})
 
     curated = bmu_to_site()
     for column, attribute in (

@@ -256,8 +256,9 @@ def test_chart_daytype_yield_wear_separates_overlapping_labels():
     # Label height in data units, the same conversion the builder uses.
     y0, y1 = fig.layout.yaxis.range
     gap = (y1 - y0) * 15.0 / (DEFAULT_CHART_HEIGHT * 0.70)
-    placed = sorted(a.y - a.ay / (DEFAULT_CHART_HEIGHT * 0.70) * (y1 - y0)
-                    for a in fig.layout.annotations)
+    placed = sorted(
+        a.y - a.ay / (DEFAULT_CHART_HEIGHT * 0.70) * (y1 - y0) for a in fig.layout.annotations
+    )
     assert all(b - a >= gap * 0.99 for a, b in zip(placed, placed[1:]))
     # A label that had to travel gets a leader line back to its bubble.
     assert any(a.showarrow for a in fig.layout.annotations)
@@ -349,9 +350,9 @@ def test_every_live_chart_wears_the_shared_theme():
     for i in range(1, len(blocks), 2):
         name, body = blocks[i], blocks[i + 1].split("\ndef ")[0]
         if not re.search(rf"\b{name}\(", live):
-            continue                      # not on the live dashboard
+            continue  # not on the live dashboard
         if "apply_theme(" in body or "_chart_fleet_grouped(" in body:
-            continue                      # themed directly or by delegation
+            continue  # themed directly or by delegation
         offenders.append(name)
     assert not offenders, f"live charts bypassing apply_theme: {offenders}"
     assert hasattr(charts_mod, "apply_theme")
@@ -360,12 +361,8 @@ def test_every_live_chart_wears_the_shared_theme():
 def test_realized_shape_keeps_its_two_axis_titles():
     """The dual axis is the subject here, so neither label may be clobbered."""
     times = pd.date_range("2024-01-01T00:00:00Z", periods=24, freq="60min")
-    dispatch = pd.DataFrame(
-        {"timestamp": times, "final_mw": [10.0] * 24, "da_mw": [8.0] * 24}
-    )
-    prices = pd.DataFrame(
-        {"day_ahead_price": [50.0] * 24, "mid_price": [55.0] * 24}, index=times
-    )
+    dispatch = pd.DataFrame({"timestamp": times, "final_mw": [10.0] * 24, "da_mw": [8.0] * 24})
+    prices = pd.DataFrame({"day_ahead_price": [50.0] * 24, "mid_price": [55.0] * 24}, index=times)
     sched = pd.DataFrame({"timestamp": times, "da_mw": [8.0] * 24})
     fig = chart_realized_shape(dispatch, prices, sched)
     assert fig.layout.yaxis.title.text == "Price (£/MWh)"
@@ -431,9 +428,7 @@ def test_chart_renewable_daily_plots_percentage_and_energy_hover():
 
 def test_chart_system_prices_returns_figure():
     idx = pd.date_range("2024-01-01T00:00:00Z", periods=24, freq="60min")
-    prices = pd.DataFrame(
-        {"day_ahead_price": range(50, 74), "mid_price": range(48, 72)}, index=idx
-    )
+    prices = pd.DataFrame({"day_ahead_price": range(50, 74), "mid_price": range(48, 72)}, index=idx)
     fig = chart_system_prices(prices)
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 2
@@ -497,7 +492,7 @@ def test_chart_alignment_day_two_panels_with_shading():
     )
     fig = chart_alignment_day(flags, dispatch)
     assert isinstance(fig, go.Figure)
-    assert len(fig.data) == 2                      # residual line + dispatch bars
+    assert len(fig.data) == 2  # residual line + dispatch bars
     # One stress + one surplus band, each drawn on both subplot rows.
     assert len(fig.layout.shapes) == 4
 
@@ -514,7 +509,7 @@ def test_chart_alignment_scatter_ghosts_excluded_and_stars_benchmark():
     )
     fig = chart_alignment_scatter(df, sim_coverage=0.6, sim_gbp=90.0)
     assert isinstance(fig, go.Figure)
-    assert len(fig.data) == 3                      # sites, ghosts, benchmark star
+    assert len(fig.data) == 3  # sites, ghosts, benchmark star
 
 
 def test_chart_system_tightness_panels_threshold_and_shading():
@@ -585,8 +580,7 @@ def test_chart_day_composite_four_panels_with_shading():
     prices = pd.DataFrame(
         {"day_ahead_price": range(40, 64), "mid_price": range(38, 62)}, index=hidx
     )
-    dispatch = pd.Series([0.0] * 8 + [-50.0] * 4 + [0.0] * 6 + [50.0] * 4 + [0.0] * 2,
-                         index=hidx)
+    dispatch = pd.Series([0.0] * 8 + [-50.0] * 4 + [0.0] * 6 + [50.0] * 4 + [0.0] * 2, index=hidx)
     da = dispatch * 0.5
     soc = pd.Series([0.5] * 24, index=hidx)
     fidx = pd.date_range("2026-06-01T00:00:00Z", periods=48, freq="30min")
@@ -606,8 +600,7 @@ def test_chart_day_composite_four_panels_with_shading():
 
 def test_chart_day_composite_survives_empty_flags():
     hidx = pd.date_range("2026-06-01T00:00:00Z", periods=4, freq="1h")
-    prices = pd.DataFrame({"day_ahead_price": [40.0] * 4, "mid_price": [41.0] * 4},
-                          index=hidx)
+    prices = pd.DataFrame({"day_ahead_price": [40.0] * 4, "mid_price": [41.0] * 4}, index=hidx)
     zeros = pd.Series([0.0] * 4, index=hidx)
     fig = chart_day_composite(prices, zeros, zeros, zeros + 0.5, pd.DataFrame(), 0.1, 0.9)
     assert isinstance(fig, go.Figure)
@@ -714,8 +707,14 @@ def test_chart_fleet_spread_band_and_median():
 
 def test_chart_fleet_spread_unknown_metric_still_renders():
     dist = pd.DataFrame(
-        {"date": ["2026-08-01"], "median": [1.0], "p25": [0.5], "p75": [1.5],
-         "min": [0.1], "max": [2.0]}
+        {
+            "date": ["2026-08-01"],
+            "median": [1.0],
+            "p25": [0.5],
+            "p75": [1.5],
+            "min": [0.1],
+            "max": [2.0],
+        }
     )
     fig = chart_fleet_spread(dist, "not-a-metric")
     assert isinstance(fig, go.Figure)
@@ -726,9 +725,7 @@ def test_chart_fleet_spread_refuses_a_frame_missing_a_bound():
 
     # Skipping the band quietly is how a chart ends up titled "full range"
     # while drawing none — which is exactly what shipped.
-    dist = pd.DataFrame(
-        {"date": ["2026-08-01"], "median": [1.0], "p25": [0.5], "p75": [1.5]}
-    )
+    dist = pd.DataFrame({"date": ["2026-08-01"], "median": [1.0], "p25": [0.5], "p75": [1.5]})
     with pytest.raises(KeyError, match="min"):
         chart_fleet_spread(dist, "revenue")
 
@@ -738,14 +735,16 @@ def test_leaderboard_flips_negative_capture_spread_to_red():
 
     df = pd.DataFrame(
         {
-            "site": ["A", "B", "C"], "optimiser": ["X", "Y", "Z"],
+            "site": ["A", "B", "C"],
+            "optimiser": ["X", "Y", "Z"],
             "capture_spread": [95.0, -156.0, 40.0],
             "gbp_per_mw_day": [200.0, -50.0, 80.0],
             "cycles_per_day": [1.2, 0.4, 0.9],
             "power_mw": [100.0, 50.0, 99.0],
             "discharge_mwh": [500.0, 100.0, 300.0],
             "charge_mwh": [500.0, 100.0, 300.0],
-            "days": [5, 5, 5], "total_gbp": [1000.0, -500.0, 800.0],
+            "days": [5, 5, 5],
+            "total_gbp": [1000.0, -500.0, 800.0],
         }
     )
     # Capture spread goes negative when a site pays more to charge than it
@@ -800,8 +799,15 @@ def test_price_capture_days_divides_into_a_daily_average():
 def _explorer_frames(days: int):
     idx = pd.date_range("2026-08-01T00:00:00Z", periods=24 * days, freq="1h")
     dispatch = pd.DataFrame(
-        {"timestamp": idx, "final_mw": 0.0, "da_mw": 0.0, "intraday_mw": 0.0,
-         "soc_after": 0.5, "da_price": 100.0, "mid_price": 100.0}
+        {
+            "timestamp": idx,
+            "final_mw": 0.0,
+            "da_mw": 0.0,
+            "intraday_mw": 0.0,
+            "soc_after": 0.5,
+            "da_price": 100.0,
+            "mid_price": 100.0,
+        }
     )
     prices = pd.DataFrame({"day_ahead_price": 100.0, "mid_price": 100.0}, index=idx)
     sched = pd.DataFrame({"timestamp": idx, "da_mw": 0.0, "da_price_pred": 100.0})
@@ -830,32 +836,37 @@ def test_fleet_volume_splits_notified_from_balancing():
     daily = pd.DataFrame(
         {
             "date": ["2026-08-01", "2026-08-02"],
-            "discharge_mwh": [900.0, 700.0], "charge_mwh": [1000.0, 800.0],
-            "discharge_mwh_pn": [1200.0, 650.0], "charge_mwh_pn": [950.0, 820.0],
+            "discharge_mwh": [900.0, 700.0],
+            "charge_mwh": [1000.0, 800.0],
+            "discharge_mwh_pn": [1200.0, 650.0],
+            "charge_mwh_pn": [950.0, 820.0],
         }
     )
     fig = chart_fleet_daily(daily, "volume")
     series = {t.name: list(t.y) for t in fig.data}
     assert set(series) == {
-        "Discharged — notified", "Discharged — balancing",
-        "Charged — notified", "Charged — balancing",
+        "Discharged — notified",
+        "Discharged — balancing",
+        "Charged — notified",
+        "Charged — balancing",
     }
     # An accepted bid removes discharge, so the balancing segment is signed and
     # the two stack to what was physically delivered.
     assert series["Discharged — notified"][0] == 1200.0
     assert series["Discharged — balancing"][0] == -300.0
-    assert sum(v[0] for v in (series["Discharged — notified"],
-                              series["Discharged — balancing"])) == 900.0
+    assert (
+        sum(v[0] for v in (series["Discharged — notified"], series["Discharged — balancing"]))
+        == 900.0
+    )
     # Charge is drawn negative; its two segments sum to -1000.
-    assert sum(v[0] for v in (series["Charged — notified"],
-                              series["Charged — balancing"])) == -1000.0
+    assert (
+        sum(v[0] for v in (series["Charged — notified"], series["Charged — balancing"])) == -1000.0
+    )
     assert fig.layout.barmode == "relative"
 
 
 def test_fleet_volume_without_the_split_columns():
-    daily = pd.DataFrame(
-        {"date": ["2026-08-01"], "discharge_mwh": [900.0], "charge_mwh": [1000.0]}
-    )
+    daily = pd.DataFrame({"date": ["2026-08-01"], "discharge_mwh": [900.0], "charge_mwh": [1000.0]})
     fig = chart_fleet_daily(daily, "volume")
     # Falls back to the plain discharge/charge pair rather than erroring.
     assert len(fig.data) == 2

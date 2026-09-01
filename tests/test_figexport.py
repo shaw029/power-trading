@@ -190,18 +190,15 @@ def test_qr_encodes_the_url_it_claims_to(tmp_path):
 def test_qr_for_a_different_url_is_a_different_code(tmp_path):
     """Guards against the encoder being handed a constant by accident."""
     pytest.importorskip("qrcode")
-    a, _ = poster.save_qr(url="https://example.invalid/a", name="a",
-                          directory=tmp_path)
-    b, _ = poster.save_qr(url="https://example.invalid/b", name="b",
-                          directory=tmp_path)
+    a, _ = poster.save_qr(url="https://example.invalid/a", name="a", directory=tmp_path)
+    b, _ = poster.save_qr(url="https://example.invalid/b", name="b", directory=tmp_path)
     assert _dark_modules(a.read_text()) != _dark_modules(b.read_text())
 
 
 def test_qr_keeps_the_quiet_zone_the_spec_requires(tmp_path):
     """Scanners need >= 4 modules of margin to find the code on a busy page."""
     pytest.importorskip("qrcode")
-    svg, _ = poster.save_qr(url="https://example.invalid", name="qr",
-                            directory=tmp_path)
+    svg, _ = poster.save_qr(url="https://example.invalid", name="qr", directory=tmp_path)
     modules = _dark_modules(svg.read_text())
     assert min(x for x, _ in modules) >= poster.QR_BORDER
     assert min(y for _, y in modules) >= poster.QR_BORDER

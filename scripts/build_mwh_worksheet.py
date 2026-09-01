@@ -73,9 +73,9 @@ ENTRY_COLUMNS = [
 #: What may appear in ``source_type``. Recorded per row so a figure's standing
 #: travels with it rather than being asserted once in a caption.
 SOURCE_TYPES = (
-    "operator",       # the operator's own project page or portfolio
+    "operator",  # the operator's own project page or portfolio
     "press_release",  # EPC contractor, supplier or developer announcement
-    "planning",       # a local authority planning portal document
+    "planning",  # a local authority planning portal document
     "other",
 )
 
@@ -96,9 +96,7 @@ def fetch_repd_batteries() -> pd.DataFrame:
     batteries = frame[
         frame["Technology Type"].astype(str).str.contains("Batter", case=False, na=False)
     ].copy()
-    batteries["mw"] = pd.to_numeric(
-        batteries["Installed Capacity (MWelec)"], errors="coerce"
-    )
+    batteries["mw"] = pd.to_numeric(batteries["Installed Capacity (MWelec)"], errors="coerce")
     keep = {
         "Site Name": "repd_site",
         "Operator (or Applicant)": "repd_operator",
@@ -220,7 +218,8 @@ def build(path: Path = WORKSHEET, refresh: bool = False) -> pd.DataFrame:
             "current_source": site.mwh_source if has_cm else None,
             "current_implied_h": (
                 round(float(site.capacity_mwh) / float(site.declared_export_mw), 2)
-                if has_cm and site.declared_export_mw else None
+                if has_cm and site.declared_export_mw
+                else None
             ),
         }
         row.update(_match_repd(site.site_name, site.declared_export_mw, repd, distinctive))
@@ -249,8 +248,10 @@ def main() -> None:
     with_lead = int(sheet.get("repd_site", pd.Series(dtype=object)).notna().sum())
     tasks = sheet["task"].value_counts().to_dict() if "task" in sheet else {}
     print(f"\n{WORKSHEET}")
-    print(f"  {len(sheet)} sites, {todo} still to do "
-          f"({tasks.get('fill', 0)} fill, {tasks.get('verify', 0)} verify a Capacity Market figure)")
+    print(
+        f"  {len(sheet)} sites, {todo} still to do "
+        f"({tasks.get('fill', 0)} fill, {tasks.get('verify', 0)} verify a Capacity Market figure)"
+    )
     print(f"  {with_lead} have a REPD lead (operator, MW, commissioning date, postcode)")
     print(f"  fill: {', '.join(ENTRY_COLUMNS)}")
     print(f"  source_type must be one of: {', '.join(SOURCE_TYPES)}")

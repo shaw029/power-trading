@@ -42,7 +42,6 @@ list when the fleet moves on.
 
 from fleet.population import FleetSite, Population
 
-
 # Metadata snapshot: July 2026.
 CURATED_SITES: tuple[FleetSite, ...] = (
     FleetSite(

@@ -123,6 +123,4 @@ def census_population(refresh: bool = False) -> Population:
             )
         )
 
-    return Population(
-        name="census", sites=tuple(sites), cache_suffix="_CENSUS"
-    )
+    return Population(name="census", sites=tuple(sites), cache_suffix="_CENSUS")

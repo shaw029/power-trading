@@ -37,9 +37,7 @@ def test_populations_cache_into_separate_directories():
     """A day-file holds only the BM Units it was fetched for, so it cannot be shared."""
     census = Population("census", CURATED_SITES, cache_suffix="_CENSUS")
     assert fetch_fleet._dir_for("FLEET_PN", census) == "FLEET_PN_CENSUS"
-    assert fetch_fleet._dir_for("FLEET_PN", census) != fetch_fleet._dir_for(
-        "FLEET_PN", CURATED
-    )
+    assert fetch_fleet._dir_for("FLEET_PN", census) != fetch_fleet._dir_for("FLEET_PN", CURATED)
 
 
 def test_census_is_not_imported_at_module_scope():
@@ -51,13 +49,10 @@ def test_census_is_not_imported_at_module_scope():
     """
     tree = ast.parse((REPO_ROOT / "fleet" / "population.py").read_text(encoding="utf-8"))
     top_level = {
-        node.module
-        for node in tree.body
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in tree.body if isinstance(node, ast.ImportFrom) and node.module
     }
     top_level |= {
-        alias.name for node in tree.body if isinstance(node, ast.Import)
-        for alias in node.names
+        alias.name for node in tree.body if isinstance(node, ast.Import) for alias in node.names
     }
     assert not {"fleet.research.census", "fleet.research.coverage"} & top_level
 
@@ -110,10 +105,16 @@ def test_census_population_carries_machine_derived_metadata():
     table = mock.MagicMock()
     rows = [
         mock.Mock(
-            asset_id="GB-BESS-AAAA", bmu_ids=("T_AAAA-1",), site_name="A BESS",
-            registry_site=None, declared_export_mw=50.0, capacity_mwh=float("nan"),
-            registry_optimiser=None, lead_party="Some Ltd",
-            registry_region=None, gsp_group=None,
+            asset_id="GB-BESS-AAAA",
+            bmu_ids=("T_AAAA-1",),
+            site_name="A BESS",
+            registry_site=None,
+            declared_export_mw=50.0,
+            capacity_mwh=float("nan"),
+            registry_optimiser=None,
+            lead_party="Some Ltd",
+            registry_region=None,
+            gsp_group=None,
         )
     ]
     table.itertuples.return_value = rows

@@ -98,9 +98,7 @@ def _peak_shape(prices: pd.DataFrame, prominence: float) -> str | None:
     Days without a usable hourly index or without midday coverage are left
     untagged rather than guessed at.
     """
-    if "day_ahead_price" not in prices.columns or not isinstance(
-        prices.index, pd.DatetimeIndex
-    ):
+    if "day_ahead_price" not in prices.columns or not isinstance(prices.index, pd.DatetimeIndex):
         return None
     series = prices["day_ahead_price"].dropna()
     if series.empty:

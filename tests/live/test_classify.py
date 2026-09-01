@@ -128,9 +128,7 @@ def test_negative_prices_tag() -> None:
     values = [50.0] * 24
     values[3] = -5.0
     assert "negative-price" in classify.classify(_prices(values), _full_context())
-    assert "negative-price" not in classify.classify(
-        _prices([0.0] + [50.0] * 23), _full_context()
-    )
+    assert "negative-price" not in classify.classify(_prices([0.0] + [50.0] * 23), _full_context())
 
 
 def test_two_peak_shape() -> None:

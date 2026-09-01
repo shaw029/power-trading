@@ -64,9 +64,7 @@ ENERGY_WORKSHEET = (
 
 #: Accepted values of the worksheet's ``source_type``. A figure's standing
 #: travels with it rather than being asserted once in a caption.
-WORKSHEET_SOURCE_TYPES = (
-    "operator", "corporate", "press_release", "planning", "other"
-)
+WORKSHEET_SOURCE_TYPES = ("operator", "corporate", "press_release", "planning", "other")
 
 #: How far a worksheet row's implied duration (MWh ÷ declared MW) may sit from
 #: the duration the researcher recorded before the row is rejected.
@@ -267,7 +265,8 @@ def load_energy_worksheet(path: Path | None = None) -> pd.DataFrame:
             "implies %.1f h, longer than any priced census site. Self-consistent with "
             "the duration recorded, so the agreement check cannot judge it — confirm "
             "the figure covers this BM Unit and not the wider project.",
-            row.asset_id, getattr(row, "site_name", "?"),
+            row.asset_id,
+            getattr(row, "site_name", "?"),
             getattr(row, "capacity_mwh", float("nan")),
             getattr(row, "declared_export_mw", float("nan")),
             getattr(row, "capacity_mwh", float("nan"))
@@ -282,10 +281,12 @@ def load_energy_worksheet(path: Path | None = None) -> pd.DataFrame:
             "Worksheet row rejected for %s (%s): %.0f MWh over %.1f MW declared implies "
             "%.2f h against %s h recorded — check whether the published figure covers "
             "the whole project rather than this BM Unit",
-            row.asset_id, getattr(row, "site_name", "?"),
+            row.asset_id,
+            getattr(row, "site_name", "?"),
             getattr(row, "capacity_mwh", float("nan")),
             getattr(row, "declared_export_mw", float("nan")),
-            imp, getattr(row, "duration_h", "?"),
+            imp,
+            getattr(row, "duration_h", "?"),
         )
     out = filled[ok].copy()
     out["mwh_needs_review"] = (out["capacity_mwh"] / declared[ok]) > DURATION_REVIEW_H
@@ -347,9 +348,9 @@ def coverage_table(refresh: bool = False) -> pd.DataFrame:
     sites.loc[absent & (sites["declared_export_mw"] < REGISTRY_SIZE_FLOOR_MW), "missing_reason"] = (
         "below size floor"
     )
-    sites.loc[absent & (sites["declared_export_mw"] >= REGISTRY_SIZE_FLOOR_MW), "missing_reason"] = (
-        "not curated"
-    )
+    sites.loc[
+        absent & (sites["declared_export_mw"] >= REGISTRY_SIZE_FLOOR_MW), "missing_reason"
+    ] = "not curated"
     return sites
 
 
@@ -388,12 +389,16 @@ def representativeness(table: pd.DataFrame | None = None) -> pd.DataFrame:
             "basis": "MWh (where known)",
             "registry": round(known_mwh_included["capacity_mwh"].sum(), 1),
             "census": round(known_mwh["capacity_mwh"].sum(), 1),
-            "coverage_pct": round(
-                100.0 * known_mwh_included["capacity_mwh"].sum() / known_mwh["capacity_mwh"].sum(),
-                1,
-            )
-            if len(known_mwh)
-            else 0.0,
+            "coverage_pct": (
+                round(
+                    100.0
+                    * known_mwh_included["capacity_mwh"].sum()
+                    / known_mwh["capacity_mwh"].sum(),
+                    1,
+                )
+                if len(known_mwh)
+                else 0.0
+            ),
             "note": (
                 f"duration known for {len(known_mwh_included)}/{len(included)} registry "
                 f"vs {len(known_mwh) - len(known_mwh_included)}/{len(table) - len(included)} "

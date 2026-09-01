@@ -32,9 +32,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-PROJECT_ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
-)
+PROJECT_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
 POSTER_FIG_DIR = PROJECT_ROOT / "research" / "poster" / "exports"
 
 #: Written for every figure. Vectors first — the PNG is a fallback.

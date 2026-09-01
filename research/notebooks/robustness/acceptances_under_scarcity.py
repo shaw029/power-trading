@@ -11,6 +11,7 @@ metric needs no continuous history. State of charge does, and is not recomputed
 here.
 
 """
+
 import datetime as dt
 import sys
 import warnings
@@ -20,9 +21,7 @@ import pandas as pd
 
 # Located from this file, not the working directory, so the script runs the
 # same from anywhere.
-REPO_ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
-)
+REPO_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
 sys.path.insert(0, str(REPO_ROOT))
 warnings.filterwarnings("ignore")
 
@@ -43,8 +42,12 @@ SITE_MW = {s.site: s.power_mw for s in POP.sites}
 S = bss.load_store(bss.store_for(POP))
 
 prints = S["lolpdrm_prints"]
-final = (prints.sort_values(["horizon", "publish_time"], ascending=[True, False])
-               .drop_duplicates("time").set_index("time")[["lolp", "drm_mw"]].sort_index())
+final = (
+    prints.sort_values(["horizon", "publish_time"], ascending=[True, False])
+    .drop_duplicates("time")
+    .set_index("time")[["lolp", "drm_mw"]]
+    .sort_index()
+)
 tight_idx = final.index[final["lolp"] >= LOLP_RULE]
 days = sorted({t.date() for t in tight_idx})
 
@@ -60,6 +63,7 @@ def _publish(**kv):
     rest of the robustness outputs.
     """
     import json
+
     p = REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_metrics.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     cur = json.loads(p.read_text()) if p.exists() else {}
@@ -95,14 +99,16 @@ for i, day in enumerate(days, 1):
     try:
         pn_rec = fetch_fleet.fetch_fleet_pn(day, POP)
         bo_rec = fetch_fleet.fetch_fleet_boalf(day, POP)
-    except Exception:                              # noqa: BLE001
+    except Exception:  # noqa: BLE001
         failed += 1
         continue
     if not pn_rec:
         continue
     valid = ERA_START
-    for basis, prof in (("pn", fleet_perf.site_profile(pn_rec, POP)),
-                        ("boa", fleet_perf.site_physical_profile(pn_rec, bo_rec, POP))):
+    for basis, prof in (
+        ("pn", fleet_perf.site_profile(pn_rec, POP)),
+        ("boa", fleet_perf.site_physical_profile(pn_rec, bo_rec, POP)),
+    ):
         if prof.empty:
             continue
         p = prof.copy()
@@ -123,8 +129,7 @@ if failed:
     print(f"  ({failed} days failed to fetch)")
 
 allr = pd.concat(recs, ignore_index=True)
-allr["online"] = online_mw.reindex(
-    pd.DatetimeIndex(allr["time"]).normalize()).to_numpy()
+allr["online"] = online_mw.reindex(pd.DatetimeIndex(allr["time"]).normalize()).to_numpy()
 allr = allr[allr["online"] > 0]
 allr["norm"] = allr["net"] / allr["online"]
 
@@ -140,9 +145,11 @@ print("=" * 72)
 def report(label, sub):
     if sub.empty:
         return
-    print(f"{label:<34} n={len(sub):>5}  "
-          f"PN {sub['pn'].mean():+.4f}  BOA {sub['boa'].mean():+.4f}  "
-          f"({(sub['boa'].mean() - sub['pn'].mean()):+.4f})")
+    print(
+        f"{label:<34} n={len(sub):>5}  "
+        f"PN {sub['pn'].mean():+.4f}  BOA {sub['boa'].mean():+.4f}  "
+        f"({(sub['boa'].mean() - sub['pn'].mean()):+.4f})"
+    )
 
 
 report("Full window 2018-2026", wide)
@@ -150,17 +157,15 @@ report("Pre-break (< 2023-10-01)", wide[wide.index < SKIP_END])
 report("Modern (>= 2024-04-01)", wide[wide.index >= MODERN_START])
 
 full = wide
-print(f"\nShare of scarcity half-hours instructed UP  : "
-      f"{(full['boa'] > full['pn']).mean():.0%}")
-print(f"Share instructed DOWN                       : "
-      f"{(full['boa'] < full['pn']).mean():.0%}")
+print(
+    f"\nShare of scarcity half-hours instructed UP  : " f"{(full['boa'] > full['pn']).mean():.0%}"
+)
+print(f"Share instructed DOWN                       : " f"{(full['boa'] < full['pn']).mean():.0%}")
 pre = wide[wide.index < SKIP_END]
 mod = wide[wide.index >= MODERN_START]
 if len(pre) and len(mod):
-    print(f"\nEra ratio on notifications : "
-          f"{mod['pn'].mean() / pre['pn'].mean():.2f}x")
-    print(f"Era ratio on acceptances   : "
-          f"{mod['boa'].mean() / pre['boa'].mean():.2f}x")
+    print(f"\nEra ratio on notifications : " f"{mod['pn'].mean() / pre['pn'].mean():.2f}x")
+    print(f"Era ratio on acceptances   : " f"{mod['boa'].mean() / pre['boa'].mean():.2f}x")
 wide.to_csv(REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_scarcity.csv")
 print("\nsaved -> research/notebooks/robustness/_outputs/boalf_scarcity.csv")
 

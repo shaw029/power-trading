@@ -11,6 +11,7 @@ population, nb07's normalisation (net MW per MW online) and nb05's tightness
 rule (shortest-horizon, latest-publication print per period).
 
 """
+
 import datetime as dt
 import sys
 import warnings
@@ -22,9 +23,7 @@ import pandas as pd
 
 # Located from this file, not the working directory, so the script runs the
 # same from anywhere.
-REPO_ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
-)
+REPO_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
 sys.path.insert(0, str(REPO_ROOT))
 warnings.filterwarnings("ignore")
 
@@ -77,16 +76,22 @@ online_at = pd.Series(online_mw.reindex(grid.normalize()).to_numpy(), index=grid
 norm_net = fleet_net / online_at.replace(0, np.nan)
 
 # One print per period: shortest horizon, latest publication (nb05's rule).
-final = (prints.sort_values(["horizon", "publish_time"], ascending=[True, False])
-               .drop_duplicates("time").set_index("time")[["lolp", "drm_mw"]].sort_index())
+final = (
+    prints.sort_values(["horizon", "publish_time"], ascending=[True, False])
+    .drop_duplicates("time")
+    .set_index("time")[["lolp", "drm_mw"]]
+    .sort_index()
+)
 
-frame = pd.DataFrame({
-    "norm": norm_net,
-    "residual": system["residual_mw"].reindex(grid),
-    "drm": final["drm_mw"].reindex(grid),
-    "lolp": final["lolp"].reindex(grid),
-    "online": online_at,
-}).dropna(subset=["norm", "residual"])
+frame = pd.DataFrame(
+    {
+        "norm": norm_net,
+        "residual": system["residual_mw"].reindex(grid),
+        "drm": final["drm_mw"].reindex(grid),
+        "lolp": final["lolp"].reindex(grid),
+        "online": online_at,
+    }
+).dropna(subset=["norm", "residual"])
 frame["quarter"] = frame.index.tz_convert("UTC").tz_localize(None).to_period("Q")
 print(f"periods with a fleet position : {len(frame):,}\n")
 
@@ -102,28 +107,34 @@ print("issued at each horizon. Both come from the operator's LoLP family, so")
 print("this measures forecast CONSISTENCY, not skill against an independent")
 print("outcome — stated because the two are easy to confuse.\n")
 
-truth = (final["lolp"] >= LOLP_RULE)
+truth = final["lolp"] >= LOLP_RULE
 truth = truth[truth.index.isin(frame.index)]
 
 rows = []
 for h in sorted(prints["horizon"].unique()):
-    at_h = (prints[prints["horizon"] == h]
-            .sort_values("publish_time")
-            .drop_duplicates("time", keep="last")
-            .set_index("time")["lolp"])
-    pred = (at_h.reindex(truth.index) >= LOLP_RULE)
+    at_h = (
+        prints[prints["horizon"] == h]
+        .sort_values("publish_time")
+        .drop_duplicates("time", keep="last")
+        .set_index("time")["lolp"]
+    )
+    pred = at_h.reindex(truth.index) >= LOLP_RULE
     both = pd.DataFrame({"t": truth, "p": pred}).dropna()
     if both.empty or both["t"].sum() == 0:
         continue
     tp = int((both["t"] & both["p"]).sum())
     fp = int((~both["t"] & both["p"]).sum())
     fn = int((both["t"] & ~both["p"]).sum())
-    rows.append({
-        "horizon_h": h, "n": len(both), "events": int(both["t"].sum()),
-        "hit_rate": tp / (tp + fn) if tp + fn else np.nan,
-        "PPV": tp / (tp + fp) if tp + fp else np.nan,
-        "false_alarms": fp,
-    })
+    rows.append(
+        {
+            "horizon_h": h,
+            "n": len(both),
+            "events": int(both["t"].sum()),
+            "hit_rate": tp / (tp + fn) if tp + fn else np.nan,
+            "PPV": tp / (tp + fp) if tp + fp else np.nan,
+            "false_alarms": fp,
+        }
+    )
 skill = pd.DataFrame(rows)
 print(skill.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
 out["d9"] = skill
@@ -149,7 +160,7 @@ ss_hour = float((d7["norm_dev"] ** 2).sum())
 r2_hour = 1 - ss_hour / ss_tot
 beta = float(np.polyfit(d7["res_dev"], d7["norm_dev"], 1)[0])
 resid = d7["norm_dev"] - beta * d7["res_dev"]
-r2_full = 1 - float((resid ** 2).sum()) / ss_tot
+r2_full = 1 - float((resid**2).sum()) / ss_tot
 
 print(f"n = {len(d7):,} half-hours, fleet net MW per MW online")
 print(f"  raw correlation with residual load      : {raw_r:+.3f}")
@@ -157,8 +168,7 @@ print(f"  within-hour correlation (shape removed) : {within_r:+.3f}")
 print(f"  R2, hour-of-day effects alone           : {r2_hour:.3f}")
 print(f"  R2, + within-hour residual load         : {r2_full:.3f}")
 print(f"  incremental R2 from load                : {r2_full - r2_hour:.4f}")
-out["d7"] = dict(raw_r=raw_r, within_r=within_r, r2_hour=r2_hour,
-                 r2_full=r2_full, n=len(d7))
+out["d7"] = dict(raw_r=raw_r, within_r=within_r, r2_hour=r2_hour, r2_full=r2_full, n=len(d7))
 
 
 # ── Events (shared by the break search and the clustered intervals) ───────────────────────────────────────────
@@ -215,12 +225,17 @@ def clustered_ci(sub_events, label, n_boot=2000):
     lo, hi = np.percentile(boots, [2.5, 97.5])
     print(f"{label}")
     print(f"  events {len(vals):>4}  half-hours {naive.size:>6}  mean {point:+.4f} MW/MW")
-    print(f"  naive  95% CI (independent periods) : [{point - 1.96 * naive_se:+.4f}, "
-          f"{point + 1.96 * naive_se:+.4f}]  half-width {1.96 * naive_se:.4f}")
-    print(f"  event-clustered 95% CI              : [{lo:+.4f}, {hi:+.4f}]  "
-          f"half-width {(hi - lo) / 2:.4f}")
-    print(f"  interval widens by                  : "
-          f"{((hi - lo) / 2) / (1.96 * naive_se):.1f}x\n")
+    print(
+        f"  naive  95% CI (independent periods) : [{point - 1.96 * naive_se:+.4f}, "
+        f"{point + 1.96 * naive_se:+.4f}]  half-width {1.96 * naive_se:.4f}"
+    )
+    print(
+        f"  event-clustered 95% CI              : [{lo:+.4f}, {hi:+.4f}]  "
+        f"half-width {(hi - lo) / 2:.4f}"
+    )
+    print(
+        f"  interval widens by                  : " f"{((hi - lo) / 2) / (1.96 * naive_se):.1f}x\n"
+    )
     return dict(point=point, lo=lo, hi=hi, n_events=len(vals), n_periods=int(naive.size))
 
 
@@ -239,11 +254,12 @@ print("Was October 2023 the break, or just where it was placed?")
 print("=" * 74)
 
 q = frame.dropna(subset=["residual"]).copy()
-tight_q = q[q.groupby("quarter")["residual"].transform(
-    lambda s: s >= s.quantile(0.90))]
-trend = (tight_q.groupby("quarter")["norm"]
-         .agg(["mean", "sem", "size"])
-         .rename(columns={"mean": "net", "sem": "se", "size": "n"}))
+tight_q = q[q.groupby("quarter")["residual"].transform(lambda s: s >= s.quantile(0.90))]
+trend = (
+    tight_q.groupby("quarter")["norm"]
+    .agg(["mean", "sem", "size"])
+    .rename(columns={"mean": "net", "sem": "se", "size": "n"})
+)
 trend = trend[trend["n"] >= 100]
 print(f"{len(trend)} quarters, n ≈ {trend['n'].median():.0f} tight periods each\n")
 
@@ -254,7 +270,7 @@ qs = pd.PeriodIndex(trend.index)
 
 def aic(resid, k):
     n = len(resid)
-    rss = float((resid ** 2).sum())
+    rss = float((resid**2).sum())
     return n * np.log(rss / n) + 2 * k, rss
 
 
@@ -271,8 +287,14 @@ for i in range(3, len(y) - 3):
     step = (t >= i).astype(float)
     design = np.column_stack([np.ones_like(t), t, step, step * (t - i)])
     a, rss = aic(fit(design), 4)
-    rows.append({"break_after": str(qs[i - 1]), "break_at": str(qs[i]),
-                 "AIC": a, "dAIC_vs_slope_only": a - aic_slope})
+    rows.append(
+        {
+            "break_after": str(qs[i - 1]),
+            "break_at": str(qs[i]),
+            "AIC": a,
+            "dAIC_vs_slope_only": a - aic_slope,
+        }
+    )
 search = pd.DataFrame(rows).sort_values("AIC")
 imposed = search[search["break_at"] == "2023Q4"]
 
@@ -286,13 +308,14 @@ if not imposed.empty:
     row = imposed.iloc[0]
     rank = int((search["AIC"] < row["AIC"]).sum()) + 1
     print(f"Imposed break 2023Q4 : AIC {row['AIC']:.2f}, rank {rank} of {len(search)}")
-    print(f"AIC penalty for imposing it rather than fitting it: "
-          f"{row['AIC'] - best['AIC']:.2f}")
+    print(f"AIC penalty for imposing it rather than fitting it: " f"{row['AIC'] - best['AIC']:.2f}")
 out["d2"] = search
 
 within2 = search[search["AIC"] <= best["AIC"] + 2]
-print(f"\nBreaks within 2 AIC of the best ({len(within2)}): "
-      f"{', '.join(within2['break_at'].tolist())}")
+print(
+    f"\nBreaks within 2 AIC of the best ({len(within2)}): "
+    f"{', '.join(within2['break_at'].tolist())}"
+)
 print("A flat AIC profile across neighbouring quarters means the data date the")
 print("change to a period, not to a quarter.")
 
@@ -312,9 +335,12 @@ print("=" * 74)
 MODERN = pd.Timestamp("2024-04-01", tz="UTC")
 SITE_MWH = {s.site: s.capacity_mwh for s in POP.sites}
 soc_all = fleet_perf.fleet_state_of_charge(
-    pn.drop(columns=["date"]), grid, SITE_MWH, SITE_MW, 0.94, 0.94)
-schemes = {"primary": soc_all["soc"].reindex(grid),
-           "anchored": soc_all["soc_anchored"].reindex(grid)}
+    pn.drop(columns=["date"]), grid, SITE_MWH, SITE_MW, 0.94, 0.94
+)
+schemes = {
+    "primary": soc_all["soc"].reindex(grid),
+    "anchored": soc_all["soc_anchored"].reindex(grid),
+}
 
 ev_all = events  # bridged LoLP events on `frame`'s grid
 times_g = frame.index
@@ -327,7 +353,11 @@ def era_of(e):
 def med_ci(vals, n_boot=4000):
     vals = np.asarray(vals, float)
     boots = [np.median(RNG.choice(vals, vals.size)) for _ in range(n_boot)]
-    return float(np.median(vals)), float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5))
+    return (
+        float(np.median(vals)),
+        float(np.percentile(boots, 2.5)),
+        float(np.percentile(boots, 97.5)),
+    )
 
 
 gate: dict[str, dict] = {}
@@ -348,8 +378,14 @@ for scheme, soc in schemes.items():
     for era in ("pre", "modern"):
         m, lo, hi = med_ci(per_era[era])
         q1, q3 = np.percentile(per_era[era], [25, 75])
-        stats[era] = dict(n=len(per_era[era]), missing=missing[era],
-                          median=m, lo=lo, hi=hi, iqr=(float(q1), float(q3)))
+        stats[era] = dict(
+            n=len(per_era[era]),
+            missing=missing[era],
+            median=m,
+            lo=lo,
+            hi=hi,
+            iqr=(float(q1), float(q3)),
+        )
     # The point estimate is the difference of the medians, not the median of
     # the bootstrap differences: the latter is a shrunken statistic and prints
     # a point that the two reported medians do not reconcile to.
@@ -379,18 +415,28 @@ for scheme, soc in schemes.items():
     mvals = np.asarray(per_era["modern"])
     base = np.median(mvals)
     infl = max(abs(np.median(np.delete(mvals, i)) - base) for i in range(mvals.size))
-    gate[scheme] = dict(stats=stats, diff=float(point_diff),
-                        dlo=float(dlo), dhi=float(dhi),
-                        blo=float(blo), bhi=float(bhi), influence=float(infl))
+    gate[scheme] = dict(
+        stats=stats,
+        diff=float(point_diff),
+        dlo=float(dlo),
+        dhi=float(dhi),
+        blo=float(blo),
+        bhi=float(bhi),
+        influence=float(infl),
+    )
     print(f"\n{scheme}:")
     for era in ("pre", "modern"):
         st = stats[era]
-        print(f"  {era:<7} n={st['n']:>3} missing={st['missing']:>2}  "
-              f"median {st['median']:.1%}  CI [{st['lo']:.1%}, {st['hi']:.1%}]  "
-              f"IQR [{st['iqr'][0]:.1%}, {st['iqr'][1]:.1%}]")
-    print(f"  difference (modern - pre): {gate[scheme]['diff']*100:+.1f} pts  "
-          f"event CI [{dlo*100:+.1f}, {dhi*100:+.1f}]  "
-          f"day-block CI [{blo*100:+.1f}, {bhi*100:+.1f}]")
+        print(
+            f"  {era:<7} n={st['n']:>3} missing={st['missing']:>2}  "
+            f"median {st['median']:.1%}  CI [{st['lo']:.1%}, {st['hi']:.1%}]  "
+            f"IQR [{st['iqr'][0]:.1%}, {st['iqr'][1]:.1%}]"
+        )
+    print(
+        f"  difference (modern - pre): {gate[scheme]['diff']*100:+.1f} pts  "
+        f"event CI [{dlo*100:+.1f}, {dhi*100:+.1f}]  "
+        f"day-block CI [{blo*100:+.1f}, {bhi*100:+.1f}]"
+    )
     print(f"  max single-event influence on modern median: {infl*100:.1f} pts")
 
 same_dir = (gate["primary"]["diff"] < 0) == (gate["anchored"]["diff"] < 0)
@@ -405,10 +451,13 @@ elif same_dir:
     outcome = "C"
 else:
     outcome = "D"
-print(f"\nOUTCOME: {outcome}  (same direction {same_dir}, CI excludes zero "
-      f"{excl0}, magnitude ratio {mag_ratio:.2f}, influence ok {low_infl})")
+print(
+    f"\nOUTCOME: {outcome}  (same direction {same_dir}, CI excludes zero "
+    f"{excl0}, magnitude ratio {mag_ratio:.2f}, influence ok {low_infl})"
+)
 
 import json as _json  # noqa: E402
+
 sx = {
     "gate_outcome": outcome,
     "onset_pre": f"{gate['primary']['stats']['pre']['median']:.0%}",

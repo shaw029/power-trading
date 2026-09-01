@@ -11,6 +11,7 @@ recomputes fleet state of charge and the event decomposition on both bases.
 
 Expect several minutes on a warm cache.
 """
+
 import datetime as dt
 import sys
 import time
@@ -22,9 +23,7 @@ import pandas as pd
 
 # Located from this file, not the working directory, so the script runs the
 # same from anywhere.
-REPO_ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
-)
+REPO_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
 sys.path.insert(0, str(REPO_ROOT))
 warnings.filterwarnings("ignore")
 
@@ -54,6 +53,7 @@ def _publish(**kv):
     rest of the robustness outputs.
     """
     import json
+
     p = REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_metrics.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     cur = json.loads(p.read_text()) if p.exists() else {}
@@ -83,7 +83,7 @@ else:
         try:
             pn_rec = fetch_fleet.fetch_fleet_pn(day, POP)
             bo_rec = fetch_fleet.fetch_fleet_boalf(day, POP)
-        except Exception:                          # noqa: BLE001
+        except Exception:  # noqa: BLE001
             failed += 1
             continue
         if not pn_rec:
@@ -93,8 +93,10 @@ else:
             parts.append(prof)
         if i % 250 == 0:
             el = time.time() - t0
-            print(f"  {i}/{len(days)} days  ({el:,.0f}s elapsed, "
-                  f"~{el / i * (len(days) - i):,.0f}s left)")
+            print(
+                f"  {i}/{len(days)} days  ({el:,.0f}s elapsed, "
+                f"~{el / i * (len(days) - i):,.0f}s left)"
+            )
     print(f"  fetch/paint failures: {failed}")
     boa = pd.concat(parts, ignore_index=True)
     boa["time"] = pd.to_datetime(boa["time"], utc=True)
@@ -124,17 +126,22 @@ grid = pd.DatetimeIndex(sorted(set(pn["time"]) | set(boa["time"]))).sort_values(
 print(f"\nGrid: {len(grid):,} half-hours  |  PN rows {len(pn):,}  BOA rows {len(boa):,}")
 
 prints = S["lolpdrm_prints"]
-final = (prints.sort_values(["horizon", "publish_time"], ascending=[True, False])
-               .drop_duplicates("time").set_index("time")[["lolp"]].sort_index())
+final = (
+    prints.sort_values(["horizon", "publish_time"], ascending=[True, False])
+    .drop_duplicates("time")
+    .set_index("time")[["lolp"]]
+    .sort_index()
+)
 tight = (final["lolp"] >= LOLP_RULE).reindex(grid).fillna(False)
 
 results = {}
 for name, frame in (("pn", pn), ("boa", boa)):
-    out = fleet_perf.fleet_state_of_charge(
-        frame, grid, SITE_MWH, SITE_MW, ETA_C, ETA_D)
+    out = fleet_perf.fleet_state_of_charge(frame, grid, SITE_MWH, SITE_MW, ETA_C, ETA_D)
     results[name] = out
-    print(f"{name}: usable sites {len(out['usable'])}, "
-          f"skipped (no MWh) {len(out['skipped_no_mwh'])}")
+    print(
+        f"{name}: usable sites {len(out['usable'])}, "
+        f"skipped (no MWh) {len(out['skipped_no_mwh'])}"
+    )
 
 
 def events(mask, bridge=2, min_len=2):
@@ -168,16 +175,27 @@ print("=" * 74)
 rows = []
 for name in ("pn", "boa"):
     soc = results[name]["soc"].reindex(grid)
-    for label, sub in (("full 2018-2026", ev),
-                       ("modern >= 2024-04", [e for e in ev if grid[e[0]] >= MODERN_START])):
+    for label, sub in (
+        ("full 2018-2026", ev),
+        ("modern >= 2024-04", [e for e in ev if grid[e[0]] >= MODERN_START]),
+    ):
         if not sub:
             continue
         onset = [soc.iloc[a] for a, _ in sub if not np.isnan(soc.iloc[a])]
-        deepest = [np.nanmin(soc.iloc[a:b].to_numpy()) for a, b in sub
-                   if not np.all(np.isnan(soc.iloc[a:b].to_numpy()))]
-        rows.append({"basis": name, "window": label, "events": len(sub),
-                     "onset_soc_median": float(np.median(onset)) if onset else np.nan,
-                     "held_at_deepest": float(np.median(deepest)) if deepest else np.nan})
+        deepest = [
+            np.nanmin(soc.iloc[a:b].to_numpy())
+            for a, b in sub
+            if not np.all(np.isnan(soc.iloc[a:b].to_numpy()))
+        ]
+        rows.append(
+            {
+                "basis": name,
+                "window": label,
+                "events": len(sub),
+                "onset_soc_median": float(np.median(onset)) if onset else np.nan,
+                "held_at_deepest": float(np.median(deepest)) if deepest else np.nan,
+            }
+        )
 r = pd.DataFrame(rows)
 print(r.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
 

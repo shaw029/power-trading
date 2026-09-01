@@ -140,9 +140,10 @@ def _settle_duration(
     # capacity. Same convention as the target_daily_cycles cap and the fleet
     # estimates, so reported cycles never exceed the cap and are directly
     # comparable across the sim and the real fleet.
-    discharge_mwh = sum(
-        entry["final_mw"] for entry in result["dispatch_log"] if entry["final_mw"] > 0
-    ) * duration_h
+    discharge_mwh = (
+        sum(entry["final_mw"] for entry in result["dispatch_log"] if entry["final_mw"] > 0)
+        * duration_h
+    )
     cycles = discharge_mwh / asset.capacity_mwh if asset.capacity_mwh > 0 else 0.0
 
     # Capture vs the perfect-foresight DA arbitrage ceiling (recomputed from the

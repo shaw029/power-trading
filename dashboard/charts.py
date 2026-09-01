@@ -377,7 +377,9 @@ def chart_capture_spread_daily(df: pd.DataFrame, degradation_cost: float = 0.0) 
     values = pd.to_numeric(d["capture_spread"], errors="coerce")
     fig = go.Figure(
         go.Scatter(
-            x=d["date"], y=values, mode="lines",
+            x=d["date"],
+            y=values,
+            mode="lines",
             name="Capture spread",
             line=dict(color=COLORS["da"], width=2),
             hovertemplate="Capture £%{y:,.1f}/MWh<extra></extra>",
@@ -385,20 +387,25 @@ def chart_capture_spread_daily(df: pd.DataFrame, degradation_cost: float = 0.0) 
     )
     mean = float(values.mean()) if values.notna().any() else 0.0
     fig.add_hline(
-        y=mean, line=dict(color=_MUTED, width=1, dash="dash"),
+        y=mean,
+        line=dict(color=_MUTED, width=1, dash="dash"),
         annotation_text=f"window mean £{mean:,.1f}",
         annotation_position="top left",
         annotation_font=dict(size=11, color=_MUTED),
     )
     if degradation_cost > 0:
         fig.add_hline(
-            y=degradation_cost, line=dict(color=COLORS["cost"], width=1, dash="dot"),
+            y=degradation_cost,
+            line=dict(color=COLORS["cost"], width=1, dash="dot"),
             annotation_text=f"degradation £{degradation_cost:,.1f}/MWh",
             annotation_position="bottom left",
             annotation_font=dict(size=11, color=COLORS["cost"]),
         )
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
-                title="Capture spread by day — margin on every MWh discharged")
+    apply_theme(
+        fig,
+        height=DEFAULT_CHART_HEIGHT,
+        title="Capture spread by day — margin on every MWh discharged",
+    )
     fig.update_layout(hovermode="x unified", showlegend=False)
     fig.update_yaxes(title_text="Capture spread (£/MWh)")
     return fig
@@ -651,9 +658,7 @@ def chart_operation_explorer(
     # to scroll. A single day was too tight to read a pattern out of — the
     # slider exists to pan, not to be the only way to see more than one day.
     window_start = times.iloc[0].normalize()
-    window_end = min(
-        window_start + pd.Timedelta(days=EXPLORER_VIEW_DAYS), times.iloc[-1]
-    )
+    window_end = min(window_start + pd.Timedelta(days=EXPLORER_VIEW_DAYS), times.iloc[-1])
     fig.update_xaxes(range=[window_start.isoformat(), window_end.isoformat()])
     # rangemode "auto" lets the slider miniature autorange onto the date text,
     # which the strip itself keeps out of view via its [5, 6] y-range
@@ -815,6 +820,7 @@ def chart_daily_attribution(results_df: pd.DataFrame):
 # reuse the shared COLORS palette to stay on-brand with the rest of the file.
 # ---------------------------------------------------------------------------
 
+
 def _palette_for(labels: list[str]) -> dict[str, str]:
     """Assign the fixed-order categorical slots to each label. Slots are never
     cycled — labels beyond the eighth fold into the muted overflow grey."""
@@ -929,10 +935,7 @@ def chart_daytype_frequency(df: pd.DataFrame) -> go.Figure:
     a tag with a striking capture number but two days of support shouldn't be
     over-read.
     """
-    counts = (
-        df.groupby(["tag", "family"], as_index=False)
-        .agg(days=("date", "nunique"))
-    )
+    counts = df.groupby(["tag", "family"], as_index=False).agg(days=("date", "nunique"))
     order = [t for t in _daytype_order(df, "capture") if t in set(counts["tag"])]
     counts = counts.set_index("tag").loc[order].reset_index()
     fig = go.Figure(
@@ -958,9 +961,7 @@ def chart_daytype_frequency(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _spread_labels(
-    points: list[tuple[float, str]], min_gap: float
-) -> list[float]:
+def _spread_labels(points: list[tuple[float, str]], min_gap: float) -> list[float]:
     """Nudge label positions apart so none overlaps its neighbour.
 
     ``points`` is ``(value, key)`` in draw order; returns the adjusted value for
@@ -1238,9 +1239,7 @@ def chart_daytype_profiles(
                 y=sub[value_col].values,
                 mode="lines+markers",
                 name=label,
-                line=dict(
-                    color=palette[label], width=2, dash="dash" if dashed else "solid"
-                ),
+                line=dict(color=palette[label], width=2, dash="dash" if dashed else "solid"),
                 marker=dict(size=5),
                 hovertemplate=label + "<br>Hour %{x}<br>%{y:,.2f}<extra></extra>",
             )
@@ -1352,7 +1351,7 @@ def chart_price_capture(
         fig,
         height=DEFAULT_CHART_HEIGHT,
         title=f"Price capture — charge/discharge vs DA price "
-              f"(achieved spread £{spread:,.2f}/MWh)",
+        f"(achieved spread £{spread:,.2f}/MWh)",
     )
     fig.update_layout(barmode="group")
     fig.update_xaxes(title_text="Hour of Day", dtick=2)
@@ -1425,9 +1424,7 @@ def chart_fleet_leaderboard(site_df: pd.DataFrame, metric: str = "revenue"):
     # negative there means something has gone wrong, so it flips to red.
     # Cycles, volume and capacity cannot be negative.
     negative_flips = metric in ("revenue", "capture")
-    colors = [
-        COLORS["cost"] if (negative_flips and v < 0) else COLORS["da"] for v in df[col]
-    ]
+    colors = [COLORS["cost"] if (negative_flips and v < 0) else COLORS["da"] for v in df[col]]
     fig = go.Figure(
         go.Bar(
             x=df[col],
@@ -1468,9 +1465,7 @@ def _chart_fleet_grouped(df: pd.DataFrame, key: str, label: str, metric: str):
     # negative there means something has gone wrong, so it flips to red.
     # Cycles, volume and capacity cannot be negative.
     negative_flips = metric in ("revenue", "capture")
-    colors = [
-        COLORS["cost"] if (negative_flips and v < 0) else COLORS["da"] for v in df[col]
-    ]
+    colors = [COLORS["cost"] if (negative_flips and v < 0) else COLORS["da"] for v in df[col]]
     fig = go.Figure(
         go.Bar(
             x=df[key],
@@ -1506,9 +1501,7 @@ def chart_fleet_spread(dist: pd.DataFrame, metric: str = "revenue") -> go.Figure
     """
     d = dist.copy()
     d["date"] = pd.to_datetime(d["date"])
-    _col, fmt, axis, _fragment = _FLEET_METRIC_SPECS.get(
-        metric, ("", "{:,.2f}", "Value", "")
-    )
+    _col, fmt, axis, _fragment = _FLEET_METRIC_SPECS.get(metric, ("", "{:,.2f}", "Value", ""))
     fig = go.Figure()
     # Two nested bands: the full range faintest, the interquartile range darker
     # inside it. The gap between them is the tail — one site having an
@@ -1521,38 +1514,47 @@ def chart_fleet_spread(dist: pd.DataFrame, metric: str = "revenue") -> go.Figure
         # without it, and dropping the band quietly is how a chart ends up
         # titled "full range" while showing none.
         if lo not in d.columns or hi not in d.columns:
-            raise KeyError(
-                f"chart_fleet_spread needs '{lo}' and '{hi}'; got {list(d.columns)}"
-            )
+            raise KeyError(f"chart_fleet_spread needs '{lo}' and '{hi}'; got {list(d.columns)}")
         # The outer band gets a visible edge: at a fill alpha low enough to sit
         # under the inner band, the extremes are otherwise invisible.
         fig.add_trace(
             go.Scatter(
-                x=d["date"], y=d[hi], mode="lines",
+                x=d["date"],
+                y=d[hi],
+                mode="lines",
                 line=dict(width=1, color=edge, dash="dot"),
-                hoverinfo="skip", showlegend=False,
+                hoverinfo="skip",
+                showlegend=False,
             )
         )
         fig.add_trace(
             go.Scatter(
-                x=d["date"], y=d[lo], mode="lines",
+                x=d["date"],
+                y=d[lo],
+                mode="lines",
                 line=dict(width=1, color=edge, dash="dot"),
-                fill="tonexty", fillcolor=fill, name=label,
+                fill="tonexty",
+                fillcolor=fill,
+                name=label,
                 customdata=d[hi],
-                hovertemplate=(
-                    f"{label} %{{y:,.2f}} → %{{customdata:,.2f}}<extra></extra>"
-                ),
+                hovertemplate=(f"{label} %{{y:,.2f}} → %{{customdata:,.2f}}<extra></extra>"),
             )
         )
     fig.add_trace(
         go.Scatter(
-            x=d["date"], y=d["median"], mode="lines", name="Median site",
+            x=d["date"],
+            y=d["median"],
+            mode="lines",
+            name="Median site",
             line=dict(color=COLORS["da"], width=2),
             hovertemplate="Median %{y:,.2f}<extra></extra>",
         )
     )
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
-                title="Typical site by day — median, interquartile and full range")
+    apply_theme(
+        fig,
+        height=DEFAULT_CHART_HEIGHT,
+        title="Typical site by day — median, interquartile and full range",
+    )
     fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text=axis)
     return fig
@@ -1607,15 +1609,20 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
                 instructed = (daily_df[col] - daily_df[pn_col]) * sign
                 fig.add_trace(
                     go.Bar(
-                        x=dates, y=notified, name=f"{name} — notified",
+                        x=dates,
+                        y=notified,
+                        name=f"{name} — notified",
                         marker_color=colour,
                         hovertemplate=f"{name} notified: %{{y:,.0f}} MWh<extra></extra>",
                     )
                 )
                 fig.add_trace(
                     go.Bar(
-                        x=dates, y=instructed, name=f"{name} — balancing",
-                        marker_color=colour, marker_pattern_shape="/",
+                        x=dates,
+                        y=instructed,
+                        name=f"{name} — balancing",
+                        marker_color=colour,
+                        marker_pattern_shape="/",
                         marker_line=dict(width=0),
                         hovertemplate=f"{name} balancing: %{{y:,.0f}} MWh<extra></extra>",
                     )
@@ -1822,9 +1829,7 @@ def chart_shape_overlay(df: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(title_text="Hour of day (UTC)", dtick=2)
     # "discharge positive" moved off the title when this went half-width;
     # the axis is where the sign convention belongs anyway.
-    fig.update_yaxes(
-        title_text="Net output (+ discharge, share of nameplate)", tickformat=".0%"
-    )
+    fig.update_yaxes(title_text="Net output (+ discharge, share of nameplate)", tickformat=".0%")
     return fig
 
 
@@ -1864,9 +1869,7 @@ def chart_cycles_vs_revenue(df: pd.DataFrame, sim_cycles: float, sim_gbp: float)
             mode="markers",
             name="Sim (perfect foresight)",
             marker=dict(color=COLORS["net"], size=14, symbol="star"),
-            hovertemplate=(
-                "Sim<br>%{x:.2f} cycles/day · £%{y:,.0f}/MW/day<extra></extra>"
-            ),
+            hovertemplate=("Sim<br>%{x:.2f} cycles/day · £%{y:,.0f}/MW/day<extra></extra>"),
         )
     )
     apply_theme(
@@ -1878,9 +1881,7 @@ def chart_cycles_vs_revenue(df: pd.DataFrame, sim_cycles: float, sim_gbp: float)
     return fig
 
 
-def chart_fleet_dispersion(
-    df: pd.DataFrame, sim_cycles: float, sim_gbp: float
-) -> go.Figure:
+def chart_fleet_dispersion(df: pd.DataFrame, sim_cycles: float, sim_gbp: float) -> go.Figure:
     """One day's real sites by cycles worked against £/MW earned.
 
     The day-page counterpart to :func:`chart_cycles_vs_revenue`, which measures
@@ -1902,12 +1903,9 @@ def chart_fleet_dispersion(
     med_gbp = float(df["gbp_per_mw"].median())
     for line, kwargs in (
         (med_gbp, dict(y0=med_gbp, y1=med_gbp, x0=0, x1=1, yref="y", xref="paper")),
-        (med_cycles, dict(x0=med_cycles, x1=med_cycles, y0=0, y1=1,
-                          xref="x", yref="paper")),
+        (med_cycles, dict(x0=med_cycles, x1=med_cycles, y0=0, y1=1, xref="x", yref="paper")),
     ):
-        fig.add_shape(
-            type="line", line=dict(color=COLORS["ghost"], width=1, dash="dot"), **kwargs
-        )
+        fig.add_shape(type="line", line=dict(color=COLORS["ghost"], width=1, dash="dot"), **kwargs)
 
     for earned, name, color in (
         (True, "Earned", COLORS["gain"]),
@@ -1924,9 +1922,7 @@ def chart_fleet_dispersion(
                 name=name,
                 marker=dict(color=color, size=10, line=dict(width=1, color="white")),
                 customdata=[f"{s} · {o}" for s, o in zip(sub["site"], sub["optimiser"])],
-                hovertemplate=(
-                    "%{customdata}<br>%{x:.2f} cycles · £%{y:,.0f}/MW<extra></extra>"
-                ),
+                hovertemplate=("%{customdata}<br>%{x:.2f} cycles · £%{y:,.0f}/MW<extra></extra>"),
             )
         )
     fig.add_trace(
@@ -1941,9 +1937,7 @@ def chart_fleet_dispersion(
     )
     # Name only the two ends. Labelling 20 sites would bury the shape the chart
     # exists to show; the rest are one hover away.
-    for _, row in (
-        df.loc[[df["gbp_per_mw"].idxmax(), df["gbp_per_mw"].idxmin()]].iterrows()
-    ):
+    for _, row in df.loc[[df["gbp_per_mw"].idxmax(), df["gbp_per_mw"].idxmin()]].iterrows():
         right_half = row["cycles"] > (df["cycles"].max() + df["cycles"].min()) / 2
         fig.add_annotation(
             x=row["cycles"],
@@ -1954,7 +1948,9 @@ def chart_fleet_dispersion(
             xshift=-12 if right_half else 12,
             font=dict(size=11, color=_INK),
         )
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Fleet dispersion — cycles vs earnings today")
+    apply_theme(
+        fig, height=DEFAULT_CHART_HEIGHT, title="Fleet dispersion — cycles vs earnings today"
+    )
     fig.update_layout(hovermode="closest")
     fig.update_xaxes(title_text="Cycles today")
     fig.update_yaxes(title_text="Estimated earnings (£/MW)")
@@ -2089,34 +2085,43 @@ def chart_price_volatility(df: pd.DataFrame) -> go.Figure:
             continue
         fig.add_trace(
             go.Scatter(
-                x=d["date"], y=d[hi], mode="lines", line=dict(width=0),
-                hoverinfo="skip", showlegend=False,
+                x=d["date"],
+                y=d[hi],
+                mode="lines",
+                line=dict(width=0),
+                hoverinfo="skip",
+                showlegend=False,
             )
         )
         fig.add_trace(
             go.Scatter(
-                x=d["date"], y=d[lo], mode="lines", line=dict(width=0),
-                fill="tonexty", fillcolor=fill, name=label,
+                x=d["date"],
+                y=d[lo],
+                mode="lines",
+                line=dict(width=0),
+                fill="tonexty",
+                fillcolor=fill,
+                name=label,
                 # The trace is named for a range but only carries its lower
                 # edge, so the upper edge rides along as customdata — otherwise
                 # the tooltip reads "Min–max" beside a single number, which is
                 # the min.
                 customdata=d[hi],
-                hovertemplate=(
-                    f"{label} £%{{y:,.0f}} → £%{{customdata:,.0f}}<extra></extra>"
-                ),
+                hovertemplate=(f"{label} £%{{y:,.0f}} → £%{{customdata:,.0f}}<extra></extra>"),
             )
         )
     fig.add_trace(
         go.Scatter(
-            x=d["date"], y=d["avg_da"], mode="lines", name="Daily mean",
+            x=d["date"],
+            y=d["avg_da"],
+            mode="lines",
+            name="Daily mean",
             line=dict(color=COLORS["da"], width=2),
             hovertemplate="Mean £%{y:,.0f}<extra></extra>",
         )
     )
     fig.add_hline(y=0, line=dict(color=_MUTED, width=1, dash="dot"))
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
-                title="Daily price volatility — day-ahead £/MWh")
+    apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title="Daily price volatility — day-ahead £/MWh")
     fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text="Day-ahead price (£/MWh)")
     return fig
@@ -2135,7 +2140,10 @@ def chart_stress_vs_demand(df: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            x=d["date"], y=d["peak_demand_gw"], mode="lines", name="Peak demand",
+            x=d["date"],
+            y=d["peak_demand_gw"],
+            mode="lines",
+            name="Peak demand",
             line=dict(color=COLORS["net"], width=2),
             hovertemplate="Peak demand %{y:,.1f} GW<extra></extra>",
         )
@@ -2143,14 +2151,21 @@ def chart_stress_vs_demand(df: pd.DataFrame) -> go.Figure:
     if "peak_residual_gw" in d.columns:
         fig.add_trace(
             go.Scatter(
-                x=d["date"], y=d["peak_residual_gw"], mode="lines",
-                name="Peak residual load", line=dict(color=COLORS["cost"], width=2),
-                fill="tonexty", fillcolor="rgba(27, 175, 122, 0.16)",
+                x=d["date"],
+                y=d["peak_residual_gw"],
+                mode="lines",
+                name="Peak residual load",
+                line=dict(color=COLORS["cost"], width=2),
+                fill="tonexty",
+                fillcolor="rgba(27, 175, 122, 0.16)",
                 hovertemplate="Peak residual %{y:,.1f} GW<extra></extra>",
             )
         )
-    apply_theme(fig, height=DEFAULT_CHART_HEIGHT,
-                title="Residual vs total demand — shaded gap is the renewable contribution")
+    apply_theme(
+        fig,
+        height=DEFAULT_CHART_HEIGHT,
+        title="Residual vs total demand — shaded gap is the renewable contribution",
+    )
     fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text="GW")
     return fig
@@ -2175,12 +2190,16 @@ def chart_stress_frequency(df: pd.DataFrame) -> go.Figure:
             continue
         fig.add_trace(
             go.Bar(
-                x=d["date"], y=d[col], name=name, marker_color=colour,
+                x=d["date"],
+                y=d[col],
+                name=name,
+                marker_color=colour,
                 hovertemplate=f"{name}: %{{y}} period(s)<extra></extra>",
             )
         )
-    apply_theme(fig, height=HEIGHT_SM,
-                title="Top-decile load & negative-price frequency — periods per day")
+    apply_theme(
+        fig, height=HEIGHT_SM, title="Top-decile load & negative-price frequency — periods per day"
+    )
     fig.update_layout(barmode="group", bargap=0.25, hovermode="x unified")
     fig.update_yaxes(title_text="Periods per day")
     return fig
@@ -2327,7 +2346,10 @@ def chart_alignment_day(day_flags: pd.DataFrame, dispatch_mw: pd.Series) -> go.F
     quantity in MW, so they never share a y-axis.
     """
     fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.06,
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.06,
         row_heights=[0.55, 0.45],
     )
     fig.add_trace(
@@ -2339,7 +2361,8 @@ def chart_alignment_day(day_flags: pd.DataFrame, dispatch_mw: pd.Series) -> go.F
             line=dict(color=COLORS["net"], width=2),
             hovertemplate="Residual %{y:,.1f} GW<extra></extra>",
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Bar(
@@ -2349,7 +2372,8 @@ def chart_alignment_day(day_flags: pd.DataFrame, dispatch_mw: pd.Series) -> go.F
             marker_color=_dispatch_bar_colors(dispatch_mw.values),
             hovertemplate="%{y:,.0f} MW<extra></extra>",
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     # ISO strings keep the shapes serialisable for every renderer (kaleido's
     # JSON encoder rejects raw Timestamps).
@@ -2391,7 +2415,10 @@ def chart_system_tightness(
     frame: the theme and threshold still render, just with no marks.
     """
     fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.06,
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.06,
         row_heights=[0.6, 0.4],
     )
     drm = tiers["drm_mw"].dropna() if "drm_mw" in tiers.columns else pd.Series(dtype=float)
@@ -2405,7 +2432,8 @@ def chart_system_tightness(
                 line=dict(color=COLORS["net"], width=2),
                 hovertemplate="DRM %{y:,.0f} MW<extra></extra>",
             ),
-            row=1, col=1,
+            row=1,
+            col=1,
         )
         lolp_hot = tiers[(tiers["lolp"] > 0.0) & tiers["drm_mw"].notna()]
         if len(lolp_hot):
@@ -2415,19 +2443,17 @@ def chart_system_tightness(
                     y=lolp_hot["drm_mw"].values,
                     name="LoLP > 0",
                     mode="markers",
-                    marker=dict(color=COLORS["cost"], size=8,
-                                line=dict(width=1, color="white")),
+                    marker=dict(color=COLORS["cost"], size=8, line=dict(width=1, color="white")),
                     customdata=lolp_hot["lolp"].values,
-                    hovertemplate=(
-                        "LoLP %{customdata:.1%} · "
-                        "DRM %{y:,.0f} MW<extra></extra>"
-                    ),
+                    hovertemplate=("LoLP %{customdata:.1%} · " "DRM %{y:,.0f} MW<extra></extra>"),
                 ),
-                row=1, col=1,
+                row=1,
+                col=1,
             )
     fig.add_hline(
         y=drm_tight_mw,
-        row=1, col=1,
+        row=1,
+        col=1,
         line=dict(color=COLORS["cost"], width=1, dash="dot"),
         annotation_text=f"tight < {drm_tight_mw:,.0f} MW",
         annotation_position="bottom right",
@@ -2442,7 +2468,8 @@ def chart_system_tightness(
                 marker_color=_dispatch_bar_colors(dispatch_mw.values),
                 hovertemplate="%{y:,.0f} MW<extra></extra>",
             ),
-            row=2, col=1,
+            row=2,
+            col=1,
         )
     # ISO strings keep the shapes serialisable for every renderer (kaleido's
     # JSON encoder rejects raw Timestamps).
@@ -2452,8 +2479,12 @@ def chart_system_tightness(
     if "tier3" in tiers.columns:
         for start, end in _flag_spans(tiers["tier3"].fillna(False)):
             fig.add_vrect(
-                x0=str(start), x1=str(end), fillcolor=_TIER3_FILL, line_width=0,
-                annotation_text="CMN", annotation_position="top left",
+                x0=str(start),
+                x1=str(end),
+                fillcolor=_TIER3_FILL,
+                line_width=0,
+                annotation_text="CMN",
+                annotation_position="top left",
                 annotation_font=dict(size=11, color=COLORS["cost"]),
             )
 
@@ -2528,20 +2559,30 @@ def chart_mean_top_decile_day(df: pd.DataFrame) -> go.Figure:
     """
     hours = df.index.to_numpy()
     fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.11,
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.11,
         subplot_titles=("Mean residual load", "Mean benchmark dispatch"),
     )
     fig.add_trace(
         go.Scatter(
-            x=hours, y=df["residual_gw"], mode="lines+markers", name="Residual load",
-            line=dict(color=COLORS["net"], width=2), marker=dict(size=5),
+            x=hours,
+            y=df["residual_gw"],
+            mode="lines+markers",
+            name="Residual load",
+            line=dict(color=COLORS["net"], width=2),
+            marker=dict(size=5),
             hovertemplate="Hour %{x}<br>%{y:,.1f} GW<extra></extra>",
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Bar(
-            x=hours, y=df["sim_mw"], name="Benchmark dispatch",
+            x=hours,
+            y=df["sim_mw"],
+            name="Benchmark dispatch",
             marker_color=_dispatch_bar_colors(df["sim_mw"].to_numpy()),
             customdata=df["top_share"] * 100,
             hovertemplate=(
@@ -2549,7 +2590,8 @@ def chart_mean_top_decile_day(df: pd.DataFrame) -> go.Figure:
                 "<br>top-decile on %{customdata:.0f}% of these days<extra></extra>"
             ),
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     # Shaded after the traces: add_vrect resolves its axis from the subplot,
     # and on an empty subplot it silently draws nothing. Both panels get the
@@ -2558,8 +2600,14 @@ def chart_mean_top_decile_day(df: pd.DataFrame) -> go.Figure:
     for lo, hi in _flag_spans(pd.Series(df["top_share"].to_numpy() >= 0.5, index=hours)):
         for row in (1, 2):
             fig.add_vrect(
-                x0=lo - 0.5, x1=hi - 0.5, row=row, col=1,
-                fillcolor=COLORS["cost"], opacity=0.14, line_width=0, layer="below",
+                x0=lo - 0.5,
+                x1=hi - 0.5,
+                row=row,
+                col=1,
+                fillcolor=COLORS["cost"],
+                opacity=0.14,
+                line_width=0,
+                layer="below",
             )
     apply_theme(fig, height=HEIGHT_LG, title="The average day that gets busy")
     fig.update_layout(showlegend=False, hovermode="x unified")
@@ -2569,8 +2617,9 @@ def chart_mean_top_decile_day(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def chart_alignment_scatter(df: pd.DataFrame, sim_coverage: float | None,
-                            sim_gbp: float) -> go.Figure:
+def chart_alignment_scatter(
+    df: pd.DataFrame, sim_coverage: float | None, sim_gbp: float
+) -> go.Figure:
     """Profit vs alignment: each fleet site by top-decile coverage and £/MW/day.
 
     The poster-level view: where do real GB batteries sit on the
@@ -2616,12 +2665,14 @@ def chart_alignment_scatter(df: pd.DataFrame, sim_coverage: float | None,
             )
         )
     apply_theme(
-        fig, height=DEFAULT_CHART_HEIGHT,
+        fig,
+        height=DEFAULT_CHART_HEIGHT,
         title="Profit vs alignment — revenue against top-decile coverage",
     )
     fig.update_layout(hovermode="closest")
-    fig.update_xaxes(title_text="Top-decile coverage (share of discharge in the busiest hours)",
-                     tickformat=".0%")
+    fig.update_xaxes(
+        title_text="Top-decile coverage (share of discharge in the busiest hours)", tickformat=".0%"
+    )
     fig.update_yaxes(title_text="Estimated revenue (£/MW/day)")
     return fig
 
@@ -2676,7 +2727,10 @@ def chart_day_composite(
     residual panel's data.
     """
     fig = make_subplots(
-        rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.04,
+        rows=4,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.04,
         row_heights=[0.28, 0.28, 0.22, 0.22],
     )
     for col, name, color in (
@@ -2686,47 +2740,65 @@ def chart_day_composite(
         if col in prices.columns:
             fig.add_trace(
                 go.Scatter(
-                    x=prices.index, y=prices[col], name=name, mode="lines",
+                    x=prices.index,
+                    y=prices[col],
+                    name=name,
+                    mode="lines",
                     line=dict(color=color, width=2),
                     hovertemplate=name + "<br>£%{y:,.1f}/MWh<extra></extra>",
                 ),
-                row=1, col=1,
+                row=1,
+                col=1,
             )
     fig.add_trace(
         go.Scatter(
-            x=da_mw.index, y=da_mw.values, name="DA commitment",
-            mode="lines", line=dict(color=COLORS["ghost"], width=2, shape="hvh"),
+            x=da_mw.index,
+            y=da_mw.values,
+            name="DA commitment",
+            mode="lines",
+            line=dict(color=COLORS["ghost"], width=2, shape="hvh"),
             hovertemplate="DA commitment<br>%{y:,.0f} MW<extra></extra>",
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     fig.add_trace(
         go.Bar(
-            x=dispatch_mw.index, y=dispatch_mw.values, name="Dispatch",
+            x=dispatch_mw.index,
+            y=dispatch_mw.values,
+            name="Dispatch",
             marker_color=_dispatch_bar_colors(dispatch_mw.values),
             hovertemplate="Dispatch<br>%{y:,.0f} MW<extra></extra>",
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=soc_pct.index, y=soc_pct.values, name="SOC",
-            mode="lines", line=dict(color=COLORS["soc"], width=2),
+            x=soc_pct.index,
+            y=soc_pct.values,
+            name="SOC",
+            mode="lines",
+            line=dict(color=COLORS["soc"], width=2),
             hovertemplate="SOC<br>%{y:.0%}<extra></extra>",
         ),
-        row=3, col=1,
+        row=3,
+        col=1,
     )
     for level in (min_soc_pct, max_soc_pct):
         fig.add_hline(y=level, line=dict(color=_AXIS, width=1, dash="dot"), row=3, col=1)
     if not day_flags.empty:
         fig.add_trace(
             go.Scatter(
-                x=day_flags.index, y=day_flags["residual_mw"] / 1000.0,
-                name="Residual load", mode="lines",
+                x=day_flags.index,
+                y=day_flags["residual_mw"] / 1000.0,
+                name="Residual load",
+                mode="lines",
                 line=dict(color=COLORS["net"], width=2),
                 hovertemplate="Residual<br>%{y:,.1f} GW<extra></extra>",
             ),
-            row=4, col=1,
+            row=4,
+            col=1,
         )
         for start, end in _flag_spans(day_flags["stress"]):
             fig.add_vrect(x0=str(start), x1=str(end), fillcolor=_STRESS_FILL, line_width=0)
@@ -2734,9 +2806,10 @@ def chart_day_composite(
             fig.add_vrect(x0=str(start), x1=str(end), fillcolor=_SURPLUS_FILL, line_width=0)
 
     apply_theme(
-        fig, height=640,
+        fig,
+        height=640,
         title="The day on one timeline — prices, action, state, system "
-              "(top decile red / surplus green)",
+        "(top decile red / surplus green)",
     )
     fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text="£/MWh", row=1, col=1)

@@ -84,8 +84,13 @@ def _no_cmn():
     """Empty register — the normal case; the page must degrade gracefully."""
     return pd.DataFrame(
         columns=[
-            "notice_id", "type_id", "type_name", "title",
-            "posted_utc", "start_utc", "end_utc",
+            "notice_id",
+            "type_id",
+            "type_name",
+            "title",
+            "posted_utc",
+            "start_utc",
+            "end_utc",
         ]
     )
 
@@ -95,7 +100,9 @@ def app(monkeypatch):
     import dashboard.live_app as live_app
 
     monkeypatch.setattr(
-        fetch_live, "get_day_prices", lambda d: _prices(d.isoformat() if isinstance(d, dt.date) else d)
+        fetch_live,
+        "get_day_prices",
+        lambda d: _prices(d.isoformat() if isinstance(d, dt.date) else d),
     )
     monkeypatch.setattr(fetch_live, "get_day_context", _context)
     monkeypatch.setattr(fetch_fleet, "fetch_fleet_pn", _fleet_pn)
@@ -150,7 +157,7 @@ def test_prefetch_fleet_days_covers_every_day_and_survives_failures(monkeypatch)
     monkeypatch.setattr(fetch_fleet, "fetch_fleet_bm_cashflows", record)
 
     days = [f"2024-01-{d:02d}" for d in range(1, 13)]
-    live_app._prefetch_fleet_days(days, bar=None)   # must not raise
+    live_app._prefetch_fleet_days(days, bar=None)  # must not raise
 
     # Three surviving fetchers per day, and no day dropped by the pool.
     assert sorted(set(seen)) == sorted(days)

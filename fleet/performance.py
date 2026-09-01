@@ -201,9 +201,7 @@ def day_site_metrics(
     return pd.DataFrame(rows)
 
 
-def site_profile(
-    pn_records: list[dict], population: Population = CURATED
-) -> pd.DataFrame:
+def site_profile(pn_records: list[dict], population: Population = CURATED) -> pd.DataFrame:
     """Net output per fleet site per half-hour, in MW (positive = discharge).
 
     Each PN span's energy is assigned to the half-hour it starts in (the same
@@ -223,9 +221,7 @@ def site_profile(
     return grouped[["site", "time", "mw"]]
 
 
-def _paint_profile(
-    df: pd.DataFrame, order_cols: list[str], site_of: dict
-) -> pd.DataFrame:
+def _paint_profile(df: pd.DataFrame, order_cols: list[str], site_of: dict) -> pd.DataFrame:
     """Paint irregular MW spans onto the half-hourly grid, per site.
 
     Records with ``timeFrom``/``timeTo``/``levelFrom``/``levelTo`` are laid on
@@ -262,14 +258,10 @@ def _paint_profile(
             continue
         means = np.nansum(np.where(painted, block, 0.0), axis=1)[keep] / counts[keep]
         stamps = pd.date_range(start, periods=block.shape[0], freq=_MID_FREQ)[keep]
-        parts.append(
-            pd.DataFrame({"site": site_of[bmu].site, "time": stamps, "mw": means})
-        )
+        parts.append(pd.DataFrame({"site": site_of[bmu].site, "time": stamps, "mw": means}))
     if not parts:
         return pd.DataFrame(columns=["site", "time", "mw"])
-    return pd.concat(parts, ignore_index=True).groupby(
-        ["site", "time"], as_index=False
-    )["mw"].sum()
+    return pd.concat(parts, ignore_index=True).groupby(["site", "time"], as_index=False)["mw"].sum()
 
 
 def _span_frame(
@@ -351,7 +343,7 @@ def site_physical_profile(
         # on every one of the day's several thousand spans.
         total = int((stop - start) / minute)
         level = np.full(total, np.nan)
-        for frame, order in spans:                      # PN first, then acceptances
+        for frame, order in spans:  # PN first, then acceptances
             for row in frame.sort_values(order, na_position="first").itertuples():
                 lo = max(int((row.timeFrom - start) / minute), 0)
                 hi = min(int((row.timeTo - start) / minute), total)
@@ -366,19 +358,13 @@ def site_physical_profile(
             continue
         means = np.nansum(np.where(painted, block, 0.0), axis=1)[keep] / counts[keep]
         stamps = pd.date_range(start, periods=block.shape[0], freq=_MID_FREQ)[keep]
-        parts.append(
-            pd.DataFrame({"site": site_of[bmu].site, "time": stamps, "mw": means})
-        )
+        parts.append(pd.DataFrame({"site": site_of[bmu].site, "time": stamps, "mw": means}))
     if not parts:
         return pd.DataFrame(columns=["site", "time", "mw"])
-    return pd.concat(parts, ignore_index=True).groupby(
-        ["site", "time"], as_index=False
-    )["mw"].sum()
+    return pd.concat(parts, ignore_index=True).groupby(["site", "time"], as_index=False)["mw"].sum()
 
 
-def site_limit_profile(
-    records: list[dict], population: Population = CURATED
-) -> pd.DataFrame:
+def site_limit_profile(records: list[dict], population: Population = CURATED) -> pd.DataFrame:
     """Effective declared limit per fleet site per half-hour, in MW.
 
     Works for MELS (export limits, levels ≥ 0) and MILS (import limits,
@@ -431,10 +417,7 @@ def battery_era_start(
     impossible = frame[frame["mw"].abs() > frame["_plate"] * multiple]
     if impossible.empty:
         return {}
-    return {
-        site: group["time"].max()
-        for site, group in impossible.groupby("site")
-    }
+    return {site: group["time"].max() for site, group in impossible.groupby("site")}
 
 
 def filter_daily(
@@ -515,8 +498,14 @@ def summarise_by_site(daily: pd.DataFrame) -> pd.DataFrame:
     return grouped.sort_values("gbp_per_mw_day", ascending=False).reset_index(drop=True)
 
 
-def infer_soc(mw: pd.Series, capacity_mwh: float, eta_c: float, eta_d: float,
-              reanchor: bool = False, hours_per_period: float = 0.5):
+def infer_soc(
+    mw: pd.Series,
+    capacity_mwh: float,
+    eta_c: float,
+    eta_d: float,
+    reanchor: bool = False,
+    hours_per_period: float = 0.5,
+):
     """Inferred state of charge (fraction) before each period, from notified MW.
 
     Returns ``(series, clamp_fraction)``. Elexon publishes no state of charge, so
@@ -546,9 +535,7 @@ def infer_soc(mw: pd.Series, capacity_mwh: float, eta_c: float, eta_d: float,
             level = 0.5 * capacity_mwh
         out[i] = level
         v = vals[i]
-        new = level + (
-            max(-v, 0.0) * eta_c - max(v, 0.0) / eta_d
-        ) * hours_per_period
+        new = level + (max(-v, 0.0) * eta_c - max(v, 0.0) / eta_d) * hours_per_period
         if new < 0.0 or new > capacity_mwh:
             clamped += 1
         level = min(max(new, 0.0), capacity_mwh)
@@ -603,16 +590,20 @@ def fleet_state_of_charge(
         discharge_mwh = series.clip(lower=0).sum() * hours_per_period
         cycles = discharge_mwh / cap / (len(sub) * hours_per_period / 24.0)
         soc_cols[site], anchor_cols[site] = soc, anchored
-        rows.append({"site": site, "capacity_mwh": cap, "cycles_per_day": cycles,
-                     "clamp_frac": clamp,
-                     "usable_soc": (cycles >= cycles_min) and (clamp <= clamp_max),
-                     "periods": len(sub)})
+        rows.append(
+            {
+                "site": site,
+                "capacity_mwh": cap,
+                "cycles_per_day": cycles,
+                "clamp_frac": clamp,
+                "usable_soc": (cycles >= cycles_min) and (clamp <= clamp_max),
+                "periods": len(sub),
+            }
+        )
 
     diagnostics = pd.DataFrame(rows)
     if len(diagnostics):
-        diagnostics = diagnostics.set_index("site").sort_values(
-            "cycles_per_day", ascending=False
-        )
+        diagnostics = diagnostics.set_index("site").sort_values("cycles_per_day", ascending=False)
     usable = list(diagnostics.index[diagnostics["usable_soc"]]) if len(diagnostics) else []
 
     def _weighted(frame):
@@ -666,9 +657,7 @@ def cycles_per_day(population, sites, days) -> dict[str, float]:
             site = site_of.get(record.get("bmUnit"))
             if site is None:
                 continue
-            level = (
-                float(record.get("levelFrom", 0.0)) + float(record.get("levelTo", 0.0))
-            ) / 2
+            level = (float(record.get("levelFrom", 0.0)) + float(record.get("levelTo", 0.0))) / 2
             if level <= 0:  # discharge only; charging is not throughput here
                 continue
             span_h = (
@@ -698,9 +687,7 @@ def _summarise_by(daily: pd.DataFrame, key: str) -> pd.DataFrame:
         discharge_mwh=("discharge_mwh", "sum"),
         charge_mwh=("charge_mwh", "sum"),
     )
-    grouped["capture_spread"] = _capture_spread(
-        grouped["total_gbp"], grouped["discharge_mwh"]
-    )
+    grouped["capture_spread"] = _capture_spread(grouped["total_gbp"], grouped["discharge_mwh"])
     site_mw = daily.drop_duplicates("site").groupby(key)["power_mw"].sum()
     grouped["power_mw"] = grouped[key].map(site_mw)
     grouped["gbp_per_mw_day"] = grouped["total_gbp"] / grouped["mw_days"]
@@ -743,9 +730,7 @@ def fleet_daily(daily: pd.DataFrame) -> pd.DataFrame:
     grouped = daily.groupby("date", as_index=False).agg(**aggregates)
     grouped["gbp_per_mw"] = grouped["total_gbp"] / grouped["mw"]
     grouped["cycles"] = grouped["discharge_mwh"] / grouped["mwh"]
-    grouped["capture_spread"] = _capture_spread(
-        grouped["total_gbp"], grouped["discharge_mwh"]
-    )
+    grouped["capture_spread"] = _capture_spread(grouped["total_gbp"], grouped["discharge_mwh"])
     return grouped
 
 

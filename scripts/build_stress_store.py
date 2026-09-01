@@ -67,9 +67,7 @@ def store_for(population: Population, base: Path = DEFAULT_STORE) -> Path:
     census store silently overwriting the curated one would change what the
     curated notebooks mean without changing a line of their code.
     """
-    return base if not population.cache_suffix else Path(
-        f"{base}{population.cache_suffix.lower()}"
-    )
+    return base if not population.cache_suffix else Path(f"{base}{population.cache_suffix.lower()}")
 
 
 # Tables written to the store. ``sbp``/``cmn`` are assembled once for the whole
@@ -129,9 +127,7 @@ def _require(profile: pd.DataFrame, what: str) -> pd.DataFrame:
 
 def _day_pn(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
     return _require(
-        fleet_perf.site_profile(
-            fetch_fleet.fetch_fleet_pn(date, population), population
-        ),
+        fleet_perf.site_profile(fetch_fleet.fetch_fleet_pn(date, population), population),
         "PN",
     )
 
@@ -157,18 +153,14 @@ def _day_boa(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
 
 def _day_mels(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
     return _require(
-        fleet_perf.site_limit_profile(
-            fetch_fleet.fetch_fleet_mels(date, population), population
-        ),
+        fleet_perf.site_limit_profile(fetch_fleet.fetch_fleet_mels(date, population), population),
         "MELS",
     )
 
 
 def _day_mils(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
     return _require(
-        fleet_perf.site_limit_profile(
-            fetch_fleet.fetch_fleet_mils(date, population), population
-        ),
+        fleet_perf.site_limit_profile(fetch_fleet.fetch_fleet_mils(date, population), population),
         "MILS",
     )
 
@@ -283,9 +275,7 @@ def build_store(
             try:
                 # Per-BMU feeds take the population; the market-wide ones
                 # (system state, LoLP) are identical whichever fleet is studied.
-                frame = (
-                    fetch(date, population) if feed in PER_BMU_FEEDS else fetch(date)
-                )
+                frame = fetch(date, population) if feed in PER_BMU_FEEDS else fetch(date)
                 parts[feed].append(frame)
                 row[feed] = True
             except Exception as exc:  # one bad feed never stops the build
@@ -298,9 +288,7 @@ def build_store(
 
     for feed, (_fetch, table) in DAY_FEEDS.items():
         frames = parts[feed]
-        combined = (
-            pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-        )
+        combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
         combined.to_parquet(store / f"{table}.parquet", index=False)
         log(f"  wrote {table}.parquet  rows={len(combined):,}")
 
@@ -375,9 +363,7 @@ def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     population = CURATED if args.population == "curated" else census_population()
     store = Path(args.store) if args.store else store_for(population)
-    days = window_days(
-        dt.date.fromisoformat(args.start), dt.date.fromisoformat(args.end)
-    )
+    days = window_days(dt.date.fromisoformat(args.start), dt.date.fromisoformat(args.end))
     print(
         f"Population '{population.name}': {len(population)} sites, "
         f"{len(population.bmu_ids())} BM Units → {store}"

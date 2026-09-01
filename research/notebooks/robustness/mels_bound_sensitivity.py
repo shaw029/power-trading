@@ -12,6 +12,7 @@ levels here will not match nb09 exactly (surplus flags need day-ahead prices,
 which are not in the shared store, so the surplus credit is switched off in
 both arms); the comparison is like-for-like by construction.
 """
+
 import datetime as dt
 import sys
 import warnings
@@ -23,9 +24,7 @@ import pulp
 
 # Located from this file, not the working directory, so the script runs the
 # same from anywhere.
-REPO_ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
-)
+REPO_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
 sys.path.insert(0, str(REPO_ROOT))
 warnings.filterwarnings("ignore")
 
@@ -48,8 +47,9 @@ CYCLES = CFG.get("target_daily_cycles", 1.5)
 
 POP = census_population()
 SITE_MW = {s.site: s.power_mw for s in POP.sites}
-SITE_MWH = {s.site: s.capacity_mwh for s in POP.sites
-            if s.capacity_mwh and not np.isnan(s.capacity_mwh)}
+SITE_MWH = {
+    s.site: s.capacity_mwh for s in POP.sites if s.capacity_mwh and not np.isnan(s.capacity_mwh)
+}
 S = bss.load_store(bss.store_for(POP))
 
 system = S["system"]
@@ -61,20 +61,28 @@ hours = stress_h.index
 print(f"Window            : {WIN_START.date()} → {WIN_END.date()}")
 print(f"Half-hours        : {len(resid_hh):,}  → hours {len(hours):,}")
 print(f"Top-decile bar    : {thresh / 1000:.1f} GW")
-print(f"Top-decile hours  : {int(stress_h.sum())} of {len(hours)} "
-      f"({stress_h.mean():.1%})")
+print(f"Top-decile hours  : {int(stress_h.sum())} of {len(hours)} " f"({stress_h.mean():.1%})")
 print("(nb09 prints 23.3 GW and 161 of 1,439 — a match validates the rebuild)\n")
 
 
 def _hourly(df):
-    return (df.pivot_table(index="time", columns="site", values="mw", aggfunc="sum")
-              .resample("1h").mean())
+    return (
+        df.pivot_table(index="time", columns="site", values="mw", aggfunc="sum")
+        .resample("1h")
+        .mean()
+    )
 
 
-pn_h = _hourly(S["fleet_pn"].assign(time=lambda d: pd.to_datetime(d["time"], utc=True))
-               .query("@WIN_START <= time <= @WIN_END"))
-mels_h = _hourly(S["fleet_mels"].assign(time=lambda d: pd.to_datetime(d["time"], utc=True))
-                 .query("@WIN_START <= time <= @WIN_END"))
+pn_h = _hourly(
+    S["fleet_pn"]
+    .assign(time=lambda d: pd.to_datetime(d["time"], utc=True))
+    .query("@WIN_START <= time <= @WIN_END")
+)
+mels_h = _hourly(
+    S["fleet_mels"]
+    .assign(time=lambda d: pd.to_datetime(d["time"], utc=True))
+    .query("@WIN_START <= time <= @WIN_END")
+)
 
 sites = [s for s in SITE_MWH if s in pn_h.columns and s in mels_h.columns]
 print(f"Sites with MWh, PN and MELS in window: {len(sites)}\n")
@@ -82,6 +90,7 @@ print(f"Sites with MWh, PN and MELS in window: {len(sites)}\n")
 
 try:
     import highspy  # noqa: F401
+
     _SOLVER = pulp.HiGHS(msg=0)
 except ImportError:
     _SOLVER = pulp.PULP_CBC_CMD(msg=0)
@@ -93,8 +102,10 @@ def achievable(cap_mwh, limits, stress_flags, initial_soc=0.5):
     prob = pulp.LpProblem("res", pulp.LpMaximize)
     ch = [pulp.LpVariable(f"c{h}", lowBound=0, upBound=float(limits[h])) for h in range(n)]
     dis = [pulp.LpVariable(f"d{h}", lowBound=0, upBound=float(limits[h])) for h in range(n)]
-    soc = [pulp.LpVariable(f"s{h}", lowBound=MIN_SOC * cap_mwh, upBound=MAX_SOC * cap_mwh)
-           for h in range(n + 1)]
+    soc = [
+        pulp.LpVariable(f"s{h}", lowBound=MIN_SOC * cap_mwh, upBound=MAX_SOC * cap_mwh)
+        for h in range(n + 1)
+    ]
     w_stress, w_block, tie = 2.0, 2.0, 1e-3
     prob += pulp.lpSum(
         dis[h] * (w_stress if stress_flags[h] else -w_block)
@@ -149,20 +160,27 @@ print("\n" + "=" * 70)
 print("MELS bound: flat mean over flagged hours vs per-period")
 print("=" * 70)
 print(f"Actual top-decile delivery      : {tot_act:>10,.0f} MWh")
-print(f"Achievable, flat-mean bound     : {tot_flat:>10,.0f} MWh "
-      f"→ delivered {tot_act / tot_flat:.0%}")
-print(f"Achievable, per-period bound    : {tot_per:>10,.0f} MWh "
-      f"→ delivered {tot_act / tot_per:.0%}")
+print(
+    f"Achievable, flat-mean bound     : {tot_flat:>10,.0f} MWh "
+    f"→ delivered {tot_act / tot_flat:.0%}"
+)
+print(
+    f"Achievable, per-period bound    : {tot_per:>10,.0f} MWh "
+    f"→ delivered {tot_act / tot_per:.0%}"
+)
 shift = tot_act / tot_per - tot_act / tot_flat
-print(f"\nMoving to a per-period bound shifts the delivered share by "
-      f"{shift * 100:+.1f} points.")
+print(
+    f"\nMoving to a per-period bound shifts the delivered share by " f"{shift * 100:+.1f} points."
+)
 print("Positive means the flat mean OVERSTATED what was achievable, so the")
 print("true delivered share against declared availability is higher.")
 
 d["per_site_flat"] = d["actual"] / d["flat"].replace(0, np.nan)
 d["per_site_per"] = d["actual"] / d["perperiod"].replace(0, np.nan)
 sub = d.dropna(subset=["per_site_flat", "per_site_per"])
-print(f"\nPer-site median delivered share: flat {sub['per_site_flat'].median():.0%}"
-      f"  per-period {sub['per_site_per'].median():.0%}  (n={len(sub)})")
+print(
+    f"\nPer-site median delivered share: flat {sub['per_site_flat'].median():.0%}"
+    f"  per-period {sub['per_site_per'].median():.0%}  (n={len(sub)})"
+)
 d.to_csv(REPO_ROOT / "research/notebooks/robustness/_outputs/d4_sites.csv", index=False)
 print("saved -> research/notebooks/robustness/_outputs/d4_sites.csv")

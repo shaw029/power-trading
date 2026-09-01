@@ -164,14 +164,28 @@ def test_normalise_name_drops_boilerplate_but_keeps_identity():
 def test_pumped_storage_durations_are_excluded_from_cm_storage():
     """Dinorwig shares the CM's ``Storage`` family with 2-hour lithium sites."""
     raw = [
-        {"CMU Technology": "Storage (Duration 2h)", "Connection / DSR Capacity": "100",
-         "De-Rated Capacity": "25", "Delivery Year": "2026", "CM Unit Name": "A",
-         "Registered Holder": None, "Parent Company": None,
-         "Transmission / Distribution": "Transmission", "Capacity Agreement Awarded": "Yes"},
-        {"CMU Technology": "Storage (Duration 12h)", "Connection / DSR Capacity": "1800",
-         "De-Rated Capacity": "1700", "Delivery Year": "2026", "CM Unit Name": "B",
-         "Registered Holder": None, "Parent Company": None,
-         "Transmission / Distribution": "Transmission", "Capacity Agreement Awarded": "Yes"},
+        {
+            "CMU Technology": "Storage (Duration 2h)",
+            "Connection / DSR Capacity": "100",
+            "De-Rated Capacity": "25",
+            "Delivery Year": "2026",
+            "CM Unit Name": "A",
+            "Registered Holder": None,
+            "Parent Company": None,
+            "Transmission / Distribution": "Transmission",
+            "Capacity Agreement Awarded": "Yes",
+        },
+        {
+            "CMU Technology": "Storage (Duration 12h)",
+            "Connection / DSR Capacity": "1800",
+            "De-Rated Capacity": "1700",
+            "Delivery Year": "2026",
+            "CM Unit Name": "B",
+            "Registered Holder": None,
+            "Parent Company": None,
+            "Transmission / Distribution": "Transmission",
+            "Capacity Agreement Awarded": "Yes",
+        },
     ]
     with mock.patch.object(census, "_cached", return_value=raw):
         storage = census.fetch_cm_storage()
@@ -184,8 +198,9 @@ def test_coverage_reports_unknown_mwh_rather_than_extrapolating(patched_sources)
     table = coverage.coverage_table()
     table["in_registry"] = table["asset_id"] == "GB-BESS-TESTB"
     table["registry_capacity_mwh"] = float("nan")
-    table["capacity_mwh"] = [200.0 if a == "GB-BESS-TESTB" else float("nan")
-                             for a in table["asset_id"]]
+    table["capacity_mwh"] = [
+        200.0 if a == "GB-BESS-TESTB" else float("nan") for a in table["asset_id"]
+    ]
 
     stats = coverage.representativeness(table)
     assert stats.loc["MWh (where known)", "census"] == pytest.approx(200.0)
@@ -219,12 +234,24 @@ def test_capacity_market_match_is_rejected_when_power_disagrees(patched_sources)
     )
     cm = pd.DataFrame(
         [
-            {"cm_unit_name": "Hightown Drove", "cm_power_mw": 90.0, "duration_h": 4.0,
-             "cm_capacity_mwh": 360.0, "registered_holder": None,
-             "connection_level": "Distribution", "delivery_year": 2026.0},
-            {"cm_unit_name": "Goodmatch", "cm_power_mw": 49.0, "duration_h": 2.0,
-             "cm_capacity_mwh": 98.0, "registered_holder": None,
-             "connection_level": "Transmission", "delivery_year": 2026.0},
+            {
+                "cm_unit_name": "Hightown Drove",
+                "cm_power_mw": 90.0,
+                "duration_h": 4.0,
+                "cm_capacity_mwh": 360.0,
+                "registered_holder": None,
+                "connection_level": "Distribution",
+                "delivery_year": 2026.0,
+            },
+            {
+                "cm_unit_name": "Goodmatch",
+                "cm_power_mw": 49.0,
+                "duration_h": 2.0,
+                "cm_capacity_mwh": 98.0,
+                "registered_holder": None,
+                "connection_level": "Transmission",
+                "delivery_year": 2026.0,
+            },
         ]
     )
     enriched = coverage.enrich_with_capacity_market(sites, cm).set_index("asset_id")
@@ -244,9 +271,17 @@ def test_no_census_site_implies_an_impossible_duration(patched_sources):
         }
     )
     cm = pd.DataFrame(
-        [{"cm_unit_name": "A", "cm_power_mw": 10.0, "duration_h": 40.0,
-          "cm_capacity_mwh": 400.0, "registered_holder": None,
-          "connection_level": "Transmission", "delivery_year": 2026.0}]
+        [
+            {
+                "cm_unit_name": "A",
+                "cm_power_mw": 10.0,
+                "duration_h": 40.0,
+                "cm_capacity_mwh": 400.0,
+                "registered_holder": None,
+                "connection_level": "Transmission",
+                "delivery_year": 2026.0,
+            }
+        ]
     )
     enriched = coverage.enrich_with_capacity_market(sites, cm)
     assert pd.isna(enriched["capacity_mwh"].iloc[0])
@@ -263,9 +298,14 @@ def test_unknown_duration_is_labelled_not_crashed():
 
 def _worksheet(tmp_path, **overrides):
     row = {
-        "asset_id": "GB-BESS-AAAA", "site_name": "A BESS", "declared_export_mw": 50.0,
-        "capacity_mwh": 110.0, "duration_h": 2.2, "source_type": "operator",
-        "source_url": "https://operator.example/projects/a", "read_on": "2026-08-23",
+        "asset_id": "GB-BESS-AAAA",
+        "site_name": "A BESS",
+        "declared_export_mw": 50.0,
+        "capacity_mwh": 110.0,
+        "duration_h": 2.2,
+        "source_type": "operator",
+        "source_url": "https://operator.example/projects/a",
+        "read_on": "2026-08-23",
         "notes": None,
     }
     row.update(overrides)
@@ -276,10 +316,14 @@ def _worksheet(tmp_path, **overrides):
 
 def test_worksheet_value_carries_its_provenance(tmp_path):
     """A figure read off an operator's page must not look like a settled one."""
-    sites = pd.DataFrame({
-        "asset_id": ["GB-BESS-AAAA"], "capacity_mwh": [float("nan")],
-        "mwh_source": [None], "declared_export_mw": [50.0],
-    })
+    sites = pd.DataFrame(
+        {
+            "asset_id": ["GB-BESS-AAAA"],
+            "capacity_mwh": [float("nan")],
+            "mwh_source": [None],
+            "declared_export_mw": [50.0],
+        }
+    )
     out = coverage.apply_energy_worksheet(sites, _worksheet(tmp_path))
     assert out["capacity_mwh"].iloc[0] == pytest.approx(110.0)
     assert out["mwh_source"].iloc[0] == "operator"
@@ -287,10 +331,14 @@ def test_worksheet_value_carries_its_provenance(tmp_path):
 
 
 def test_worksheet_does_not_override_the_hand_verified_registry(tmp_path):
-    sites = pd.DataFrame({
-        "asset_id": ["GB-BESS-AAAA"], "capacity_mwh": [200.0],
-        "mwh_source": ["registry"], "declared_export_mw": [50.0],
-    })
+    sites = pd.DataFrame(
+        {
+            "asset_id": ["GB-BESS-AAAA"],
+            "capacity_mwh": [200.0],
+            "mwh_source": ["registry"],
+            "declared_export_mw": [50.0],
+        }
+    )
     out = coverage.apply_energy_worksheet(sites, _worksheet(tmp_path))
     assert out["capacity_mwh"].iloc[0] == pytest.approx(200.0)
     assert out["mwh_source"].iloc[0] == "registry"

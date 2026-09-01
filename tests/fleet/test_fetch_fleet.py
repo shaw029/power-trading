@@ -66,7 +66,9 @@ def test_fetch_fleet_pn_does_not_cache_empty_days(tmp_path):
 def test_fetch_fleet_bm_cashflows_fetches_both_directions(tmp_path):
     def _fake(url, params=None):
         direction = "bid" if "/bid/" in url else "offer"
-        assert url.endswith(f"/balancing/settlement/indicative/cashflows/all/{direction}/2024-01-01")
+        assert url.endswith(
+            f"/balancing/settlement/indicative/cashflows/all/{direction}/2024-01-01"
+        )
         return {"data": [{"bmUnit": "E_PILLB-1", "direction": direction}]}
 
     with (
@@ -116,8 +118,9 @@ def test_fetch_fleet_mels_filters_to_settlement_date_and_caches(tmp_path):
 
 
 def test_fetch_fleet_mils_uses_own_dataset_and_cache_dir(tmp_path):
-    payload = [{"bmUnit": "E_PILLB-1", "settlementDate": "2024-01-01", "levelFrom": -11,
-                "levelTo": -11}]
+    payload = [
+        {"bmUnit": "E_PILLB-1", "settlementDate": "2024-01-01", "levelFrom": -11, "levelTo": -11}
+    ]
     with (
         mock.patch.object(fetch_fleet, "RAW_DATA_DIR", str(tmp_path)),
         mock.patch.object(fetch_fleet, "_get_json", return_value=payload) as get,

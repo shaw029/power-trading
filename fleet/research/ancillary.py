@@ -207,8 +207,7 @@ def _cached_json(name: str, builder, refresh: bool = False):
     # Auction results are published continuously, so an unpinned read would put
     # a different vintage of revenue against a fixed population.
     stamp = census.snapshot_date(
-        os.path.join(_CACHE_DIR, f"{name}_{census.SNAPSHOT}.json")
-        if census.SNAPSHOT else None
+        os.path.join(_CACHE_DIR, f"{name}_{census.SNAPSHOT}.json") if census.SNAPSHOT else None
     )
     path = os.path.join(_CACHE_DIR, f"{name}_{stamp.isoformat()}.json")
     if not refresh and os.path.exists(path):
@@ -264,9 +263,7 @@ def battery_units(refresh: bool = False) -> set[str]:
         return sorted(names)
 
     labelled = set(_cached_json("battery_units", build, refresh))
-    census_roots = {
-        a.removeprefix("GB-BESS-") for a in census.census_sites(refresh)["asset_id"]
-    }
+    census_roots = {a.removeprefix("GB-BESS-") for a in census.census_sites(refresh)["asset_id"]}
     return labelled | {r for r in census_roots}
 
 
@@ -328,9 +325,7 @@ def _fetch_source(source: AncillarySource) -> pd.DataFrame:
         }
     )
     out["stated_revenue_gbp"] = (
-        pd.to_numeric(frame[source.revenue], errors="coerce")
-        if source.revenue
-        else float("nan")
+        pd.to_numeric(frame[source.revenue], errors="coerce") if source.revenue else float("nan")
     )
     out["source"] = source.name
     out["era"] = source.era
@@ -351,10 +346,12 @@ def fetch_all(refresh: bool = False) -> pd.DataFrame:
     hundreds a raw JSON copy would take.
     """
     # Frozen with the census it is joined to — see `census.SNAPSHOT`.
-    path = _cache_path("battery_ancillary", census.snapshot_date(
-        _cache_path("battery_ancillary", census.SNAPSHOT)
-        if census.SNAPSHOT else None
-    ))
+    path = _cache_path(
+        "battery_ancillary",
+        census.snapshot_date(
+            _cache_path("battery_ancillary", census.SNAPSHOT) if census.SNAPSHOT else None
+        ),
+    )
     if not refresh and os.path.exists(path):
         return pd.read_parquet(path)
 
@@ -365,9 +362,7 @@ def fetch_all(refresh: bool = False) -> pd.DataFrame:
         if not frame.empty:
             frames.append(frame)
 
-    combined = (
-        pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    )
+    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     if not combined.empty:
         # Block length varies by era (4h EFA blocks vs 30-minute auction
         # blocks), so it is read off each record rather than assumed.
@@ -380,8 +375,7 @@ def fetch_all(refresh: bool = False) -> pd.DataFrame:
         combined["revenue_gbp"] = combined["stated_revenue_gbp"].fillna(derived)
         combined["date"] = combined["block_start"].dt.date
         combined["asset_id"] = [
-            None if _HOUSE_CODE_RE.match(u) else census.asset_id(u)
-            for u in combined["unit"]
+            None if _HOUSE_CODE_RE.match(u) else census.asset_id(u) for u in combined["unit"]
         ]
 
     os.makedirs(_CACHE_DIR, exist_ok=True)
@@ -413,8 +407,7 @@ def site_daily_revenue(
 
     grouped = (
         frame.groupby(
-            ["asset_id", "unit", "date", "service", "source", "era",
-             "site_attributed_only"],
+            ["asset_id", "unit", "date", "service", "source", "era", "site_attributed_only"],
             dropna=False,
         )
         .agg(
@@ -438,9 +431,7 @@ def site_daily_revenue(
     return grouped.sort_values(["date", "revenue_gbp"], ascending=[True, False])
 
 
-def coverage_by_month(
-    start: dt.date, end: dt.date, refresh: bool = False
-) -> pd.DataFrame:
+def coverage_by_month(start: dt.date, end: dt.date, refresh: bool = False) -> pd.DataFrame:
     """Which months have per-unit ancillary data at all, and from which era.
 
     This is the table that must sit beside any revenue figure, and it carries
@@ -472,8 +463,11 @@ def coverage_by_month(
     # Months are attributed in UTC, consistently with ``date`` above. Made
     # explicit because to_period would otherwise drop the timezone silently.
     stamped["month"] = (
-        stamped["block_start"].dt.tz_convert("UTC").dt.tz_localize(None)
-        .dt.to_period("M").astype(str)
+        stamped["block_start"]
+        .dt.tz_convert("UTC")
+        .dt.tz_localize(None)
+        .dt.to_period("M")
+        .astype(str)
     )
     by_month = stamped.groupby("month").agg(
         days_with_data=("date", "nunique"),
@@ -481,9 +475,7 @@ def coverage_by_month(
         units=("unit", "nunique"),
     )
     eras = stamped.groupby("month")["era"].agg(lambda s: ", ".join(sorted(set(s))))
-    services = stamped.groupby("month")["service"].agg(
-        lambda s: ", ".join(sorted(set(s)))
-    )
+    services = stamped.groupby("month")["service"].agg(lambda s: ", ".join(sorted(set(s))))
 
     out = out.join(by_month).join(eras).join(services.rename("services"))
     out["days_with_data"] = out["days_with_data"].fillna(0).astype(int)
@@ -532,9 +524,7 @@ def unmatched_summary(daily: pd.DataFrame | None = None) -> pd.DataFrame:
     if daily.empty:
         return daily
     flagged = daily.assign(attributed=daily["asset_id"].notna())
-    summary = flagged.groupby(["era", "attributed"])["revenue_gbp"].sum().unstack(
-        fill_value=0.0
-    )
+    summary = flagged.groupby(["era", "attributed"])["revenue_gbp"].sum().unstack(fill_value=0.0)
     summary.columns = ["unattributed_gbp", "attributed_gbp"][: len(summary.columns)]
     total = summary.sum(axis=1)
     summary["attributed_pct"] = (
@@ -561,10 +551,10 @@ def with_census(daily: pd.DataFrame | None = None, refresh: bool = False) -> pd.
 #: earned by whatever unit is registered to the service, and only one of these
 #: categories is an asset.
 UNIT_CLASSES = (
-    "census site",            # a BM-registered physical battery site
-    "VLP / supplier unit",    # a trading route registered to a lead party
-    "aggregator portfolio",   # a house code naming no BM Unit at all
-    "unknown",                # a BM-style name Elexon does not list
+    "census site",  # a BM-registered physical battery site
+    "VLP / supplier unit",  # a trading route registered to a lead party
+    "aggregator portfolio",  # a house code naming no BM Unit at all
+    "unknown",  # a BM-style name Elexon does not list
 )
 
 
@@ -581,9 +571,7 @@ def classify_units(units: pd.Series, refresh: bool = False) -> pd.Series:
 
     Returns a Series aligned to ``units`` drawn from :data:`UNIT_CLASSES`.
     """
-    site_roots = {
-        a.removeprefix("GB-BESS-") for a in census.census_sites(refresh)["asset_id"]
-    }
+    site_roots = {a.removeprefix("GB-BESS-") for a in census.census_sites(refresh)["asset_id"]}
     reference = census.fetch_bmu_reference(refresh)
     type_by_root: dict[str, str] = {}
     for row in reference.itertuples():

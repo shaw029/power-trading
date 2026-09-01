@@ -279,8 +279,10 @@ def main() -> None:
     population = CURATED if args.population == "curated" else census_population()
     fetchers = population_fetchers(population)
     logger.info(
-        "Population '%s': %d sites, %d BM Units", population.name,
-        len(population), len(population.bmu_ids()),
+        "Population '%s': %d sites, %d BM Units",
+        population.name,
+        len(population),
+        len(population.bmu_ids()),
     )
 
     if args.feeds == parser.get_default("feeds") and population.cache_suffix:
@@ -303,16 +305,12 @@ def main() -> None:
 
     results: list[FeedResult] = []
     for feed in feeds:
-        results.append(
-            backfill_feed(feed, start, end, pause_s=args.pause, fetchers=fetchers)
-        )
+        results.append(backfill_feed(feed, start, end, pause_s=args.pause, fetchers=fetchers))
 
     print(f"\nCoverage after — {start} to {end}\n")
     print(cov.coverage_summary(start, end).to_string())
 
-    failures: dict[str, list[str]] = {
-        r["feed"]: r["failures"] for r in results if r["failures"]
-    }
+    failures: dict[str, list[str]] = {r["feed"]: r["failures"] for r in results if r["failures"]}
     out = Path(args.failures_out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(failures, indent=2))

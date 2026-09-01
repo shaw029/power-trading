@@ -62,9 +62,7 @@ def optimize_da_schedule(
 
     da_power = asset.power_mw * commit_fraction
     charge = [pulp.LpVariable(f"charge_{h}", lowBound=0, upBound=da_power) for h in periods]
-    discharge = [
-        pulp.LpVariable(f"discharge_{h}", lowBound=0, upBound=da_power) for h in periods
-    ]
+    discharge = [pulp.LpVariable(f"discharge_{h}", lowBound=0, upBound=da_power) for h in periods]
     min_soc_mwh = asset.min_soc_pct * asset.capacity_mwh
     max_soc_mwh = asset.max_soc_pct * asset.capacity_mwh
     soc = [

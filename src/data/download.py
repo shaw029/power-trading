@@ -339,7 +339,9 @@ def download_neso_ndfd_range(start_date: str, end_date: str, chunk_days: int = 3
 
     while current_date <= end_datetime:
         chunk_end = min(current_date + timedelta(days=chunk_days - 1), end_datetime)
-        span = [current_date + timedelta(days=i) for i in range((chunk_end - current_date).days + 1)]
+        span = [
+            current_date + timedelta(days=i) for i in range((chunk_end - current_date).days + 1)
+        ]
 
         if all(_chunk_has_raw_files("NESO_NDFD", day.strftime("%Y%m%d")) for day in span):
             logger.info(
@@ -1017,7 +1019,9 @@ def _fetch_nordpool_da_day(market_day: pd.Timestamp) -> pd.DataFrame:
         headers = {"Accept": "application/json", "User-Agent": "power-trading/1.0"}
         resp = requests.get(NORDPOOL_DA_BASE_URL, params=params, headers=headers, timeout=60)
         if resp.status_code != 200 or not resp.content:
-            logger.warning("Nord Pool DA %s: HTTP %s (no data)", market_day.date(), resp.status_code)
+            logger.warning(
+                "Nord Pool DA %s: HTTP %s (no data)", market_day.date(), resp.status_code
+            )
             return pd.DataFrame(columns=["time", "value"])
         entries = resp.json().get("multiAreaEntries", [])
         records = [

@@ -31,7 +31,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -108,7 +107,8 @@ def main() -> int:
 
     census = pop_mod.census_population()
     keep = [
-        s for s in census.sites
+        s
+        for s in census.sites
         if s.capacity_mwh and not math.isnan(s.capacity_mwh) and s.power_mw > 0
     ]
     keep.sort(key=lambda s: s.site)
@@ -126,9 +126,7 @@ def main() -> int:
     end = census_mod.snapshot_date()
     days = [end - dt.timedelta(days=i) for i in range(MEASURE_DAYS - 1, -1, -1)]
     rates = fleet_perf.cycles_per_day(census, keep, days)
-    quiet = sorted(
-        (name, rate) for name, rate in rates.items() if rate < THRESHOLD
-    )
+    quiet = sorted((name, rate) for name, rate in rates.items() if rate < THRESHOLD)
     quiet_names = {name for name, _ in quiet}
     keep = [s for s in keep if s.site not in quiet_names]
     print(
@@ -150,7 +148,7 @@ def main() -> int:
         ids = ", ".join(f'"{b}"' for b in s.bmu_ids)
         lines.append(
             f"    FleetSite(\n"
-            f'        site={s.site!r},\n'
+            f"        site={s.site!r},\n"
             f"        bmu_ids=({ids}{',' if len(s.bmu_ids) == 1 else ''}),\n"
             f"        power_mw={s.power_mw:.1f},\n"
             f"        capacity_mwh={s.capacity_mwh:.1f},\n"
@@ -163,14 +161,16 @@ def main() -> int:
         "#: The dashboard's population. Its own cache suffix, because a day-file\n"
         "#: holds exactly the BM Units it was fetched for — reusing the curated\n"
         "#: cache would silently serve a 47-unit day as if it were the whole fleet.\n"
-        'REGISTRY = Population(\n'
+        "REGISTRY = Population(\n"
         '    name="registry", sites=REGISTRY_SITES, cache_suffix="_REGISTRY"\n'
-        ')\n'
+        ")\n"
     )
     TARGET.write_text("".join(lines), encoding="utf-8")
-    print(f"wrote {TARGET.relative_to(REPO_ROOT)}: {len(keep)} sites, "
-          f"{sum(len(s.bmu_ids) for s in keep)} BM Units, "
-          f"{sum(s.power_mw for s in keep):,.0f} MW")
+    print(
+        f"wrote {TARGET.relative_to(REPO_ROOT)}: {len(keep)} sites, "
+        f"{sum(len(s.bmu_ids) for s in keep)} BM Units, "
+        f"{sum(s.power_mw for s in keep):,.0f} MW"
+    )
     subprocess.run([sys.executable, "-m", "flake8", str(TARGET)], check=True)
     return 0
 
