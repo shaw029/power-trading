@@ -163,30 +163,34 @@
   radius: 2pt,
 )[
   #text(size: 26pt, weight: "bold", fill: ink)[
-    Energy prices deliver #n4.free_share of the modelled battery's high-load
-    alignment. Readiness for scarcity is not priced.
+    Profit optimisation delivers #n4.free_share of the modelled battery's
+    high-load alignment. Response during scarcity and readiness before it are
+    distinct dimensions of behaviour, and readiness is not priced.
   ]
   #v(3mm)
   #grid(
     columns: (1fr, 1fr, 1fr),
     gutter: 11mm,
     [#text(size: 18pt)[
-      #tag("utilisation", cost-red) A profit-optimised #n4.asset battery delivers
-      #text(fill: da-blue, weight: "bold")[#n4.free_share] of the top-decile
-      energy it could reach. The remainder costs
-      #text(fill: da-blue, weight: "bold")[#n4.cost_all].
+      #tag("utilisation", cost-red) A profit-optimised #n4.asset reference
+      battery delivers #text(fill: da-blue, weight: "bold")[#n4.free_share] of
+      its achievable energy in the highest-residual-load periods. Reaching the
+      modelled maximum costs #text(fill: da-blue, weight: "bold")[#n4.cost_all]
+      in foregone market value.
     ]],
     [#text(size: 18pt)[
-      #tag("utilisation", cost-red) GB's reserve-scarcity component settles through
-      cash-out, not the day-ahead price a schedule optimises, and was zero in
-      #text(fill: da-blue, weight: "bold")[#n4.scarcity_zero] of this window.
+      #tag("utilisation", cost-red) For the observed fleet, registered power,
+      declared capability, notified schedules and acceptance-adjusted dispatch
+      differ at every step:
+      #text(fill: da-blue, weight: "bold")[#nb.gate_declared] declared,
+      #nb.gate_planned of that scheduled, #nb.gate_delivered of that delivered.
     ]],
     [#text(size: 18pt)[
-      #tag("scarcity", discharge) Since #n8.era_start the fleet responds more
-      strongly yet enters scarcity with
-      #text(fill: da-blue, weight: "bold")[lower charge], by
+      #tag("scarcity", discharge) Since #n8.era_start, scarcity events show
+      stronger normalised fleet response alongside
+      #text(fill: da-blue, weight: "bold")[lower inferred charge at onset], by
       #text(fill: da-blue, weight: "bold")[#absn(sx.onset_diff_anch) to
-      #absn(sx.onset_diff) points] under two integration schemes.
+      #absn(sx.onset_diff) points] under both integration schemes.
     ]],
   )
 ]

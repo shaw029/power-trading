@@ -103,7 +103,7 @@ model, **09** concedes 04 and 05 were never comparable and rebuilds them onto on
 ruler, and **10** corrects three earlier notebooks for the difference between a
 notified plan and what the operator actually instructed.
 
-The finding: energy prices deliver 81% of a modelled battery's high-load
+The finding: profit optimisation delivers 81% of a modelled battery's high-load
 alignment. Readiness for scarcity is not priced.
 
 All ten notebooks, the robustness checks behind them and the A0 board:
