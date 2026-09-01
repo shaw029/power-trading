@@ -3,9 +3,9 @@
 **Quantifying the Alignment Gap Between Battery Arbitrage and Energy System Resilience**
 Abhinav Shaw · A0 landscape (1189 × 841 mm)
 
-> Profit optimisation delivers 81% of the modelled battery's high-load alignment.
-> Response during scarcity and readiness before scarcity emerge as distinct
-> dimensions of behaviour.
+> Energy prices already secure about four-fifths of the modelled battery's
+> high-load alignment. Response during scarcity and readiness before scarcity
+> emerge as distinct dimensions of battery behaviour.
 
 ## Build
 

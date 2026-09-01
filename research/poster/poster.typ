@@ -163,9 +163,9 @@
   radius: 2pt,
 )[
   #text(size: 26pt, weight: "bold", fill: ink)[
-    Profit optimisation delivers #n4.free_share of the modelled battery's
-    high-load alignment. Response during scarcity and readiness before scarcity
-    emerge as distinct dimensions of behaviour.
+      Energy prices already secure about four-fifths of the modelled battery's
+      high-load alignment. Response during scarcity and readiness before scarcity
+      emerge as distinct dimensions of battery behaviour.
   ]
   #v(3mm)
   #grid(
