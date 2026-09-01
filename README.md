@@ -50,7 +50,7 @@ the A0 board: **[research/poster/](research/poster/)**
 ## Layout
 
 ```
-src/  fleet/  live/  pipeline.py     the framework
+src/  fleet/  live/                the framework
 dashboard/                          Streamlit apps — backtest replay and live benchmark
 research/                           the study: notebooks 01-10, robustness, poster
 docs/                               architecture, data sources, specs

@@ -13,7 +13,7 @@ Usage:
 """
 
 import argparse
-from pipeline import run_full_pipeline
+from src.pipeline import run_full_pipeline
 from src.utils.config import load_config
 
 

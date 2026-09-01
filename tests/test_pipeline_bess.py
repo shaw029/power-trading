@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from pipeline import run_full_pipeline
+from src.pipeline import run_full_pipeline
 
 
 def _synthetic_prices(n_days=3):
@@ -125,7 +125,7 @@ def _setup_bess_mocks(da, tmp_path, monkeypatch):
         )
 
     monkeypatch.setattr("src.models.train.train_da_price_model", mock_train)
-    monkeypatch.setattr("pipeline.save_model", lambda *a, **kw: None)
+    monkeypatch.setattr("src.pipeline.save_model", lambda *a, **kw: None)
 
 
 EXPECTED_METRIC_KEYS = {
@@ -146,13 +146,13 @@ class TestBESSPipelineIntegration:
     def test_bess_branch_writes_outputs(self, tmp_path, monkeypatch):
         da, mid, imb = _synthetic_prices(4)
 
-        monkeypatch.setattr("pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_market_index_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_imbalance_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.process_day_ahead_price", lambda _: da)
-        monkeypatch.setattr("pipeline.process_market_index_price", lambda _: mid)
-        monkeypatch.setattr("pipeline.process_imbalance_price", lambda _: imb)
-        monkeypatch.setattr("pipeline.PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr("src.pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_market_index_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_imbalance_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.process_day_ahead_price", lambda _: da)
+        monkeypatch.setattr("src.pipeline.process_market_index_price", lambda _: mid)
+        monkeypatch.setattr("src.pipeline.process_imbalance_price", lambda _: imb)
+        monkeypatch.setattr("src.pipeline.PROJECT_ROOT", tmp_path)
         _setup_bess_mocks(da, tmp_path, monkeypatch)
 
         config = {
@@ -197,13 +197,13 @@ class TestBESSPipelineIntegration:
         assert len(results["results_df"]) == 3
 
     def _run_with_prices(self, da, mid, imb, tmp_path, monkeypatch):
-        monkeypatch.setattr("pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_market_index_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_imbalance_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.process_day_ahead_price", lambda _: da)
-        monkeypatch.setattr("pipeline.process_market_index_price", lambda _: mid)
-        monkeypatch.setattr("pipeline.process_imbalance_price", lambda _: imb)
-        monkeypatch.setattr("pipeline.PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr("src.pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_market_index_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_imbalance_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.process_day_ahead_price", lambda _: da)
+        monkeypatch.setattr("src.pipeline.process_market_index_price", lambda _: mid)
+        monkeypatch.setattr("src.pipeline.process_imbalance_price", lambda _: imb)
+        monkeypatch.setattr("src.pipeline.PROJECT_ROOT", tmp_path)
         _setup_bess_mocks(da, tmp_path, monkeypatch)
 
         config = {
@@ -242,13 +242,13 @@ class TestBESSPipelineIntegration:
     def test_insufficient_feature_data_for_date(self, tmp_path, monkeypatch):
         da, mid, imb = _synthetic_prices(4)
 
-        monkeypatch.setattr("pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_market_index_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_imbalance_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.process_day_ahead_price", lambda _: da)
-        monkeypatch.setattr("pipeline.process_market_index_price", lambda _: mid)
-        monkeypatch.setattr("pipeline.process_imbalance_price", lambda _: imb)
-        monkeypatch.setattr("pipeline.PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr("src.pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_market_index_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_imbalance_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.process_day_ahead_price", lambda _: da)
+        monkeypatch.setattr("src.pipeline.process_market_index_price", lambda _: mid)
+        monkeypatch.setattr("src.pipeline.process_imbalance_price", lambda _: imb)
+        monkeypatch.setattr("src.pipeline.PROJECT_ROOT", tmp_path)
 
         features_df = _synthetic_features(da)
         times = pd.to_datetime(features_df["time"], utc=True)
@@ -291,7 +291,7 @@ class TestBESSPipelineIntegration:
             )
 
         monkeypatch.setattr("src.models.train.train_da_price_model", mock_train)
-        monkeypatch.setattr("pipeline.save_model", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.save_model", lambda *a, **kw: None)
 
         config = {
             "strategy": "bess_test",
@@ -316,13 +316,13 @@ class TestBESSPipelineIntegration:
     def test_insufficient_feature_data_for_resolution(self, tmp_path, monkeypatch):
         da, mid, imb = _synthetic_prices(4)
 
-        monkeypatch.setattr("pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_market_index_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_imbalance_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.process_day_ahead_price", lambda _: da)
-        monkeypatch.setattr("pipeline.process_market_index_price", lambda _: mid)
-        monkeypatch.setattr("pipeline.process_imbalance_price", lambda _: imb)
-        monkeypatch.setattr("pipeline.PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr("src.pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_market_index_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_imbalance_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.process_day_ahead_price", lambda _: da)
+        monkeypatch.setattr("src.pipeline.process_market_index_price", lambda _: mid)
+        monkeypatch.setattr("src.pipeline.process_imbalance_price", lambda _: imb)
+        monkeypatch.setattr("src.pipeline.PROJECT_ROOT", tmp_path)
 
         features_df = _synthetic_features(da).iloc[:1]
 
@@ -338,7 +338,7 @@ class TestBESSPipelineIntegration:
                 pd.DataFrame({"dummy": [0]}),
             ),
         )
-        monkeypatch.setattr("pipeline.save_model", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.save_model", lambda *a, **kw: None)
 
         config = {
             "strategy": "bess_test",
@@ -361,13 +361,13 @@ class TestBESSPipelineIntegration:
     def test_forecast_aggregation(self, tmp_path, monkeypatch):
         da, mid, imb = _synthetic_prices(4)
 
-        monkeypatch.setattr("pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_market_index_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.fetch_imbalance_price", lambda *a, **kw: None)
-        monkeypatch.setattr("pipeline.process_day_ahead_price", lambda _: da)
-        monkeypatch.setattr("pipeline.process_market_index_price", lambda _: mid)
-        monkeypatch.setattr("pipeline.process_imbalance_price", lambda _: imb)
-        monkeypatch.setattr("pipeline.PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr("src.pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_market_index_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.fetch_imbalance_price", lambda *a, **kw: None)
+        monkeypatch.setattr("src.pipeline.process_day_ahead_price", lambda _: da)
+        monkeypatch.setattr("src.pipeline.process_market_index_price", lambda _: mid)
+        monkeypatch.setattr("src.pipeline.process_imbalance_price", lambda _: imb)
+        monkeypatch.setattr("src.pipeline.PROJECT_ROOT", tmp_path)
         _setup_bess_mocks(da, tmp_path, monkeypatch)
 
         captured_forecasts = []

@@ -238,7 +238,7 @@ power-trading/
 ├── dashboard/                      # Streamlit dashboard (make dashboard)
 │   ├── app.py                      # data loading, pipeline-mirroring sim, layout
 │   └── charts.py                   # Plotly chart builders
-├── pipeline.py                     # End-to-end orchestrator
+├── src/pipeline.py                 # End-to-end orchestrator
 ├── main.py                         # CLI entry point
 └── requirements.txt
 ```
@@ -247,7 +247,7 @@ power-trading/
 
 `make dashboard` (or `streamlit run dashboard/app.py`) launches the BESS dispatch debugger — see the README for what it's *for*. Code lives in `dashboard/`: `app.py` (data loading, the simulation, and layout) and `charts.py` (Plotly builders). Paths are anchored to the repo root, so it runs from any working directory.
 
-It replays the strategy exactly as `pipeline.py` does, so what you see matches real model output:
+It replays the strategy exactly as `src/pipeline.py` does, so what you see matches real model output:
 
 - the Day-Ahead schedule is optimised against the same walk-forward ML price forecast (trained once per session and cached);
 - the rolling-horizon intraday engine walks the day period by period, re-optimising the remaining horizon with the current quarter priced at its observed MID and the unseen future at a hurdled DA proxy, then executing and locking only the visible period before rolling forward; each deviation settles at its observed MID;

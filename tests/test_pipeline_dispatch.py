@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pipeline import run_full_pipeline
+from src.pipeline import run_full_pipeline
 
 _MINIMAL_CONFIG = {
     "data": {
@@ -21,8 +21,8 @@ _MINIMAL_CONFIG = {
 class TestRunFullPipelineDispatch:
     def test_virtual_mode_calls_virtual(self, monkeypatch):
         mock = MagicMock(return_value={"mode": "virtual"})
-        monkeypatch.setattr("pipeline._run_virtual_pipeline", mock)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_virtual_pipeline", mock)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         result = run_full_pipeline(mode="virtual")
 
@@ -31,8 +31,8 @@ class TestRunFullPipelineDispatch:
 
     def test_download_mode_calls_download(self, monkeypatch):
         mock = MagicMock(return_value={"mode": "download"})
-        monkeypatch.setattr("pipeline._run_download", mock)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_download", mock)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         result = run_full_pipeline(mode="download", config=_MINIMAL_CONFIG)
 
@@ -41,8 +41,8 @@ class TestRunFullPipelineDispatch:
 
     def test_features_mode_calls_features(self, monkeypatch):
         mock = MagicMock(return_value={"mode": "features", "features_file": None})
-        monkeypatch.setattr("pipeline._run_features", mock)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_features", mock)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         result = run_full_pipeline(mode="features", config=_MINIMAL_CONFIG)
 
@@ -51,8 +51,8 @@ class TestRunFullPipelineDispatch:
 
     def test_model_mode_calls_virtual_with_skip_features(self, monkeypatch):
         mock = MagicMock(return_value={"mode": "virtual"})
-        monkeypatch.setattr("pipeline._run_virtual_pipeline", mock)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_virtual_pipeline", mock)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         run_full_pipeline(mode="model")
 
@@ -60,8 +60,8 @@ class TestRunFullPipelineDispatch:
 
     def test_bess_mode_calls_bess(self, monkeypatch):
         mock = MagicMock(return_value={"mode": "bess"})
-        monkeypatch.setattr("pipeline._run_bess_pipeline", mock)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_bess_pipeline", mock)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         config = {"strategy_type": "bess"}
         result = run_full_pipeline(mode="bess", config=config)
@@ -72,9 +72,9 @@ class TestRunFullPipelineDispatch:
     def test_all_mode_calls_both(self, monkeypatch):
         mock_v = MagicMock(return_value={"mode": "virtual"})
         mock_b = MagicMock(return_value={"mode": "bess"})
-        monkeypatch.setattr("pipeline._run_virtual_pipeline", mock_v)
-        monkeypatch.setattr("pipeline._run_bess_pipeline", mock_b)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_virtual_pipeline", mock_v)
+        monkeypatch.setattr("src.pipeline._run_bess_pipeline", mock_b)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         config = {"strategy_type": "all"}
         result = run_full_pipeline(mode="all", config=config)
@@ -85,15 +85,15 @@ class TestRunFullPipelineDispatch:
         assert "bess" in result
 
     def test_invalid_mode_raises(self, monkeypatch):
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         with pytest.raises(ValueError, match="Invalid mode"):
             run_full_pipeline(mode="bogus")
 
     def test_mode_defaults_from_config(self, monkeypatch):
         mock = MagicMock(return_value={"mode": "bess"})
-        monkeypatch.setattr("pipeline._run_bess_pipeline", mock)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_bess_pipeline", mock)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         run_full_pipeline(config={"strategy_type": "bess"})
 
@@ -101,8 +101,8 @@ class TestRunFullPipelineDispatch:
 
     def test_mode_defaults_to_virtual(self, monkeypatch):
         mock = MagicMock(return_value={"mode": "virtual"})
-        monkeypatch.setattr("pipeline._run_virtual_pipeline", mock)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_virtual_pipeline", mock)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         run_full_pipeline()
 
@@ -111,9 +111,9 @@ class TestRunFullPipelineDispatch:
     def test_explicit_mode_overrides_config(self, monkeypatch):
         mock_v = MagicMock(return_value={"mode": "virtual"})
         mock_b = MagicMock(return_value={"mode": "bess"})
-        monkeypatch.setattr("pipeline._run_virtual_pipeline", mock_v)
-        monkeypatch.setattr("pipeline._run_bess_pipeline", mock_b)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_virtual_pipeline", mock_v)
+        monkeypatch.setattr("src.pipeline._run_bess_pipeline", mock_b)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         run_full_pipeline(mode="virtual", config={"strategy_type": "bess"})
 
@@ -122,8 +122,8 @@ class TestRunFullPipelineDispatch:
 
     def test_skip_features_forwarded_to_virtual(self, monkeypatch):
         mock = MagicMock(return_value={"mode": "virtual"})
-        monkeypatch.setattr("pipeline._run_virtual_pipeline", mock)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_virtual_pipeline", mock)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         run_full_pipeline(mode="virtual", skip_features=True)
 
@@ -132,9 +132,9 @@ class TestRunFullPipelineDispatch:
     def test_skip_features_forwarded_in_all_mode(self, monkeypatch):
         mock_v = MagicMock(return_value={"mode": "virtual"})
         mock_b = MagicMock(return_value={"mode": "bess"})
-        monkeypatch.setattr("pipeline._run_virtual_pipeline", mock_v)
-        monkeypatch.setattr("pipeline._run_bess_pipeline", mock_b)
-        monkeypatch.setattr("pipeline.ensure_directories", lambda: None)
+        monkeypatch.setattr("src.pipeline._run_virtual_pipeline", mock_v)
+        monkeypatch.setattr("src.pipeline._run_bess_pipeline", mock_b)
+        monkeypatch.setattr("src.pipeline.ensure_directories", lambda: None)
 
         config = {"strategy_type": "all"}
         run_full_pipeline(mode="all", config=config, skip_features=True)

@@ -1,3 +1,19 @@
+"""End-to-end orchestration for both strategies.
+
+Wires the stages together — download, preprocess, features, train, backtest —
+and owns the experiment plumbing around them: where a run writes, what it saves,
+and how a finished run is read back. The stage implementations live in
+``src.data``, ``src.features``, ``src.models``, ``src.backtest`` and ``src.bess``;
+nothing here does modelling of its own.
+
+Two strategies run through it. ``_run_virtual_pipeline`` trades day-ahead
+positions against imbalance; ``_run_bess_pipeline`` schedules a battery by LP and
+re-optimises it intraday. They share the plumbing and almost nothing else.
+
+The entry point is ``main.py``, which supplies the config and the mode. Calling
+``run_full_pipeline()`` directly works too, but it then falls back to whatever
+``configs/config.yaml`` holds.
+"""
 import pandas as pd
 import numpy as np
 import logging
@@ -865,7 +881,3 @@ def load_experiment_results(config: dict | None = None) -> dict:
     except Exception as e:
         logger.error(f"Failed to load results: {str(e)}")
         return {}
-
-
-if __name__ == "__main__":
-    results = run_full_pipeline()

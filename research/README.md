@@ -2,7 +2,7 @@
 
 The study this repository was built to run, and the board that presents it.
 
-The framework lives at the repo root (`src/`, `fleet/`, `live/`, `pipeline.py`);
+The framework lives at the repo root (`src/`, `fleet/`, `live/`);
 everything here uses it. The dependency runs one way only — no framework module,
 and nothing the dashboard serves, imports anything from this directory — so the
 study can be read on its own and changed without touching production code. The

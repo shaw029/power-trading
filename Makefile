@@ -5,7 +5,7 @@ lint:
 
 format:
 	black src/ fleet/ live/ dashboard/ research/ scripts/ tests/ \
-	      main.py pipeline.py bootstrap_data.py
+	      main.py bootstrap_data.py
 
 typecheck:
 	mypy .
