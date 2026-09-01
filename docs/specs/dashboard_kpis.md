@@ -253,9 +253,8 @@ Sidebar label: **Execution gap**.
 | — | **The headline gap** | — | *Like legs only — wholesale against wholesale.* | — |
 | SVF-2 | Simulation ceiling | Number | The best a perfect trader could have done on the DA/MID spread (£/MW/day). | Built |
 | SVF-3 | Fleet wholesale avg | Number | The wholesale leg (PN × MID) only, MW-weighted across the comparison sites — the single leg the simulation also plays. Balancing revenue is deliberately outside it. | Built |
-| SVF-4 | Realisation | Number | Real wholesale earnings as a share of the ceiling (SVF-3 ÷ SVF-2) — the grading of real execution. | Built |
 | SVF-11 | Physical gap | Number | Fleet cycles per day against the simulation's, on delivered throughput. Explains *why* the realisation gap exists: did the fleet trade the same energy worse, or simply move less of it? | Built |
-| SVF-5 | Sites compared | Number | How many real batteries are in the comparison. | Built |
+| SVF-5 | Sites compared | Note | How many real batteries are in the comparison, and how many were excluded, as a caption under the numbers. It is context for reading them, not a measurement of its own. | Changed |
 | — | **Behaviour & timing** | — | *When does reality fall behind?* | — |
 | SVF-6 | Day by day | Graph | Simulation against fleet over time. | Built |
 | SVF-7 | Trading shape | Graph | Do real batteries move at the same hours? Mean net output by hour, discharge positive. Absent on a window with no usable per-hour fleet shape. | Built |
@@ -284,9 +283,9 @@ The research page, and the busiest one: eight Numbers in two rows.
 | ALN-7 | Risk periods | Number | How many half-hours the operator saw real risk of falling short. | Built |
 | ALN-8 | Coverage when confirmed tight | Number | Same as ALN-2, but judged against the operator's own margin rather than a load proxy — the scarcity ruler, not the utilisation one. | Changed |
 | ALN-9 | Capacity Market Notices | Number | Formal shortfall warnings. Usually "None in window" — they're rare by design. | Built |
+| ALN-18 | Was the system short? | Note | States what the window actually contained: the tightest margin against the 1,000 MW scarcity bar the research uses, and whether loss of load ever rose above zero. On a rolling summer window the answer is no, which is why nothing on the page may be read as a resilience finding. | Built |
 | ALN-10 | The average day that gets busy | Graph | Mean residual load and mean benchmark dispatch by hour, across every day in the window containing a top-decile hour, with the usually-top-decile hours shaded on both panels. Replaced a single auto-picked exemplar day: one day is an anecdote, and the busiest one is the most flattering anecdote available. The reading is whether dispatch is still positive where the shading is. | Changed |
 | ALN-11 | System tightness | Graph | Spare capacity over the window, with risk periods and warnings marked. | Built |
-| ALN-18 | Was the system short? | Note | States what the window actually contained: the tightest margin against the 1,000 MW scarcity bar the research uses, and whether loss of load ever rose above zero. On a rolling summer window the answer is no, which is why nothing on the page may be read as a resilience finding. | Built |
 | ALN-12 | Profit vs alignment | Graph | Every real site plotted on money against top-decile coverage. | Changed |
 | ALN-13 | Cost by day type | Graph | Which days make alignment expensive. | Built |
 | ALN-15 | Fleet response when tightest | Number | Mean fleet net output across the tightest fifth of the window's de-rated margins, with how often it was charging instead. Positive means the fleet discharged into tightness rather than competing with it. | Built |
