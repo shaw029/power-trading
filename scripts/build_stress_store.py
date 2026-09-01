@@ -78,6 +78,7 @@ TABLES = (
     "system",
     "lolpdrm_prints",
     "fleet_pn",
+    "fleet_boa",
     "fleet_mels",
     "fleet_mils",
     "sbp",
@@ -135,6 +136,25 @@ def _day_pn(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
     )
 
 
+def _day_boa(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
+    """Physical delivery: the notification overwritten by BM acceptances.
+
+    ``fleet_pn`` is what each unit *said* it would do at gate closure. The
+    system operator then instructs it away from that, and for GB batteries the
+    accepted volume is of the same order as the notified position — so any
+    claim about what the fleet delivered, held or spent has to be checkable on
+    both bases. This table is the second one.
+    """
+    return _require(
+        fleet_perf.site_physical_profile(
+            fetch_fleet.fetch_fleet_pn(date, population),
+            fetch_fleet.fetch_fleet_boalf(date, population),
+            population,
+        ),
+        "BOA",
+    )
+
+
 def _day_mels(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
     return _require(
         fleet_perf.site_limit_profile(
@@ -154,13 +174,14 @@ def _day_mils(date: dt.date, population: Population = CURATED) -> pd.DataFrame:
 
 
 #: Feeds whose content depends on which batteries are being studied.
-PER_BMU_FEEDS = ("pn", "mels", "mils")
+PER_BMU_FEEDS = ("pn", "boa", "mels", "mils")
 
 # Per-day feeds: table name → (fetch function, parquet table).
 DAY_FEEDS: dict[str, tuple[Callable[..., pd.DataFrame], str]] = {
     "system": (_day_system, "system"),
     "lolpdrm": (_day_lolpdrm_prints, "lolpdrm_prints"),
     "pn": (_day_pn, "fleet_pn"),
+    "boa": (_day_boa, "fleet_boa"),
     "mels": (_day_mels, "fleet_mels"),
     "mils": (_day_mils, "fleet_mils"),
 }

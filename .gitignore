@@ -21,6 +21,7 @@ __pycache__/
 !/reports/poster/
 /reports/poster/*
 !/reports/poster/poster.typ
+!/reports/poster/poster_lean.typ
 
 # ...except hand-researched reference data, the one thing here no pipeline can
 # recreate. The energy-capacity worksheet is read off operator pages and press
