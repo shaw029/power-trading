@@ -251,16 +251,16 @@ Sidebar label: **Execution gap**.
 |---|---|---|---|---|
 | SVF-1 | Include grid-services sites | Filter | Off by default — including them exaggerates the gap, as their wholesale volume is artificially low. | Built |
 | — | **The headline gap** | — | *Like legs only — wholesale against wholesale.* | — |
-| SVF-2 | Simulation ceiling | Number | The best a perfect trader could have done on the DA/MID spread (£/MW/day). | Built |
+| SVF-2 | Optimiser ceiling — theoretical | Number | This project's own optimiser on the DA/MID spread, run with perfect foresight of both prices (£/MW/day). A theoretical upper bound for scale, not a target: no trader has that foresight, so no operator could reach it. Net of its own degradation and execution costs, while SVF-3 beside it is gross — the public data carries no operator wear costs. | Changed |
 | SVF-3 | Fleet wholesale avg | Number | The wholesale leg (PN × MID) only, MW-weighted across the comparison sites — the single leg the simulation also plays. Balancing revenue is deliberately outside it. | Built |
-| SVF-11 | Physical gap | Number | Fleet cycles per day against the simulation's, on delivered throughput. Explains *why* the realisation gap exists: did the fleet trade the same energy worse, or simply move less of it? | Built |
+| SVF-11 | Physical gap | Number | Fleet cycles per day against the optimiser's, on delivered throughput. It separates the two ways of earning less: trading the same energy worse, or simply moving less of it. | Changed |
 | SVF-5 | Sites compared | Note | How many real batteries are in the comparison, and how many were excluded, as a caption under the numbers. It is context for reading them, not a measurement of its own. | Changed |
 | — | **Behaviour & timing** | — | *When does reality fall behind?* | — |
 | SVF-6 | Day by day | Graph | Simulation against fleet over time. | Built |
 | SVF-7 | Trading shape | Graph | Do real batteries move at the same hours? Mean net output by hour, discharge positive. Absent on a window with no usable per-hour fleet shape. | Built |
 | SVF-8 | Gap by market regime | Graph | On which regimes does reality fall furthest short? Runs on the same classifier tags as the Market regimes page. Absent when no day in the window carries a tag. | Changed |
 | — | **Site-level breakdown** | — | *Who closed the gap?* | — |
-| SVF-9 | Per-site vs the ceiling | Graph | Each site's £/MW/day split into the wholesale leg and the balancing leg, against the simulation ceiling drawn as a reference line. Only the wholesale leg is comparable — the sim does not play the balancing market. | Built |
+| SVF-9 | Real sites, wholesale beside balancing | Graph | Each site's £/MW/day split into the wholesale leg and the balancing leg, with the optimiser ceiling marked for scale. Carries no per-site percentage of that ceiling: a share of a perfect-foresight run grades an operator against a trade nobody could make. The comparison it supports is between the sites, all on the same days under the same rules. | Changed |
 | SVF-10 | Work rate vs earnings | Graph | Every site plotted by cycles per day against £/MW/day, with the benchmark starred — does trading harder actually pay? | Built |
 
 Rows are in screen order. The three group headings render on the page as labels

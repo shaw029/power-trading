@@ -1486,8 +1486,9 @@ def _page_sim_vs_fleet():
 
     _page_header("Execution gap", caption)
     st.caption(
-        "The simulation is a **perfect-foresight DA+MID ceiling** for one idealised "
-        "battery; fleet numbers are free-data estimates spanning several markets. "
+        "The left-hand number is **this project's optimiser**, run with perfect "
+        "foresight on one idealised battery — a theoretical ceiling, not a rival "
+        "trader. Fleet numbers are free-data estimates spanning several markets. "
         "Only like legs are compared: each site's **wholesale leg (PN × MID)** "
         "against the sim of the **same duration** over the **same days**. BM revenue "
         "is shown alongside but never enters a ratio, and ancillary revenue is "
@@ -1545,10 +1546,17 @@ def _page_sim_vs_fleet():
     st.markdown("**The headline gap**")
     cols = st.columns(3)
     cols[0].metric(
-        _unit_label("Sim ceiling", "£/MW/day"),
+        _unit_label("Optimiser ceiling — theoretical", "£/MW/day"),
         f"{sim_gbp:,.0f}",
-        help=f"Perfect-foresight {duration} benchmark on the DA/MID spread, over "
-        f"the {len(common)} common days.",
+        help=f"**A theoretical number, not a target.** It is this project's own "
+        f"optimiser run over the {len(common)} common days on a {duration} "
+        "battery with perfect foresight of both the day-ahead and intraday "
+        "price — knowledge no trader has, so no operator could reach it. It is "
+        "an upper bound for scale, not a benchmark anyone is failing to meet.\n\n"
+        "It is also **net** of its own degradation and execution costs, while "
+        "the fleet figure beside it is a gross revenue estimate: the public "
+        "data carries no operator wear costs, so the two are close but not the "
+        "same measure.",
     )
     cols[1].metric(
         _unit_label("Fleet wholesale avg", "£/MW/day"),
@@ -1641,7 +1649,7 @@ def _page_sim_vs_fleet():
     # is where you go to ask which operators closed the gap.
     st.markdown("**Site-level breakdown**")
     st.plotly_chart(
-        chart_sim_vs_fleet_sites(comp, sim_gbp, f"sim {duration} ceiling"),
+        chart_sim_vs_fleet_sites(comp, sim_gbp, f"optimiser {duration} ceiling (theoretical)"),
         width="stretch",
     )
     scatter = site_df.assign(excluded=site_df["site"].isin(excluded))
@@ -2068,7 +2076,6 @@ def _page_alignment():
     mean_gap_mw_day = float(gap_df["profit_cost_of_alignment"].mean()) / REFERENCE_POWER_MW
     stress_forgone = float(gap_df["stress_mwh_forgone"].sum())
 
-    st.markdown("**Did the battery show up when the system worked hardest?**")
     cols = st.columns(4)
     cols[0].metric(
         "Top-decile coverage",
@@ -2101,7 +2108,6 @@ def _page_alignment():
     )
 
     # --- System tightness: operator-grade margin + declared notices -----------
-    st.markdown("**Was the system actually short?**")
     st.caption(
         "Everything above measures **utilisation** — what the fleet did when the "
         "system worked hardest. This section asks the different question of "

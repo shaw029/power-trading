@@ -1716,7 +1716,7 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
 # Sim vs fleet comparison
 # --------------------------------------------------------------------------- #
 def chart_sim_vs_fleet_sites(df: pd.DataFrame, sim_gbp: float, sim_label: str) -> go.Figure:
-    """Per-site £/MW/day split wholesale vs BM, against the sim ceiling.
+    """Per-site £/MW/day split wholesale vs BM, against the optimiser ceiling.
 
     ``df`` has one row per site: ``site``, ``optimiser``, ``wholesale`` and
     ``bm`` (£/MW/day over the common days). Only the wholesale leg is comparable
@@ -1769,7 +1769,7 @@ def chart_sim_vs_fleet_sites(df: pd.DataFrame, sim_gbp: float, sim_label: str) -
 
 
 def chart_sim_vs_fleet_daily(df: pd.DataFrame) -> go.Figure:
-    """Daily £/MW/day: sim ceiling vs the matched fleet wholesale average.
+    """Daily £/MW/day: the optimiser ceiling vs the matched fleet wholesale average.
 
     The area between the lines is the day's foresight-plus-skill gap; shading
     it makes decoupling episodes visible at a glance.
@@ -1790,7 +1790,7 @@ def chart_sim_vs_fleet_daily(df: pd.DataFrame) -> go.Figure:
         go.Scatter(
             x=dates,
             y=df["sim"],
-            name="Sim ceiling",
+            name="Optimiser ceiling (theoretical)",
             mode="lines",
             line=dict(color=COLORS["net"], width=2, dash="dash"),
             fill="tonexty",
@@ -1801,7 +1801,7 @@ def chart_sim_vs_fleet_daily(df: pd.DataFrame) -> go.Figure:
     apply_theme(
         fig,
         height=DEFAULT_CHART_HEIGHT,
-        title="Daily £/MW/day — sim ceiling vs fleet wholesale (gap shaded)",
+        title="Daily £/MW/day — optimiser ceiling vs fleet wholesale (gap shaded)",
     )
     fig.update_layout(hovermode="x unified")
     fig.update_yaxes(title_text="Estimated revenue (£/MW/day)")
@@ -1987,19 +1987,22 @@ def chart_daytype_ratio(df: pd.DataFrame) -> go.Figure:
             textposition="outside",
             textfont=dict(size=11, color=_INK),
             customdata=d["days"],
-            hovertemplate="%{y}<br>%{x:.0%} of sim · %{customdata} day(s)<extra></extra>",
+            hovertemplate=(
+                "%{y}<br>%{x:.0%} of the ceiling · %{customdata} day(s)"
+                "<extra></extra>"
+            ),
         )
     )
     apply_theme(
         fig,
         height=max(HEIGHT_SM, 30 * len(d) + 110),
-        title="Realisation by regime",
+        title="Which regimes the fleet falls furthest short on",
     )
     fig.update_layout(showlegend=False)
     # Outside labels need room past the longest bar, or the widest value is
     # clipped by the plot frame — which is exactly the bar worth reading.
     fig.update_xaxes(
-        title_text="Fleet wholesale ÷ sim ceiling",
+        title_text="Fleet wholesale ÷ optimiser ceiling",
         tickformat=".0%",
         range=[0, float(d["ratio"].max()) * 1.18],
     )
