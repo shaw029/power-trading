@@ -187,11 +187,9 @@
       netting accepted bids and offers.
     ]],
     [#text(size: 18pt)[
-      #tag("scarcity", discharge) Since #n8.era_start, scarcity events show
-      stronger normalised fleet response alongside
-      #text(fill: da-blue, weight: "bold")[lower inferred charge at onset], by
-      #text(fill: da-blue, weight: "bold")[#absn(sx.onset_diff_anch) to
-      #absn(sx.onset_diff) points] under both integration schemes.
+      #tag("scarcity", discharge) Since #n8.era_start the fleet responds more
+      strongly during scarcity but enters events with
+      #text(fill: da-blue, weight: "bold")[less stored energy].
     ]],
   )
 ]
