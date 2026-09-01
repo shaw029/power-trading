@@ -1,4 +1,4 @@
-# Day-Ahead Power Trading
+# Power Trading
 
 An end-to-end quantitative trading framework for the GB wholesale electricity
 market: day-ahead virtual positioning against imbalance, hybrid intraday
