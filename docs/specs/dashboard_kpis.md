@@ -300,8 +300,8 @@ Plain-English explanation of every number above, plus a glossary. Nothing comput
 
 ## The research side
 
-`docs/specs/notebook_indicators.md` is the mirror of this file: every indicator the six
-notebooks compute, and whether the dashboard has it. Use it to decide what to promote —
+`docs/specs/notebook_indicators.md` is the mirror of this file: every indicator
+notebooks 01 to 06 compute, and whether the dashboard has it. Use it to decide what to promote —
 it separates what is deliberately notebook-only (multi-year work, the census) from what
 is merely not built yet, and gives the reason in each case.
 

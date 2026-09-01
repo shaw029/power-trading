@@ -50,12 +50,14 @@ the A0 board: **[research/poster/](research/poster/)**
 ## Layout
 
 ```
-src/  fleet/  live/                the framework
-dashboard/                          Streamlit apps — backtest replay and live benchmark
-research/                           the study: notebooks 01-10, robustness, poster
-docs/                               architecture, data sources, specs
-scripts/                            data store builders and maintenance tooling
-tests/                              603 tests, run in CI
+src/          strategy machinery — LP dispatch, ML models, features, backtest
+fleet/        the GB battery fleet: who exists, what they did
+live/         live GB feeds, classification, settlement
+dashboard/    two Streamlit apps: backtest replay, live benchmark
+research/     the study — notebooks 01-10, robustness checks, the A0 poster
+docs/         architecture, data sources, specs
+scripts/      store builders and maintenance tooling
+tests/        run in CI on every push
 ```
 
 ## Quick-start

@@ -1,8 +1,14 @@
 # Notebook indicators — and whether the dashboard has them
 
-Every indicator the six notebooks compute, and where it stands on the live dashboard.
+Every indicator notebooks 01 to 06 compute, and where it stands on the live dashboard.
 The companion to `docs/specs/dashboard_kpis.md`: that file says what the dashboard shows,
 this one says what the research has that the dashboard does not.
+
+**Scope.** Notebooks 07 to 10 postdate this sheet and are not mapped here. They
+are the regime-shift test, the modern-era re-cut, the model-versus-fleet
+reconciliation and the acceptance correction — all multi-year or full-census work,
+so the expectation is that little of it is promotable. That is an expectation, not
+an audit.
 
 **Status**
 
@@ -139,8 +145,9 @@ than computing them — that is the rule, not an omission.
 
 ## What this says
 
-Of the indicators that are **about the GB battery market now** — notebooks 03 to 06,
-setting aside the two virtual-trading notebooks — the dashboard carries the operational
+Of the indicators covered here that are **about the GB battery market now** —
+notebooks 03 to 06, setting aside the two virtual-trading notebooks — the
+dashboard carries the operational
 core: the benchmark's earnings and dispatch, the alignment scores, the tier ladder, and
 now the fleet's response to tightening margins.
 

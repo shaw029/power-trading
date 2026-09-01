@@ -223,7 +223,7 @@ power-trading/
 │           └── trading/
 │               ├── pnl.csv         # Daily BESS PnL decomposition
 │               └── metrics.json
-├── src/
+├── src/                            # Strategy machinery
 │   ├── data/                       # download.py, preprocess.py
 │   ├── evaluation/                 # splitter.py (walk-forward)
 │   ├── features/                   # build_features.py
@@ -233,12 +233,34 @@ power-trading/
 │   │   ├── bess_asset.py           # BESSAsset state-machine dataclass
 │   │   ├── da_optimizer.py         # LP Day-Ahead schedule (PuLP/HiGHS)
 │   │   └── intraday_manager.py     # Rolling-horizon intraday re-optimisation engine
-│   └── utils/                      # config.py
+│   ├── utils/                      # config.py
+│   └── pipeline.py                 # End-to-end orchestrator
+├── fleet/                          # The GB battery fleet: who exists, what they did
+│   ├── population.py               # The population parameter
+│   ├── curated.py                  # Hand-researched optimiser, region, MWh
+│   ├── registry.py                 # Generated; what the dashboard renders
+│   ├── performance.py              # Per-site physical profiles and metrics
+│   ├── fetch_fleet.py              # Per-BMU feed adapters
+│   └── research/                   # Research tier — never on the dashboard's
+│       ├── census.py               #   import surface; see DATA_ARCHITECTURE.md
+│       ├── coverage.py
+│       └── ancillary.py
+├── live/                           # Live GB feeds, classification, settlement
+│   ├── fetch_live.py               # Single-day adapters (Nord Pool, Elexon)
+│   ├── classify.py                 # Day typing
+│   ├── resilience.py               # Stress/surplus classification
+│   ├── settle.py                   # Day settlement against observed prices
+│   └── assets.py                   # The three reference batteries
+├── dashboard/                      # Streamlit apps
+│   ├── app.py                      # Backtest replay (make dashboard)
+│   ├── live_app.py                 # Live GB benchmark (deployed)
+│   └── charts.py                   # Plotly chart builders, shared by both
+├── research/                       # The study and the board
+│   ├── notebooks/                  # 01-10, plus robustness/ and their tooling
+│   └── poster/                     # A0 layout source, tracked inputs, build.sh
+├── docs/                           # This file, ARCHITECTURE, DATA_*, specs/
+├── scripts/                        # Store builders and maintenance tooling
 ├── tests/
-├── dashboard/                      # Streamlit dashboard (make dashboard)
-│   ├── app.py                      # data loading, pipeline-mirroring sim, layout
-│   └── charts.py                   # Plotly chart builders
-├── src/pipeline.py                 # End-to-end orchestrator
 ├── main.py                         # CLI entry point
 └── requirements.txt
 ```
@@ -278,7 +300,7 @@ All live-benchmark code lives in `live/`. Every module reuses the production dat
 | Module | Responsibility |
 |---|---|
 | `assets.py` | Defines the three canonical reference batteries — all 50 MW, differing only in storage duration (1h/2h/4h → 50/100/200 MWh). Every non-capacity parameter (efficiencies, SOC band, degradation, cycling target, margins, slippage) is read from the `bess` block of `configs/config.example.yaml`, so there is no second copy of those numbers. |
-| `fetch_live.py` | Single-day adapter over `src.data.download` / `src.data.preprocess`. `get_day_prices` returns hourly DA (Nord Pool) + MID (Elexon) prices on a 60-min grid; `get_day_context` returns tier-2 generation/demand aggregates; `get_day_lolpdrm` returns the half-hourly LoLP / de-rated margin (latest print per period); `get_cmn_notices` returns the CMN register as a frame. The only new API code in `src/data/download` is the Nord Pool fetcher (source `"NORDPOOL"`), the LoLP/DRM fetcher, and the CMN register fetcher. |
+| `fetch_live.py` | Single-day adapter over `src.data.download` / `src.data.preprocess`. `get_day_prices` returns hourly DA (Nord Pool) + MID (Elexon) prices on a 60-min grid; `get_day_context` returns tier-2 generation/demand aggregates; `get_day_lolpdrm` returns the half-hourly LoLP / de-rated margin (latest print per period); `get_cmn_notices` returns the CMN register as a frame. The only new API code in `src/data/download.py` is the Nord Pool fetcher (source `"NORDPOOL"`), the LoLP/DRM fetcher, and the CMN register fetcher. |
 | `resilience.py` | System-alignment metrics: residual load, stress/surplus classification, the three-tier stress ladder (`classify_tiers`/`tier_metrics`; tier 2 = LoLP > 0 or DRM < `DRM_TIGHT_MW`, tier 3 = active CMN), alignment scores and the resilience-optimal counterfactual LP. Pure pandas/PuLP. |
 | `settle.py` | Pure, deterministic single-day settlement. For each reference duration it resets the asset to the carried-over end-of-day SOC, solves the Day-Ahead LP schedule, then runs the rolling intraday session against the actual DA and observed MID prices — exactly as `pipeline._run_bess_pipeline` drives it. Does no file or network IO. |
 | `classify.py` | Tags a day with zero or more descriptive labels from a flat, two-family vocabulary — fundamentals (`wind-led`, `wind-drought`, `solar-led`, `high-demand`, `low-demand`, `weekend`) and price traits (`volatile`, `flat`, `negative-price`, `two-peak`, `single-peak`). |
