@@ -2036,8 +2036,11 @@ def _page_alignment():
         dur_result = record["result"].durations[duration]
         log = dur_result.dispatch_log
         idx = pd.date_range(record["date"], periods=len(log), freq="1h", tz="UTC")
-        stress = hourly_flags["stress"].reindex(idx).fillna(False).tolist()
-        surplus = hourly_flags["surplus"].reindex(idx).fillna(False).tolist()
+        # fill_value rather than reindex().fillna(): filling an object-dtype
+        # NaN is deprecated in pandas and becomes an error, and a missing hour
+        # is genuinely "not flagged" rather than a value to be inferred.
+        stress = hourly_flags["stress"].reindex(idx, fill_value=False).tolist()
+        surplus = hourly_flags["surplus"].reindex(idx, fill_value=False).tolist()
         asset = BESSAsset(
             capacity_mwh=REFERENCE_POWER_MW * _duration_hours(duration),
             power_mw=REFERENCE_POWER_MW,
