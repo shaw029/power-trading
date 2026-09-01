@@ -269,11 +269,9 @@ power-trading/
 
 `make dashboard` (or `streamlit run dashboard/app.py`) launches the BESS dispatch debugger — see the README for what it's *for*. Code lives in `dashboard/`: `app.py` (data loading, the simulation, and layout) and `charts.py` (Plotly builders). Paths are anchored to the repo root, so it runs from any working directory.
 
-It replays the strategy exactly as `src/pipeline.py` does, so what you see matches real model output:
-
-- the Day-Ahead schedule is optimised against the same walk-forward ML price forecast (trained once per session and cached);
-- the rolling-horizon intraday engine walks the day period by period, re-optimising the remaining horizon with the current quarter priced at its observed MID and the unseen future at a hurdled DA proxy, then executing and locking only the visible period before rolling forward; each deviation settles at its observed MID;
-- state of charge carries continuously across days — each day starts from the previous day's actual ending SOC.
+It calls the same optimiser, the same intraday engine and the same trained forecast as
+`src/pipeline.py`, rather than reimplementing any of them, so what you see is real model
+output. The engine itself is described in [`ARCHITECTURE.md`](ARCHITECTURE.md#5-phase-3-physical-asset-bess-optimisation).
 
 Because scheduling against an in-sample forecast would be leakage, the selectable months are limited to the model's out-of-sample (walk-forward) range. Changing an asset parameter (capacity, power, efficiencies, SOC bounds, degradation, cycle cap) re-runs the whole out-of-sample period and is cached on those parameters; switching month just re-slices the cached result. Override the data and feature locations with the `PT_PROCESSED_DATA` and `PT_FEATURES` environment variables.
 
@@ -324,37 +322,31 @@ It hosts for free on **Streamlit Community Cloud**:
 2. On [share.streamlit.io](https://share.streamlit.io), **Create app** → pick the repo and branch, and set the **main file path** to `dashboard/live_app.py`.
 3. Deploy. **No secrets are required** (both feeds are public), and `requirements.txt` already lists every dependency. First load fetches and settles the full window (~30–60 s), then results are cached.
 
-## Stress Response Study (notebook 05)
+## The stress-response store
 
-`research/notebooks/05_stress_response_study.ipynb` measures what the **real** GB battery fleet did
-under **operator-grade** scarcity signals over eight winters — a separate question from the
-live benchmark's priced alignment gap, and on a much longer window because it uses no
-subscription price feed.
-
-**The store.** The window is ~1,050 days across eight day-cached feeds, so the notebook never
-fetches inline. `scripts/build_stress_store.py` does the acquisition once — day by day,
-failure-tolerant, resumable — and writes tidy parquet tables to
-`data/processed/stress_study/` that the analysis cells load in seconds:
+Notebook 05 reads roughly 1,050 days across eight day-cached feeds, which is far too much
+to fetch inline. `scripts/build_stress_store.py` does the acquisition once — day by day,
+failure-tolerant, resumable — and writes tidy parquet tables to `data/processed/stress_study/`
+that the notebook loads in seconds.
 
 ```bash
 python scripts/build_stress_store.py --start 2023-10-01 --end 2026-08-16
 ```
 
-A cold build takes hours and thousands of HTTP calls; re-running after a partial build only
+A cold build takes hours and thousands of HTTP calls. Re-running after a partial build only
 re-hits the days that failed, because every underlying fetcher is day-file cached. The
-`coverage` table records what each feed actually returned per day, so every statistic in the
-notebook can state what it is missing instead of silently averaging over gaps.
+`coverage` table records what each feed actually returned per day, so the analysis can state
+what it is missing rather than silently averaging over gaps.
 
 **Fast iteration.** Set `DRY_RUN = True` in the notebook's constants cell to build a two-week
 store under `data/processed/stress_study/dry_run/` and run the whole notebook in minutes.
-Conditioning sets will be near-empty in a summer fortnight; every analysis cell is written to
-print `n=0 — skipped` rather than error, which is also how the empty-data paths get tested.
+Conditioning sets will be near-empty in a summer fortnight; every analysis cell prints
+`n=0 — skipped` rather than erroring, which is also how the empty-data paths get tested.
 
-**What is repo code vs notebook code.** Only reusable acquisition and reshaping live in the
-repo (`fetch_fleet_mels`/`fetch_fleet_mils`, `fleet.performance.site_limit_profile`, the store
-builder), all unit-tested. The study's analysis — state-of-charge inference, conditioning
-sets, matched controls, event studies — deliberately stays in notebook cells until it has
-earned promotion to the dashboard.
+**Where the line falls.** Only reusable acquisition and reshaping live in the repo and are
+unit-tested: `fetch_fleet_mels`, `fetch_fleet_mils`, `fleet.performance.site_limit_profile`,
+and the store builder. The analysis itself stays in notebook cells. What the study asks and
+what it found is in [`research/README.md`](../research/README.md).
 
 ## VS Code
 

@@ -178,14 +178,12 @@ are recorded as **corroboration**, not identification — their name matching is
 too loose to carry a headline number. They grade confidence, so a result can be
 quoted for cross-referenced assets alone if a reviewer wants that.
 
-## What the measurement says
-
-**The library is live. Each notebook freezes itself.**
+## Vintages: the library is live, each notebook freezes itself
 
 Two feeds behind the research tier move on their own: the five registers the census is
 built from, and NESO's auction results. Unpinned, two runs on different days return a
-different population *and* a different revenue stack, so every count below would disagree
-with the next run.
+different population *and* a different revenue stack, so any count taken from them would
+disagree with the next run.
 
 `fleet.research.census.SNAPSHOT` exists to fix that, and **defaults to `None`, meaning live** —
 nothing in the library or the dashboard pins anything. Each research notebook sets it in
@@ -240,25 +238,19 @@ the analysis has to be defended with. It is also directly actionable: the 47
 "not curated" sites above the registry's own size floor are the shortlist for
 closing the gap.
 
-## The revenue stack tells the same story from the other side
+## The revenue stack says the same thing from the other side
 
-Adding per-unit ancillary revenue (`fleet/research/ancillary.py`) was meant only to complete the
-earnings picture, but it independently corroborates the coverage finding. Over the most recent
-window carrying the full service stack, £52.9m of battery ancillary revenue splits:
+Per-unit ancillary revenue (`fleet/research/ancillary.py`) was added to complete the
+earnings picture, and it corroborates the coverage decision independently: only about
+a quarter of GB battery ancillary revenue lands on a physical BM-registered site. Most
+of it is won by aggregator portfolios and VLP or supplier routes, which have no per-unit
+settlement data at all.
 
-| What the winning unit actually is | £m | Share |
-|---|---|---|
-| Aggregator portfolio | 27.3 | 51.6% |
-| **Census site** | **13.7** | **25.9%** |
-| VLP / supplier route | 8.8 | 16.7% |
-| Unknown | 3.1 | 5.8% |
-
-Only about a quarter of the revenue lands on a physical BM-registered site. That is the asset
-census reached from the opposite direction: the part of the GB battery fleet that can be
-analysed *per site* is a minority of the whole, and the aggregator tier — invisible to every
-per-unit feed this project can reach — is where much of the activity and earnings sit. It is
-also why the aggregator units are classified rather than dropped: the honest statement is that
-they exist and are large, not that they are absent.
+**The split is computed in `research/notebooks/06_fleet_coverage_census.ipynb`, not here**,
+on the vintage its setup cell pins. What matters for this document is the decision it
+justifies: aggregator units are **classified rather than dropped**. The honest statement
+is that they exist and are large, not that they are absent — and the per-site analysable
+fleet is a minority of the whole however the census is drawn.
 
 ## What the census population costs, and why only the notebooks pay it
 
