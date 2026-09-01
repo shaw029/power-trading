@@ -4,8 +4,8 @@
 Abhinav Shaw · A0 landscape (1189 × 841 mm)
 
 > Profit optimisation delivers 81% of the modelled battery's high-load alignment.
-> Response during scarcity and readiness before it are distinct dimensions of
-> behaviour, and readiness is not priced.
+> Response during scarcity and readiness before scarcity emerge as distinct
+> dimensions of behaviour.
 
 ## Build
 

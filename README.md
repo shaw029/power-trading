@@ -104,7 +104,8 @@ ruler, and **10** corrects three earlier notebooks for the difference between a
 notified plan and what the operator actually instructed.
 
 The finding: profit optimisation delivers 81% of a modelled battery's high-load
-alignment. Readiness for scarcity is not priced.
+alignment. Response during scarcity and readiness before it are separate
+questions, and the second is where the fleet has changed.
 
 All ten notebooks, the robustness checks behind them and the A0 board:
 **[research/](research/)**

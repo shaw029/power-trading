@@ -164,8 +164,8 @@
 )[
   #text(size: 26pt, weight: "bold", fill: ink)[
     Profit optimisation delivers #n4.free_share of the modelled battery's
-    high-load alignment. Response during scarcity and readiness before it are
-    distinct dimensions of behaviour, and readiness is not priced.
+    high-load alignment. Response during scarcity and readiness before scarcity
+    emerge as distinct dimensions of behaviour.
   ]
   #v(3mm)
   #grid(
@@ -183,7 +183,8 @@
       declared capability, notified schedules and acceptance-adjusted dispatch
       differ at every step:
       #text(fill: da-blue, weight: "bold")[#nb.gate_declared] declared,
-      #nb.gate_planned of that scheduled, #nb.gate_delivered of that delivered.
+      #nb.gate_planned of that scheduled, #nb.gate_delivered remaining after
+      netting accepted bids and offers.
     ]],
     [#text(size: 18pt)[
       #tag("scarcity", discharge) Since #n8.era_start, scarcity events show
@@ -385,7 +386,7 @@ and the window is summer.
 #section("4 · Behaviour under operator scarcity", discharge)
 #basis("SCARCITY · the operator's own instruments · 2018 to 2026", discharge)
 
-#lead[Response is not the binding constraint]
+#lead[The fleet usually responds during scarcity]
 
 In the flagged half-hours the fleet is net discharging 87% of the time, at
 #metric[+0.060 MW per MW online] against #n5.baseline overall. Clustering by event
