@@ -3,8 +3,8 @@
 **Quantifying the Alignment Gap Between Battery Arbitrage and Energy System Resilience**
 Abhinav Shaw · A0 landscape (1189 × 841 mm)
 
-> Energy prices already secure about four-fifths of the modelled battery's
-> high-load alignment. Readiness for scarcity remains unpriced.
+> Energy prices deliver 81% of the modelled battery's high-load alignment.
+> Readiness for scarcity is not priced.
 
 ## Build
 

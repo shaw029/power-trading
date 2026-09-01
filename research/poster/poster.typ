@@ -163,15 +163,15 @@
   radius: 2pt,
 )[
   #text(size: 26pt, weight: "bold", fill: ink)[
-    Energy prices already secure about four-fifths of the modelled battery's
-    high-load alignment. Readiness for scarcity remains unpriced.
+    Energy prices deliver #n4.free_share of the modelled battery's high-load
+    alignment. Readiness for scarcity is not priced.
   ]
   #v(3mm)
   #grid(
     columns: (1fr, 1fr, 1fr),
     gutter: 11mm,
     [#text(size: 18pt)[
-      #tag("utilisation", cost-red) A profit-optimised #n4.asset battery already delivers
+      #tag("utilisation", cost-red) A profit-optimised #n4.asset battery delivers
       #text(fill: da-blue, weight: "bold")[#n4.free_share] of the top-decile
       energy it could reach. The remainder costs
       #text(fill: da-blue, weight: "bold")[#n4.cost_all].
