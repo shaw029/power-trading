@@ -112,8 +112,10 @@ METHODOLOGY = """
 A **transparent simulation** — no real money, broker or orders. Every figure is
 the settlement engine run over published market data.
 
-- **Asset** — one 50 MW battery; the parameter panel picks its duration
-  (1h / 2h / 4h).
+- **Asset** — one 50 MW battery, but not a fixed one. The sidebar levers below
+  reconfigure it and the engine re-settles the whole window on every change, so
+  there is no single benchmark result: each figure belongs to the settings that
+  produced it, over the days the period filter selects.
 - **Data (live, free)** — Nord Pool N2EX day-ahead price; Elexon MID price plus
   generation and demand for day-type context; Sheffield Solar PV_Live for GB
   embedded solar (Elexon's transmission-metered mix carries no solar at all);
@@ -123,8 +125,8 @@ the settlement engine run over published market data.
   price (published the day before, so legitimate information). The intraday
   layer then re-optimises against the realised MID curve with **perfect
   foresight** — an idealised best case, not a live-replicable strategy.
-- **Levers** — duration, cycle target, degradation cost, SOC band, and the
-  **DA commitment** (the market-allocation lever: how much of the battery the
+- **Levers** — duration (1h / 2h / 4h), cycle target, degradation cost, SOC band,
+  and the **DA commitment** (the market-allocation lever: how much of the battery the
   day-ahead auction may commit; the rest is held back for intraday). Fixed:
   slippage, round-trip efficiency, 50 MW power.
 - **Out of scope** — real execution, imbalance settlement, and any fees beyond
@@ -2462,7 +2464,10 @@ def _page_methodology():
 
     st.divider()
     st.subheader("1 · The benchmark battery")
-    st.caption("The simulated 50 MW asset every *Benchmark* page reports on.")
+    st.caption(
+        "Configured from the sidebar, so every *Benchmark* figure moves with it — "
+        "two readers on different settings are looking at different batteries."
+    )
     st.markdown(METHODOLOGY)
 
     st.divider()
