@@ -211,7 +211,7 @@
     #text(weight: "bold", fill: discharge.darken(20%))[Scarcity: the operator
     short of slack.] Loss-of-load probability at or above 10⁻⁴, 2,075
     half-hours, with de-rated margin below 1 GW (n = #n5.n_drm) and Capacity
-    Market Notices (n = #n5.n_cmn) as rarer exhibits. Section 4, 2018 to 2026.
+    Market Notices (n = #n5.n_cmn) as rarer instruments. Section 4, 2018 to 2026.
     #v(2mm)
     No number from one basis is quoted against the other.
   ]
@@ -272,11 +272,10 @@ are excluded from every state-of-charge figure.
   connection-charge reform covering generation, *storage* and demand: the
   instrument TURPE 7 already applies to batteries.
   #v(1.5mm)
-  Policy design must therefore target the relevant gate. Scarcity signals may
-  affect scheduling, availability mechanisms declared capability, readiness
-  products pre-event energy, and duration mechanisms the investment that sets
-  the ceiling in Figure 3. Their welfare and investment effects are not
-  estimated here.
+    Each instrument acts on a different gate. Scarcity signals affect scheduling,
+    availability mechanisms declared capability, readiness products pre-event
+    energy, and duration mechanisms the investment that sets the ceiling in
+    Figure 3. Their welfare and investment effects are not estimated here.
 ]
 
 #colbreak()
@@ -346,7 +345,7 @@ of storage reaches, a level the longer asset attains at
 
 The fourth, whether stored energy lasts the event, is the subject of Section 4.
 The largest loss occurs at the first gate, and it does not concern dispatch:
-declared availability supports barely half of registered power. Given what was
+declared availability supports #nb.gate_declared of registered power. Given what was
 declared, the fleet scheduled #metric[#nb.gate_planned] of it, close to the
 modelled optimum's #n9.model_delivered. Netting acceptances then removes
 #metric[#nb.gate_instructed_away], concentrated in the evening peak, with the
