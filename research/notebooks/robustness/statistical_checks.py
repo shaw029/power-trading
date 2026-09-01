@@ -1,4 +1,10 @@
-"""Offline robustness analyses for the poster (D2, D7, D9, D10).
+"""Statistical checks on notebooks 05 and 07.
+
+Four questions the notebooks raise but do not answer about their own estimates:
+whether October 2023 is the break or merely where the break was placed; whether
+load adds anything beyond the daily shape; how much skill the margin forecast
+carries by horizon; and whether the response interval survives clustering, since
+scarcity half-hours arrive in weather episodes rather than independently.
 
 Reuses the notebooks' own definitions: the shared stress store, the census
 population, nb07's normalisation (net MW per MW online) and nb05's tightness
@@ -87,9 +93,9 @@ print(f"periods with a fleet position : {len(frame):,}\n")
 out = {}
 
 
-# ── D9 — forecast consistency by horizon ────────────────────────────────────
+# ── Forecast consistency by horizon ────────────────────────────────────
 print("=" * 74)
-print("D9 — margin-forecast skill by horizon")
+print("Margin-forecast skill by horizon")
 print("=" * 74)
 print("Event = the FINAL print crosses LoLP >= 1e-4. The forecast is the print")
 print("issued at each horizon. Both come from the operator's LoLP family, so")
@@ -123,9 +129,9 @@ print(skill.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
 out["d9"] = skill
 
 
-# ── D7 — within-hour alignment ──────────────────────────────────────────────
+# ── Within-hour alignment ──────────────────────────────────────────────
 print("\n" + "=" * 74)
-print("D7 — does load add anything beyond the daily shape?")
+print("Does load add anything beyond the daily shape?")
 print("=" * 74)
 
 d7 = frame[["norm", "residual"]].dropna().copy()
@@ -155,7 +161,7 @@ out["d7"] = dict(raw_r=raw_r, within_r=within_r, r2_hour=r2_hour,
                  r2_full=r2_full, n=len(d7))
 
 
-# ── Events (shared by D2 and D10) ───────────────────────────────────────────
+# ── Events (shared by the break search and the clustered intervals) ───────────────────────────────────────────
 
 
 def build_events(mask, bridge=2, min_len=2):
@@ -185,9 +191,9 @@ events = build_events(tight)
 print(f"\nEvents (bridged >= 1 h): {len(events)}")
 
 
-# ── D10 — event-clustered uncertainty ───────────────────────────────────────
+# ── Event-clustered uncertainty ───────────────────────────────────────
 print("\n" + "=" * 74)
-print("D10 — event-clustered intervals for the response estimate")
+print("Event-clustered intervals for the response estimate")
 print("=" * 74)
 print("Scarcity half-hours cluster inside weather episodes, so treating them")
 print("as independent understates the interval.\n")
@@ -227,9 +233,9 @@ out["d10_modern"] = clustered_ci(modern, f"Modern era, from {MODERN_START.date()
 out["d10_skip"] = clustered_ci(skip, f"Pre-break, before {SKIP_END.date()}")
 
 
-# ── D2 — break-date search and placebos ─────────────────────────────────────
+# ── Break-date search and placebos ─────────────────────────────────────
 print("=" * 74)
-print("D2 — was October 2023 the break, or just where it was placed?")
+print("Was October 2023 the break, or just where it was placed?")
 print("=" * 74)
 
 q = frame.dropna(subset=["residual"]).copy()
@@ -290,7 +296,7 @@ print(f"\nBreaks within 2 AIC of the best ({len(within2)}): "
 print("A flat AIC profile across neighbouring quarters means the data date the")
 print("change to a period, not to a quarter.")
 
-pd.to_pickle(out, REPO_ROOT / "research/outputs/robustness.pkl")
+pd.to_pickle(out, REPO_ROOT / "research/notebooks/robustness/_outputs/robustness.pkl")
 print("\nsaved -> robustness.pkl")
 
 
@@ -310,7 +316,7 @@ soc_all = fleet_perf.fleet_state_of_charge(
 schemes = {"primary": soc_all["soc"].reindex(grid),
            "anchored": soc_all["soc_anchored"].reindex(grid)}
 
-ev_all = events  # from D10: bridged LoLP events on `frame`'s grid
+ev_all = events  # bridged LoLP events on `frame`'s grid
 times_g = frame.index
 
 
@@ -426,6 +432,6 @@ sx = {
     "resp_mod_cl": f"{out['d10_modern']['point']:+.3f}",
     "resp_mod_ci": f"[{out['d10_modern']['lo']:+.3f}, {out['d10_modern']['hi']:+.3f}]",
 }
-mp = REPO_ROOT / "research/figures/poster/stats_metrics.json"
+mp = REPO_ROOT / "research/poster/exports/stats_metrics.json"
 mp.write_text(_json.dumps(dict(sorted(sx.items())), indent=2) + "\n")
 print(f"published {len(sx)} keys -> {mp}")

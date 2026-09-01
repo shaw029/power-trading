@@ -12,7 +12,7 @@ import pytest
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from research import figexport as poster  # noqa: E402
+from research.notebooks import figexport as poster  # noqa: E402
 
 
 def _figure():

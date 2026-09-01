@@ -1,4 +1,4 @@
-"""D1 — what Balancing Mechanism acceptances do to the fleet's measured delivery.
+"""Does correcting for Balancing Mechanism acceptances move measured delivery?
 
 Every fleet quantity on the poster is built from Final Physical Notifications.
 A PN is a plan submitted at gate closure; after it, NESO accepts bids and
@@ -57,10 +57,10 @@ def _publish(**kv):
     acceptance-corrected numbers reached the board through notebook 10's own
     export, and this file stayed behind. It is kept because the scripts still
     cross-check against each other through it, and it is gitignored with the
-    rest of research/outputs.
+    rest of the robustness outputs.
     """
     import json
-    p = REPO_ROOT / "research/outputs/boalf_metrics.json"
+    p = REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_metrics.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     cur = json.loads(p.read_text()) if p.exists() else {}
     cur.update({k: str(v) for k, v in kv.items()})
@@ -107,7 +107,7 @@ by_basis = allp.groupby("basis")["mw"].sum() * 0.5
 by_site = (allp.groupby(["basis", "site"])["mw"].sum() * 0.5).unstack(0)
 
 print("\n" + "=" * 72)
-print("D1 — top-decile delivered energy: PN alone vs PN corrected by acceptances")
+print("Top-decile delivered energy: PN alone vs PN corrected by acceptances")
 print("=" * 72)
 pn_mwh = float(by_basis.get("pn", np.nan))
 boa_mwh = float(by_basis.get("boa", np.nan))
@@ -134,8 +134,8 @@ if {"pn", "boa"} <= set(by_site.columns):
     print("Most instructed DOWN:")
     print(d.nsmallest(5, "delta_pct")[["pn", "boa", "delta_pct"]]
           .to_string(float_format=lambda v: f"{v:,.1f}"))
-    d.to_csv(REPO_ROOT / "research/outputs/boalf_sites.csv")
-    print("\nsaved -> research/outputs/boalf_sites.csv")
+    d.to_csv(REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_sites.csv")
+    print("\nsaved -> research/notebooks/robustness/_outputs/boalf_sites.csv")
 
 _publish(
     d1_window=f"{WIN_START} \u2192 {WIN_END}",

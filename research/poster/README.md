@@ -55,7 +55,7 @@ the reason section 3 exists.
 
 ## Inputs — why `assets/` is tracked
 
-The notebooks export every figure three ways into `../figures/poster`, which is
+The notebooks export every figure three ways into `exports/`, which is
 gitignored: bulky, derived, and rebuilt whenever a notebook is re-run. But a
 clone cannot rebuild it. The store those notebooks read is 18 GB and is not in
 the repository, so for anyone but the author those exports are unreproducible,
@@ -70,5 +70,5 @@ that subset is tracked — 16 files, 456 KB:
 
 The set is derived by parsing the `.typ` sources rather than listed anywhere, so
 a board that gains a panel picks it up automatically instead of breaking for the
-next person to clone. Everything else under `../figures/poster` — the 300 DPI
+next person to clone. Everything else in `exports/` — the 300 DPI
 PNGs, the print PDFs, and the panels no board places — stays untracked.

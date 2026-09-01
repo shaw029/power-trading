@@ -2,7 +2,7 @@
 #
 # Compile the A0 boards, and keep their tracked inputs honest.
 #
-# The notebooks export every figure three ways into research/figures/poster,
+# The notebooks export every figure three ways into ./exports,
 # which is gitignored: it is bulky, it is derived, and it is rebuilt whenever a
 # notebook is re-run. But a clone cannot rebuild it. The data store those
 # notebooks read is 18 GB and not in the repository, so for anyone but the
@@ -17,7 +17,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 HERE="$PWD"
-EXPORTS="$HERE/../figures/poster"
+EXPORTS="$HERE/exports"
 
 command -v typst >/dev/null 2>&1 || {
   echo "typst not found. Install it with: brew install typst" >&2

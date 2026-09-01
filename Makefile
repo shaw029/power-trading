@@ -26,7 +26,7 @@ poster:
 
 # Rebuild the notebook digest from the notebooks' stored outputs
 digest:
-	python research/build_digest.py
+	python research/notebooks/build_digest.py
 
 # Install the git pre-commit hook (run once after cloning)
 install-hooks:

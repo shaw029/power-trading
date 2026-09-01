@@ -1,6 +1,6 @@
 """Regenerate the notebook digest — every metric and every chart, 04 onward.
 
-Writes research/outputs/notebook_digest.md, which is gitignored by design: it is
+Writes research/notebooks/_digest/notebook_digest.md, gitignored by design: it is
 derived from the notebooks and goes stale the moment one is re-run. Rebuild with
 ``make digest`` after re-running any notebook.
 
@@ -19,10 +19,10 @@ import re
 # Located from this file rather than the working directory, so the digest builds
 # the same whether it is invoked by `make digest` or run from anywhere else.
 HERE = pathlib.Path(__file__).resolve().parent
-NB_DIR = HERE / "notebooks"
-POSTER = HERE / "figures" / "poster"
-DIGEST = HERE / "figures" / "digest"
-OUT = HERE / "outputs" / "notebook_digest.md"
+NB_DIR = HERE
+POSTER = HERE.parent / "poster" / "exports"
+DIGEST = HERE / "_digest"
+OUT = DIGEST / "notebook_digest.md"
 
 FINDING = {
     "04": ("Beyond the Spread: the alignment gap", "utilisation", """
@@ -162,7 +162,7 @@ def main() -> None:
     w = L.append
 
     w("# Notebook digest — every metric and every chart, notebook 04 onward\n")
-    w("**Not git-tracked.** Lives under `research/outputs/`, which `.gitignore` "
+    w("**Not git-tracked.** Lives under `research/notebooks/_digest/`, which `.gitignore` "
       "excludes because it is derived from the notebooks.\n")
     w("Regenerate with `make digest` after re-running any notebook. "
       "Metrics are read from `nb*_metrics.json`; charts are extracted from the "

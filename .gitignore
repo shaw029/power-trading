@@ -13,15 +13,21 @@ __pycache__/
 /data/*
 /artifacts/
 
-# Research figure exports and analysis outputs. Both are derived, both are
-# rebuilt by re-running the notebook that owns them, and neither is reproducible
-# from a clone — the store those notebooks read is 18 GB and is not in the
-# repository. So the small subset the poster actually places is published into
-# research/poster/assets by `make poster` and tracked there, and the bulk here
-# is not. That subset is derived by reading the .typ sources, so a board that
-# gains a panel picks it up rather than breaking for the next person to clone.
-/research/figures/
-/research/outputs/
+# Derived research artifacts. Each sits inside whatever produces it, so what is
+# scratch is obvious from the path rather than from this file.
+#
+#   poster/exports   the notebooks' full-resolution figure exports. The small
+#                    subset the board actually places is published into
+#                    poster/assets by `make poster`, and that subset is tracked —
+#                    a clone cannot rebuild these, because the store the notebooks
+#                    read is 18 GB and is not in the repository.
+#   notebooks/_digest        the digest and its extracted charts, `make digest`
+#   notebooks/_outputs       handoffs between notebooks, e.g. nb04 -> nb09
+#   notebooks/robustness/_outputs   CSVs and pickles from the robustness scripts
+/research/poster/exports/
+/research/notebooks/_digest/
+/research/notebooks/_outputs/
+/research/notebooks/robustness/_outputs/
 
 # Rendered boards — 250 KB of binary per revision, and `make poster` remakes
 # them in seconds. The .typ layout source is the artifact under version control.

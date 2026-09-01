@@ -1,4 +1,4 @@
-"""D1, Lane B — Balancing Mechanism acceptances during operator scarcity.
+"""Does the acceptance correction change sign under operator scarcity?
 
 Section 4's response figures are built from physical notifications. Section 3's
 window showed acceptances cutting delivery 26% in top-decile *load* hours, with
@@ -57,10 +57,10 @@ def _publish(**kv):
     acceptance-corrected numbers reached the board through notebook 10's own
     export, and this file stayed behind. It is kept because the scripts still
     cross-check against each other through it, and it is gitignored with the
-    rest of research/outputs.
+    rest of the robustness outputs.
     """
     import json
-    p = REPO_ROOT / "research/outputs/boalf_metrics.json"
+    p = REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_metrics.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     cur = json.loads(p.read_text()) if p.exists() else {}
     cur.update({k: str(v) for k, v in kv.items()})
@@ -133,7 +133,7 @@ wide = wide.dropna()
 print(f"\nScarcity half-hours with both bases: {len(wide):,}")
 
 print("\n" + "=" * 72)
-print("D1, Lane B — response under scarcity: notifications vs acceptances")
+print("Response under scarcity: notifications vs acceptances")
 print("=" * 72)
 
 
@@ -161,8 +161,8 @@ if len(pre) and len(mod):
           f"{mod['pn'].mean() / pre['pn'].mean():.2f}x")
     print(f"Era ratio on acceptances   : "
           f"{mod['boa'].mean() / pre['boa'].mean():.2f}x")
-wide.to_csv(REPO_ROOT / "research/outputs/boalf_scarcity.csv")
-print("\nsaved -> research/outputs/boalf_scarcity.csv")
+wide.to_csv(REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_scarcity.csv")
+print("\nsaved -> research/notebooks/robustness/_outputs/boalf_scarcity.csv")
 
 _pre, _mod = wide[wide.index < SKIP_END], wide[wide.index >= MODERN_START]
 _publish(

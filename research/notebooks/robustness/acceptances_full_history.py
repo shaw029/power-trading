@@ -1,4 +1,4 @@
-"""D1, full history — rebuild the fleet's physical position with acceptances.
+"""The acceptance correction across the whole window, for state of charge.
 
 Sections 4's readiness figures (charge at onset, energy still held at the
 deepest point) integrate state of charge from physical notifications across the
@@ -51,10 +51,10 @@ def _publish(**kv):
     acceptance-corrected numbers reached the board through notebook 10's own
     export, and this file stayed behind. It is kept because the scripts still
     cross-check against each other through it, and it is gitignored with the
-    rest of research/outputs.
+    rest of the robustness outputs.
     """
     import json
-    p = REPO_ROOT / "research/outputs/boalf_metrics.json"
+    p = REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_metrics.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     cur = json.loads(p.read_text()) if p.exists() else {}
     cur.update({k: str(v) for k, v in kv.items()})
@@ -162,7 +162,7 @@ ev = events(tight)
 print(f"\nEvents: {len(ev)}")
 
 print("\n" + "=" * 74)
-print("D1, full history — readiness on notifications vs acceptances")
+print("Readiness on notifications vs acceptances")
 print("=" * 74)
 
 rows = []
@@ -192,8 +192,8 @@ for w in r["window"].unique():
     b = r[(r["basis"] == "boa") & (r["window"] == w)]["held_at_deepest"].iloc[0]
     print(f"  {w:<20} PN {a:.0%}  →  acceptances {b:.0%}   ({(b - a) * 100:+.1f} pts)")
 
-r.to_csv(REPO_ROOT / "research/outputs/boalf_readiness.csv", index=False)
-print("\nsaved -> research/outputs/boalf_readiness.csv")
+r.to_csv(REPO_ROOT / "research/notebooks/robustness/_outputs/boalf_readiness.csv", index=False)
+print("\nsaved -> research/notebooks/robustness/_outputs/boalf_readiness.csv")
 
 
 def _pick(basis, window, col):

@@ -1,4 +1,4 @@
-"""D4 — does the flat-mean MELS bound carry notebook 09's 85%?
+"""Does notebook 09's 85% survive a per-period availability bound?
 
 nb09 bounds the MELS counterfactual with `declared[mask].mean()` — one scalar
 power rating for the whole day, averaged over the flagged hours. A site
@@ -146,7 +146,7 @@ for si, site in enumerate(sites, 1):
 d = pd.DataFrame(rows)
 tot_act, tot_flat, tot_per = d["actual"].sum(), d["flat"].sum(), d["perperiod"].sum()
 print("\n" + "=" * 70)
-print("D4 — MELS bound: flat mean over flagged hours vs per-period")
+print("MELS bound: flat mean over flagged hours vs per-period")
 print("=" * 70)
 print(f"Actual top-decile delivery      : {tot_act:>10,.0f} MWh")
 print(f"Achievable, flat-mean bound     : {tot_flat:>10,.0f} MWh "
@@ -164,5 +164,5 @@ d["per_site_per"] = d["actual"] / d["perperiod"].replace(0, np.nan)
 sub = d.dropna(subset=["per_site_flat", "per_site_per"])
 print(f"\nPer-site median delivered share: flat {sub['per_site_flat'].median():.0%}"
       f"  per-period {sub['per_site_per'].median():.0%}  (n={len(sub)})")
-d.to_csv(REPO_ROOT / "research/outputs/d4_sites.csv", index=False)
-print("saved -> research/outputs/d4_sites.csv")
+d.to_csv(REPO_ROOT / "research/notebooks/robustness/_outputs/d4_sites.csv", index=False)
+print("saved -> research/notebooks/robustness/_outputs/d4_sites.csv")
