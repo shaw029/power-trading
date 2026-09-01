@@ -104,7 +104,7 @@ grid did, and what the real fleet did — and ungrouped they read as one undiffe
 | DAY-11 | Optimiser PnL bridge | Graph | The day's PnL split into day-ahead revenue, intraday improvement, execution costs and degradation. | Changed |
 | DAY-13 | Generation mix | Graph | What powered GB that day, with demand overlaid. | Changed |
 | DAY-27 | Fleet dispersion | Graph | Every real site plotted by cycles today against £/MW, with the fleet medians as crosshairs and the optimiser starred. Shows the spread of physical strategies on the day — who traded smartest versus who just cycled hardest. | Built |
-| DAY-15 | Real batteries this day | Table | In the **Fleet this day** panel: what actual GB sites earned, best first. | Built |
+| DAY-15 | Real batteries this day | Table | In the **Fleet this day** panel: every real site on this day, best first by £/MW. Carries what Fleet performance reports over a window, cut to one day — site, optimiser, duration and MW, the wholesale and balancing legs separately, discharged MWh, cycles and capture spread. The wholesale/BM split matters more on a single day than over a window: a site can look idle on trading and still have been paid to move. | Changed |
 
 Dropped: **Capture** (net PnL as a share of the day-ahead optimum) and **DA benchmark**. Both
 described the model against itself; the fleet group now answers the same question against

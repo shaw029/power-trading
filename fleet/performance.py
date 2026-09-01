@@ -198,7 +198,19 @@ def day_site_metrics(
                 "gbp_per_mw": total / site.power_mw,
             }
         )
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
+    # The two derived per-site measures, defined here so the day view and the
+    # window view cannot drift apart: cycles on the discharge convention, and
+    # capture spread through the shared helper that returns NaN rather than an
+    # infinity for a site that never discharged.
+    capacity = pd.to_numeric(frame["capacity_mwh"], errors="coerce")
+    frame["cycles"] = pd.to_numeric(frame["discharge_mwh"], errors="coerce") / capacity.where(
+        capacity > 0
+    )
+    frame["capture_spread"] = _capture_spread(frame["total_gbp"], frame["discharge_mwh"])
+    return frame
 
 
 def site_profile(pn_records: list[dict], population: Population = CURATED) -> pd.DataFrame:

@@ -790,15 +790,35 @@ def _page_day():
         if fleet_day.empty:
             st.info("No fleet data available for this day.")
         else:
-            top = fleet_day.nlargest(5, "gbp_per_mw")[["site", "optimiser", "gbp_per_mw"]].rename(
-                columns={"site": "Site", "optimiser": "Optimiser", "gbp_per_mw": "£/MW"}
+            # The same columns Fleet performance reports over a window, cut to
+            # this one day: what the site is, what it earned, and the two rates
+            # that make sites of different size and duration comparable. The
+            # wholesale/BM split is here because on a single day it is often the
+            # whole story — a site can look idle on trading and still be paid.
+            cols = [
+                ("site", "Site", None),
+                ("optimiser", "Optimiser", None),
+                ("duration", "Duration", None),
+                ("power_mw", "MW", "{:,.0f}"),
+                ("gbp_per_mw", "£/MW", "£{:,.0f}"),
+                ("wholesale_gbp", "Wholesale", "£{:,.0f}"),
+                ("bm_gbp", "Balancing", "£{:,.0f}"),
+                ("discharge_mwh", "Discharged", "{:,.0f} MWh"),
+                ("cycles", "Cycles", "{:.2f}"),
+                ("capture_spread", "Capture", "£{:,.1f}"),
+            ]
+            present = [(c, label, fmt) for c, label, fmt in cols if c in fleet_day.columns]
+            top = fleet_day.nlargest(10, "gbp_per_mw")[[c for c, _, _ in present]].rename(
+                columns={c: label for c, label, _ in present}
             )
             st.caption(
-                "Top real sites by estimated £/MW on this day "
-                "(wholesale + BM; see Fleet performance for scope)."
+                "Real sites by estimated £/MW on this day, best first "
+                "(wholesale + BM; see Fleet performance for scope). "
+                "Capture spread is £ per MWh discharged, so it compares sites of "
+                "different size and duration honestly."
             )
             st.dataframe(
-                top.style.format({"£/MW": "£{:,.0f}"}),
+                top.style.format({label: fmt for _, label, fmt in present if fmt}),
                 width="stretch",
                 hide_index=True,
             )
