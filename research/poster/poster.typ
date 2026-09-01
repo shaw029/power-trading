@@ -164,7 +164,7 @@
 )[
   #text(size: 26pt, weight: "bold", fill: ink)[
     Energy prices already secure about four-fifths of the modelled battery's
-    high-load alignment. What remains unpriced is readiness for scarcity.
+    high-load alignment. Readiness for scarcity remains unpriced.
   ]
   #v(3mm)
   #grid(
@@ -195,7 +195,7 @@
 
 #columns(4, gutter: 14mm)[
 
-#section("1 · One fleet, two rulers", da-blue)
+#section("1 · Population and measurement basis", da-blue)
 
 #block(
   width: 100%,
@@ -281,7 +281,7 @@ are excluded from every state-of-charge figure.
 
 #colbreak()
 
-#section("2 · The incentive, modelled", cost-red)
+#section("2 · The modelled incentive", cost-red)
 #lane("LANE A · top-decile residual load · " + winA, cost-red)
 
 #lead[Profit-optimal dispatch concentrates in peak hours]
@@ -306,7 +306,7 @@ cash-out, so it never enters the day-ahead objective. It was exactly zero in
   days.
 ]
 
-#lead[The cost of alignment, and the duration constraint]
+#lead[The cost of alignment and the duration constraint]
 
 Buying every top-decile hour costs #metric[#n4.cost_all]
 #text(size: 16pt)[(£3.5 to £9.0)], which is #n4.cost_all_share. Buying the
@@ -324,7 +324,7 @@ of storage reaches, a level the longer asset attains at
 
 #colbreak()
 
-#section("3 · The fleet, on the same yardstick", cost-red)
+#section("3 · The observed fleet on the same basis", cost-red)
 #lane("LANE A · top-decile residual load · " + winA, cost-red)
 
 #lead[The shortfall accumulates at three gates in this lane]
@@ -352,7 +352,7 @@ modelled optimum's #n9.model_delivered. Netting acceptances then removes
 #metric[#nb.gate_instructed_away], concentrated in the evening peak, with the
 operator moving batteries *down*.
 
-An availability requirement could affect the first gate; it would not by
+An availability requirement could affect the first gate but would not by
 itself address the third. Why declared availability falls so far below
 registered power is not identified in public data: outage, derating, reserved response headroom and commercial
 choice are not separable here.
@@ -379,7 +379,7 @@ and the window is summer.
 
 #colbreak()
 
-#section("4 · When the operator is short", discharge)
+#section("4 · Behaviour under operator scarcity", discharge)
 #lane("LANE B · the operator's own instruments · 2018 to 2026", discharge)
 
 #lead[Response is not the binding constraint]
@@ -390,7 +390,7 @@ preserves the era difference:
 #metric[#sx.resp_mod_cl #sx.resp_mod_ci] from #n8.era_start against
 #metric[#sx.resp_pre_cl #sx.resp_pre_ci] before.
 
-#lead[Readiness is what has changed]
+#lead[Readiness has changed]
 
 Across #n5.events events the median inferred onset charge is
 #metric[#n5.soc_at_onset], no fuller than on matched control days, and
@@ -434,7 +434,7 @@ The
 instruction effect is concentrated in high-load hours rather than in
 scarcity.
 
-#lead[The level change is robust; its timing is not]
+#lead[The level change is robust but its timing is not]
 
 Searching every candidate quarter, the imposed #n7.break_date boundary ranks
 #metric[#sx.break_rank] on the Akaike information criterion. The rise is not

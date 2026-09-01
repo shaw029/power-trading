@@ -4,7 +4,7 @@
 Abhinav Shaw · A0 landscape (1189 × 841 mm)
 
 > Energy prices already secure about four-fifths of the modelled battery's
-> high-load alignment. What remains unpriced is readiness for scarcity.
+> high-load alignment. Readiness for scarcity remains unpriced.
 
 ## Build
 
@@ -36,10 +36,10 @@ with it.
 
 | Section | Question | Source |
 |---|---|---|
-| 1 · One fleet, two rulers | Who is in the GB battery fleet, and how much of it can we see? | nb06 |
-| 2 · The incentive, modelled | What would a profit-maximising battery do, and what does alignment cost it? | nb04 |
-| 3 · The fleet, on the same yardstick | Does the real fleet behave like the model, measured the same way? | nb09 |
-| 4 · When the operator is short | What did the fleet do when the system was genuinely tight? | nb05, nb07, nb08, nb10 |
+| 1 · Population and measurement basis | Who is in the GB battery fleet, and how much of it can we see? | nb06 |
+| 2 · The modelled incentive | What would a profit-maximising battery do, and what does alignment cost it? | nb04 |
+| 3 · The observed fleet on the same basis | Does the real fleet behave like the model, measured the same way? | nb09 |
+| 4 · Behaviour under operator scarcity | What did the fleet do when the system was genuinely tight? | nb05, nb07, nb08, nb10 |
 
 Lane A measures against top-decile residual load; Lane B against the operator's
 own scarcity instruments over 2018 to 2026. They are different rulers, which is
