@@ -207,7 +207,10 @@ def test_alignment_page_renders_system_tightness(app):
     at.run()
 
     assert not at.exception
-    labels = [m.label for m in at.metric]
+    # Labels carry their unit on a second line (_unit_label), so match the name
+    # rather than the whole string — otherwise adding a unit breaks the test
+    # without anything being wrong.
+    labels = [m.label.split("  \n")[0] for m in at.metric]
     # The System tightness KPI row rendered, including the no-CMN degradation
     # path ("None in window" with an empty register).
     assert "Min de-rated margin" in labels

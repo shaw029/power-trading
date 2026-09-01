@@ -2098,8 +2098,8 @@ def _page_alignment():
         "the energy actually available as the system reaches its busiest.",
     )
     cols[3].metric(
-        "Cost of full alignment",
-        f"£{mean_gap_mw_day:,.0f}/MW/day",
+        _unit_label("Cost of full alignment", "£/MW/day"),
+        f"{mean_gap_mw_day:,.0f}",
         f"{stress_forgone:,.0f} MWh top-decile delivery forgone",
         delta_color="off",
         help="DA energy value the profit-optimal dispatch would give up by "
@@ -2108,6 +2108,17 @@ def _page_alignment():
     )
 
     # --- System tightness: operator-grade margin + declared notices -----------
+    # Fetched here rather than lower down: two of the numbers below are the
+    # fleet's own response, and the page keeps its numbers together. The per-day
+    # profile is cached, so the cost is the same wherever it is called.
+    fleet_df = _with_duration(_fleet_range(_dates()))
+    scatter_df = pd.DataFrame()
+    profiles = pd.DataFrame()
+    if not fleet_df.empty:
+        fleet_df = fleet_df[fleet_df["date"].isin(dates_shown)]
+    if not fleet_df.empty:
+        profiles = pd.concat([_fleet_profile_day(iso) for iso in dates_shown], ignore_index=True)
+
     lolpdrm = _lolpdrm_window(tuple(dates_shown))
     cmn = _cmn_notices(dt.datetime.now(dt.timezone.utc).date().isoformat())
     window_start = pd.Timestamp(dates_shown[0], tz="UTC")
@@ -2128,8 +2139,8 @@ def _page_alignment():
 
     tcols = st.columns(4)
     tcols[0].metric(
-        "Min de-rated margin",
-        f"{tm['min_drm_mw']:,.0f} MW" if tm["min_drm_mw"] is not None else "—",
+        _unit_label("Min de-rated margin", "MW"),
+        f"{tm['min_drm_mw']:,.0f}" if tm["min_drm_mw"] is not None else "—",
         tm["min_drm_time"].strftime("%Y-%m-%d %H:%M") if tm["min_drm_time"] is not None else None,
         delta_color="off",
         help="Tightest de-rated margin in the window (Elexon LoLP/DRM, latest "
@@ -2160,6 +2171,51 @@ def _page_alignment():
         "strongest scarcity signal there is, and rare by design. The delta "
         "shows the register's most recent notice regardless of window.",
     )
+
+    # --- Does the fleet relieve tight margins, or compete with them? ----------
+    band_df = None
+    # Both inputs are already on this page: the fleet's half-hourly profile,
+    # built above for the scatter, and the margin feed fetched for the tier
+    # ladder. So this costs a groupby, not a fetch.
+    if not profiles.empty and not lolpdrm.empty and "drm_mw" in lolpdrm:
+        net = profiles.groupby("time")["mw"].sum().rename("fleet_mw")
+        joined = pd.concat([net, lolpdrm["drm_mw"]], axis=1).dropna()
+        # Five bands, or fewer if the margin barely moved in this window.
+        if len(joined) >= _MARGIN_BAND_MIN_PERIODS:
+            joined = joined.assign(
+                band=pd.qcut(joined["drm_mw"], 5, labels=False, duplicates="drop")
+            )
+            bands = [
+                {
+                    "band": f"{sub['drm_mw'].min() / 1000:.1f}–"
+                    f"{sub['drm_mw'].max() / 1000:.1f} GW",
+                    "mean_fleet_mw": float(sub["fleet_mw"].mean()),
+                    "charging_share": float((sub["fleet_mw"] < 0).mean()),
+                    "periods": int(len(sub)),
+                }
+                for _, sub in joined.groupby("band")
+            ]
+            band_df = pd.DataFrame(bands)
+            tight, loose = band_df.iloc[0], band_df.iloc[-1]
+            mcols = st.columns(2)
+            mcols[0].metric(
+                _unit_label("Fleet response when tightest", "MW"),
+                f"{tight['mean_fleet_mw']:,.0f}",
+                f"{tight['charging_share']:.0%} of those periods charging",
+                delta_color="off",
+                help="Mean fleet net output across the tightest fifth of the "
+                "window's de-rated margins. Positive means the fleet was "
+                "discharging into tightness rather than competing with it.",
+            )
+            mcols[1].metric(
+                _unit_label("Swing from loosest to tightest", "MW"),
+                f"{tight['mean_fleet_mw'] - loose['mean_fleet_mw']:+,.0f}",
+                f"loosest fifth {loose['mean_fleet_mw']:,.0f} MW",
+                delta_color="off",
+                help="How far the fleet's net position moves between the "
+                "loosest and tightest fifth of margins — the size of the "
+                "response, as opposed to its direction.",
+            )
 
     # State plainly what this window contained. A rolling 60-day window is
     # usually a summer one, where the operator's margin never approaches the
@@ -2251,14 +2307,8 @@ def _page_alignment():
     )
 
     # --- Fleet: profit vs alignment ------------------------------------------
-    fleet_df = _with_duration(_fleet_range(_dates()))
-    scatter_df = pd.DataFrame()
-    profiles = pd.DataFrame()
-    if not fleet_df.empty:
-        fleet_df = fleet_df[fleet_df["date"].isin(dates_shown)]
     if not fleet_df.empty:
         site_df = fleet_perf.summarise_by_site(fleet_df)
-        profiles = pd.concat([_fleet_profile_day(iso) for iso in dates_shown], ignore_index=True)
         rows = []
         for _, site in site_df.iterrows():
             mine = profiles[profiles["site"] == site["site"]]
@@ -2293,51 +2343,6 @@ def _page_alignment():
             "Notifications with the same classifier as the benchmark. ⚠ sites "
             "are ancillary-tilted; their revenue is understated."
         )
-
-    # --- Does the fleet relieve tight margins, or compete with them? ----------
-    band_df = None
-    # Both inputs are already on this page: the fleet's half-hourly profile,
-    # built above for the scatter, and the margin feed fetched for the tier
-    # ladder. So this costs a groupby, not a fetch.
-    if not profiles.empty and not lolpdrm.empty and "drm_mw" in lolpdrm:
-        net = profiles.groupby("time")["mw"].sum().rename("fleet_mw")
-        joined = pd.concat([net, lolpdrm["drm_mw"]], axis=1).dropna()
-        # Five bands, or fewer if the margin barely moved in this window.
-        if len(joined) >= _MARGIN_BAND_MIN_PERIODS:
-            joined = joined.assign(
-                band=pd.qcut(joined["drm_mw"], 5, labels=False, duplicates="drop")
-            )
-            bands = [
-                {
-                    "band": f"{sub['drm_mw'].min() / 1000:.1f}–"
-                    f"{sub['drm_mw'].max() / 1000:.1f} GW",
-                    "mean_fleet_mw": float(sub["fleet_mw"].mean()),
-                    "charging_share": float((sub["fleet_mw"] < 0).mean()),
-                    "periods": int(len(sub)),
-                }
-                for _, sub in joined.groupby("band")
-            ]
-            band_df = pd.DataFrame(bands)
-            tight, loose = band_df.iloc[0], band_df.iloc[-1]
-            mcols = st.columns(2)
-            mcols[0].metric(
-                _unit_label("Fleet response when tightest", "MW"),
-                f"{tight['mean_fleet_mw']:,.0f}",
-                f"{tight['charging_share']:.0%} of those periods charging",
-                delta_color="off",
-                help="Mean fleet net output across the tightest fifth of the "
-                "window's de-rated margins. Positive means the fleet was "
-                "discharging into tightness rather than competing with it.",
-            )
-            mcols[1].metric(
-                _unit_label("Swing from loosest to tightest", "MW"),
-                f"{tight['mean_fleet_mw'] - loose['mean_fleet_mw']:+,.0f}",
-                f"loosest fifth {loose['mean_fleet_mw']:,.0f} MW",
-                delta_color="off",
-                help="How far the fleet's net position moves between the "
-                "loosest and tightest fifth of margins — the size of the "
-                "response, as opposed to its direction.",
-            )
 
     # --- Gap by day type + stress events --------------------------------------
     tag_rows: dict[str, dict] = {}
