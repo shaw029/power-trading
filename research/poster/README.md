@@ -41,9 +41,9 @@ with it.
 | 3 · The observed fleet on the same basis | Does the real fleet behave like the model, measured the same way? | nb09 |
 | 4 · Behaviour under operator scarcity | What did the fleet do when the system was genuinely tight? | nb05, nb07, nb08, nb10 |
 
-Lane A measures against top-decile residual load; Lane B against the operator's
-own scarcity instruments over 2018 to 2026. They are different rulers, which is
-the reason section 3 exists.
+The utilisation basis measures against top-decile residual load, the scarcity
+basis against the operator's own instruments over 2018 to 2026. They are
+different measures, which is the reason section 3 exists.
 
 ## Inputs — why `assets/` is tracked
 

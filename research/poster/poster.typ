@@ -60,15 +60,15 @@
   #text(size: 23pt, weight: "bold", fill: ink)[#body]
 ]
 
-#let lane(label, accent) = block(width: 100%, inset: (bottom: 3mm))[
+#let basis(label, accent) = block(width: 100%, inset: (bottom: 3mm))[
   #box(fill: accent.lighten(85%), inset: (x: 3.5mm, y: 1.8mm), radius: 2pt)[
     #text(size: 15pt, weight: "bold", fill: accent.darken(20%))[#label]
   ]
 ]
 
-#let tag(letter, accent) = box(
+#let tag(basis, accent) = box(
   fill: accent, inset: (x: 2mm, y: 0.8mm), radius: 2pt, baseline: 1pt,
-)[#text(size: 13pt, weight: "bold", fill: white)[LANE #letter]]
+)[#text(size: 13pt, weight: "bold", fill: white)[#upper(basis)]]
 
 #let panel(path, caption, ratio: 100%) = block(width: 100%, breakable: false)[
   #v(2.5mm)
@@ -171,18 +171,18 @@
     columns: (1fr, 1fr, 1fr),
     gutter: 11mm,
     [#text(size: 18pt)[
-      #tag("A", cost-red) A profit-optimised #n4.asset battery already delivers
+      #tag("utilisation", cost-red) A profit-optimised #n4.asset battery already delivers
       #text(fill: da-blue, weight: "bold")[#n4.free_share] of the top-decile
       energy it could reach. The remainder costs
       #text(fill: da-blue, weight: "bold")[#n4.cost_all].
     ]],
     [#text(size: 18pt)[
-      #tag("A", cost-red) GB's reserve-scarcity component settles through
+      #tag("utilisation", cost-red) GB's reserve-scarcity component settles through
       cash-out, not the day-ahead price a schedule optimises, and was zero in
       #text(fill: da-blue, weight: "bold")[#n4.scarcity_zero] of this window.
     ]],
     [#text(size: 18pt)[
-      #tag("B", discharge) Since #n8.era_start the fleet responds more
+      #tag("scarcity", discharge) Since #n8.era_start the fleet responds more
       strongly yet enters scarcity with
       #text(fill: da-blue, weight: "bold")[lower charge], by
       #text(fill: da-blue, weight: "bold")[#absn(sx.onset_diff_anch) to
@@ -204,16 +204,16 @@
   radius: 2pt,
 )[
   #text(size: 18pt)[
-    #text(weight: "bold", fill: cost-red.darken(10%))[Lane A, the system
+    #text(weight: "bold", fill: cost-red.darken(10%))[Utilisation: the system
     working hardest.] Top decile of residual load, #n9.threshold_gw.
     A utilisation measure, not shortage. Sections 2 and 3, #n4.window_days.
     #v(2mm)
-    #text(weight: "bold", fill: discharge.darken(20%))[Lane B, the operator
+    #text(weight: "bold", fill: discharge.darken(20%))[Scarcity: the operator
     short of slack.] Loss-of-load probability at or above 10⁻⁴, 2,075
     half-hours, with de-rated margin below 1 GW (n = #n5.n_drm) and Capacity
     Market Notices (n = #n5.n_cmn) as rarer exhibits. Section 4, 2018 to 2026.
     #v(2mm)
-    No number from one lane is quoted against the other.
+    No number from one basis is quoted against the other.
   ]
 ]
 
@@ -246,7 +246,7 @@ are excluded from every state-of-charge figure.
   end-of-day depletion is an upper bound and the schedule is never rewarded
   for pre-event charge. Fleet behaviour comes from half-hourly physical
   notifications, with charge integrated rather than metered; Balancing
-  Mechanism acceptances are netted as a measured sensitivity on both lanes.
+  Mechanism acceptances are netted as a measured sensitivity on both bases.
 ]
 
 #lead[How other markets price tightness]
@@ -282,7 +282,7 @@ are excluded from every state-of-charge figure.
 #colbreak()
 
 #section("2 · The modelled incentive", cost-red)
-#lane("LANE A · top-decile residual load · " + winA, cost-red)
+#basis("UTILISATION · top-decile residual load · " + winA, cost-red)
 
 #lead[Profit-optimal dispatch concentrates in peak hours]
 
@@ -325,9 +325,9 @@ of storage reaches, a level the longer asset attains at
 #colbreak()
 
 #section("3 · The observed fleet on the same basis", cost-red)
-#lane("LANE A · top-decile residual load · " + winA, cost-red)
+#basis("UTILISATION · top-decile residual load · " + winA, cost-red)
 
-#lead[The shortfall accumulates at three gates in this lane]
+#lead[The shortfall accumulates at three gates on this basis]
 
 #v(1mm)
 #block(inset: (left: 1mm))[
@@ -380,7 +380,7 @@ and the window is summer.
 #colbreak()
 
 #section("4 · Behaviour under operator scarcity", discharge)
-#lane("LANE B · the operator's own instruments · 2018 to 2026", discharge)
+#basis("SCARCITY · the operator's own instruments · 2018 to 2026", discharge)
 
 #lead[Response is not the binding constraint]
 
@@ -426,7 +426,7 @@ at a high state of charge.
   instruments defined in Section 1.
 ]
 
-#lead[Acceptances change little in this lane]
+#lead[Acceptances change little on this basis]
 
 The response moves from #nb.response_pn to #metric[#nb.response_boa] and onset
 charge by two points, against the #metric[#nb.cut_pct] reduction in Section 3.
@@ -460,7 +460,7 @@ compositional: a fixed panel of #n7.panel_sites sites shifts
     #text(size: 18pt, weight: "bold", fill: ink)[Limitations]
     #v(1.5mm)
     #text(size: 15.5pt)[
-    - *Lane A is one 60-day window,* because no single public source spans the
+    - *The utilisation basis is one 60-day window,* because no single public source spans the
       period: ENTSO-E stopped publishing GB day-ahead prices. A winter re-run
       puts the gap at #n4.winter_gap_range against this window's
       #n4.forgone_pct.
