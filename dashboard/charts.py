@@ -1634,17 +1634,27 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
         return fig
 
     if metric in ("cycles", "capacity", "capture"):
-        col, title, axis = {
-            "cycles": ("cycles", "Fleet cycles per day", "Cycles per day"),
+        # Each carries its own hover label and precision: a bare "%{y:,.2f}"
+        # reads as a unitless number, and two decimals is wrong for both £/MWh
+        # and MW.
+        col, title, axis, hover = {
+            "cycles": (
+                "cycles",
+                "Fleet cycles per day",
+                "Cycles per day",
+                "Cycles %{y:,.2f}",
+            ),
             "capture": (
                 "capture_spread",
                 "Fleet capture spread by day",
                 "Capture spread (£/MWh discharged)",
+                "Capture spread £%{y:,.1f}/MWh",
             ),
             "capacity": (
                 "mw",
                 "Fleet nameplate reporting by day — coverage",
                 "Nameplate power reporting (MW)",
+                "Reporting %{y:,.0f} MW",
             ),
         }[metric]
         fig = go.Figure(
@@ -1652,11 +1662,14 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
                 x=dates,
                 y=daily_df[col],
                 marker_color=COLORS["da"],
-                hovertemplate="%{y:,.2f}<extra></extra>",
+                hovertemplate=f"{hover}<extra></extra>",
             )
         )
         apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
-        fig.update_layout(showlegend=False)
+        # Unified hover, as every other daily series on this page uses: it puts
+        # the date at the head of the tooltip. Without it a bar reports only its
+        # own value, and the reader cannot tell which day they are on.
+        fig.update_layout(showlegend=False, hovermode="x unified")
         fig.update_yaxes(title_text=axis)
         return fig
 
