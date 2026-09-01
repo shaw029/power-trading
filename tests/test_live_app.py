@@ -329,3 +329,72 @@ def test_duration_change_does_not_error(app):
     apply_btn.set_value(True).run()
     assert not at.exception
     assert "4h" in at.radio[0].value
+
+
+def test_gap_factors_reproduce_the_headline_exactly():
+    """The three factors multiply back to £/MW/day with no residual.
+
+    That identity is the whole claim the Execution gap table makes: the gap is
+    accounted for, not merely described. If it ever stops holding, the table is
+    asserting an attribution it cannot support.
+    """
+    import re
+
+    from dashboard.live_app import _gap_factors
+
+    sites = pd.DataFrame(
+        {
+            "site": ["A", "B"],
+            "power_mw": [50.0, 100.0],
+            "capacity_mwh": [100.0, 200.0],
+            "days": [60, 60],
+            "wholesale_gbp": [270_000.0, 600_000.0],
+            "bm_gbp": [50_000.0, 10_000.0],
+            "discharge_mwh": [5_400.0, 13_000.0],
+            "cycles_per_day": [0.90, 1.083],
+        }
+    )
+    mw_days = float((sites["power_mw"] * sites["days"]).sum())
+    cap_days = float((sites["capacity_mwh"] * sites["days"]).sum())
+    table = _gap_factors(
+        sim=(300_000.0, 6_000.0, 50.0 * 60, 2.0),
+        fleet=(
+            float(sites["wholesale_gbp"].sum()),
+            float(sites["discharge_mwh"].sum()),
+            mw_days,
+            cap_days / mw_days,
+        ),
+        sites=sites,
+    )
+
+    def _num(text):
+        return float(re.sub(r"[£,]", "", text))
+
+    for column in ("Sim", "Fleet"):
+        cycles, hours, capture, headline = (_num(table.loc[i, column]) for i in range(4))
+        assert cycles * hours * capture == pytest.approx(headline, abs=1.0)
+
+
+def test_gap_factors_leave_balancing_revenue_out_of_capture():
+    """Capture compares like legs: the simulation never trades in the BM.
+
+    Dividing total revenue by throughput would credit the fleet with a market
+    the benchmark cannot enter, which reads as execution skill.
+    """
+    from dashboard.live_app import _capture_per_site
+
+    sites = pd.DataFrame(
+        {
+            "wholesale_gbp": [270_000.0],
+            "bm_gbp": [90_000.0],
+            "discharge_mwh": [5_400.0],
+        }
+    )
+    assert float(_capture_per_site(sites).iloc[0]) == pytest.approx(50.0)
+
+
+def test_capture_per_site_is_nan_when_a_site_never_discharged():
+    from dashboard.live_app import _capture_per_site
+
+    sites = pd.DataFrame({"wholesale_gbp": [1_000.0], "bm_gbp": [0.0], "discharge_mwh": [0.0]})
+    assert pd.isna(_capture_per_site(sites).iloc[0])

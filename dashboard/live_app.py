@@ -1477,6 +1477,78 @@ def _fleet_hourly_shape(dates: list[str], sites: pd.DataFrame) -> pd.DataFrame |
     return pd.DataFrame({"hour": hourly.index, "fleet": hourly.values / nameplate})
 
 
+def _gap_factors(sim, fleet, sites) -> pd.DataFrame:
+    """Factorise £/MW/day into cycles x duration x capture, for both sides.
+
+    The identity is exact::
+
+        £/MW/day = (discharge / capacity / days)     cycles per day
+                 x (capacity / power)                duration, hours
+                 x (revenue / discharge)             capture, £/MWh
+
+    so the three factors multiply back to the headline with no residual, and a
+    ratio taken factor by factor says where the gap comes from rather than only
+    how large it is.
+
+    ``sim`` and ``fleet`` are each ``(gross_gbp, discharge_mwh, mw_days,
+    duration_h)``. Both must be gross and wholesale-only or the factors are not
+    measuring the same thing. ``sites`` supplies the per-site spread, which is
+    the part of the gap that is actually execution: the simulation has perfect
+    foresight and no operator can be graded against that, but operators can be
+    compared with each other.
+    """
+
+    def _split(gross_gbp, discharge, mw_days, duration_h):
+        per_mw_day = gross_gbp / mw_days if mw_days else float("nan")
+        capture = gross_gbp / discharge if discharge else float("nan")
+        # Derived from the identity rather than measured separately, so the
+        # three factors reproduce per_mw_day exactly.
+        cycles = per_mw_day / (duration_h * capture) if duration_h and capture else float("nan")
+        return per_mw_day, cycles, duration_h, capture
+
+    s_mwday, s_cycles, s_hours, s_capture = _split(*sim)
+    f_mwday, f_cycles, f_hours, f_capture = _split(*fleet)
+
+    per_site_capture = _capture_per_site(sites)
+    rows = [
+        ("Cycles per day", s_cycles, f_cycles, "{:,.2f}", sites["cycles_per_day"]),
+        ("Duration (h)", s_hours, f_hours, "{:,.1f}", None),
+        ("Capture (£/MWh)", s_capture, f_capture, "£{:,.1f}", per_site_capture),
+        ("= £/MW/day", s_mwday, f_mwday, "£{:,.0f}", None),
+    ]
+    out = []
+    for name, sim_v, fleet_v, fmt, spread in rows:
+        row = {
+            "Factor": name,
+            "Sim": fmt.format(sim_v) if pd.notna(sim_v) else "—",
+            "Fleet": fmt.format(fleet_v) if pd.notna(fleet_v) else "—",
+            "Fleet ÷ Sim": (
+                f"{fleet_v / sim_v:.0%}" if pd.notna(sim_v) and abs(sim_v) > 1e-9 else "—"
+            ),
+        }
+        if spread is not None and len(spread.dropna()):
+            q = spread.dropna().quantile([0.25, 0.5, 0.75])
+            row["Site P25"] = fmt.format(q.loc[0.25])
+            row["Site median"] = fmt.format(q.loc[0.5])
+            row["Site P75"] = fmt.format(q.loc[0.75])
+        else:
+            row["Site P25"] = row["Site median"] = row["Site P75"] = "—"
+        out.append(row)
+    return pd.DataFrame(out)
+
+
+def _capture_per_site(sites) -> pd.Series:
+    """Each site's wholesale capture, £ per MWh discharged.
+
+    The summary frame's own ``capture_spread`` divides total revenue, balancing
+    included, by throughput. The simulation never trades in the balancing
+    mechanism, so comparing against that column would credit the fleet with a
+    market the benchmark cannot enter.
+    """
+    discharge = pd.to_numeric(sites["discharge_mwh"], errors="coerce")
+    return pd.to_numeric(sites["wholesale_gbp"], errors="coerce") / discharge.where(discharge > 0)
+
+
 def _page_sim_vs_fleet():
     view = _benchmark_view()
     if view is None:
@@ -1536,6 +1608,40 @@ def _page_sim_vs_fleet():
     mw_days = float((comp_sites["power_mw"] * comp_sites["days"]).sum())
     fleet_wholesale = float(comp_sites["wholesale_gbp"].sum()) / mw_days
 
+    # --- The gap, factorised ---------------------------------------------------
+    # £/MW/day is exactly cycles/day x duration(h) x capture(£/MWh): the identity
+    # holds by construction, so the three factors account for the whole gap with
+    # no residual. It answers the question the headline cannot — whether the
+    # fleet earns less because it moves less energy or because it earns less on
+    # each MWh it moves.
+    #
+    # Both sides are GROSS and wholesale-only. The sim's net_pnl above is net of
+    # wear and slippage while the fleet's PN x MID estimate is gross, so the two
+    # headline tiles are not quite the same measure; the factors below are, and
+    # that is what makes them comparable rather than merely adjacent.
+    sim_rows = pd.DataFrame([_pnl_row(d, sim_by_date[d]) for d in common])
+    sim_gross_gbp = float(
+        (sim_rows["benchmark_da_revenue"] + sim_rows["intraday_da_improvement"]).sum()
+    )
+    sim_discharge = float(sim_rows["discharge_mwh"].sum())
+    sim_duration_h = float(_duration_hours(duration))
+    n_days = len(common)
+
+    cap_days = float((comp_sites["capacity_mwh"] * comp_sites["days"]).sum())
+    fleet_discharge = float(comp_sites["discharge_mwh"].sum())
+    fleet_gross_gbp = float(comp_sites["wholesale_gbp"].sum())
+
+    factors = _gap_factors(
+        sim=(sim_gross_gbp, sim_discharge, REFERENCE_POWER_MW * n_days, sim_duration_h),
+        fleet=(
+            fleet_gross_gbp,
+            fleet_discharge,
+            mw_days,
+            cap_days / mw_days if mw_days else float("nan"),
+        ),
+        sites=comp_sites,
+    )
+
     # Cycles per site-day, weighted the same way the money is, so the physical
     # gap and the earnings gap are computed over the same population.
     fleet_cycles = float(
@@ -1573,11 +1679,24 @@ def _page_sim_vs_fleet():
         f"{duration} batteries{excluded_note}."
     )
 
+    st.markdown("**Where the gap comes from**")
+    st.dataframe(factors, width="stretch", hide_index=True)
+    st.caption(
+        "£/MW/day is exactly cycles × duration × capture, so the three factors "
+        "account for the whole gap with no residual — read down the column, not "
+        "across. Both sides are gross of wear and slippage and wholesale-only, "
+        "which the headline tiles above are not: the sim tile is net of its own "
+        "costs while the fleet tile is a gross PN × MID estimate. **Fleet ÷ Sim "
+        "is not a score.** The simulation has perfect foresight, so no operator "
+        "could reach it; the ratio says which factor the distance sits in. The "
+        "site quartiles are the comparison that *is* about execution — real "
+        "operators against each other, on the same day and the same duration."
+    )
+
     comp = comp_sites.assign(
         wholesale=comp_sites["wholesale_gbp"] / (comp_sites["power_mw"] * comp_sites["days"]),
         bm=comp_sites["bm_gbp"] / (comp_sites["power_mw"] * comp_sites["days"]),
     )
-    comp = comp.assign(ratio=comp["wholesale"] / sim_gbp if sim_gbp > 1e-9 else 0.0)
     per_day = comp_daily.groupby("date").agg(
         wholesale_gbp=("wholesale_gbp", "sum"), mw=("power_mw", "sum")
     )
@@ -2454,8 +2573,8 @@ and system need, from the same public feeds as everything else.
 GLOSSARY = """
 | Term | Definition |
 |---|---|
-| **Capture** | Benchmark net PnL ÷ its perfect-foresight DA arbitrage ceiling for the same day |
-| **Realisation** | Fleet wholesale £/MW/day ÷ the matching-duration benchmark ceiling over the same days |
+| **Capture ratio** | Benchmark net PnL ÷ its perfect-foresight ceiling. A ratio, not a price |
+| **Capture spread** | Gross revenue ÷ MWh discharged (£/MWh). Same units as the degradation lever |
 | **Cycle** | One full discharge equivalent: discharged MWh ÷ nameplate MWh |
 | **Residual load** | Demand − wind − embedded solar (MW) |
 | **Stress / surplus** | Top-decile residual load / bottom decile or negative prices, over the shown window |

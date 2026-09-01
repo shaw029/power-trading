@@ -1719,11 +1719,15 @@ def chart_sim_vs_fleet_sites(df: pd.DataFrame, sim_gbp: float, sim_label: str) -
     """Per-site £/MW/day split wholesale vs BM, against the sim ceiling.
 
     ``df`` has one row per site: ``site``, ``optimiser``, ``wholesale`` and
-    ``bm`` (£/MW/day over the common days) and ``ratio`` (wholesale ÷ sim).
-    Only the wholesale leg is comparable to the simulation — the BM segment is
-    revenue from a market the sim does not play, so it is stacked separately
-    and excluded from the ratio labels. ``sim_gbp`` is drawn as a reference
-    line, not a bar: it is a perfect-foresight ceiling, not a competitor.
+    ``bm`` (£/MW/day over the common days). Only the wholesale leg is comparable
+    to the simulation — the BM segment is revenue from a market the sim does not
+    play, so it is stacked separately.
+
+    ``sim_gbp`` is drawn as a reference line, not a bar, and carries no per-site
+    percentage. A share of a perfect-foresight ceiling grades an operator against
+    a run no operator could have traded, which measures the benchmark's advantage
+    rather than anyone's execution. The comparison the chart does support is
+    between the sites, which are all trading the same days under the same rules.
     """
     df = df.sort_values("wholesale")
     labels = [f"{s}  ·  {o}" for s, o in zip(df["site"], df["optimiser"])]
@@ -1735,13 +1739,7 @@ def chart_sim_vs_fleet_sites(df: pd.DataFrame, sim_gbp: float, sim_label: str) -
             orientation="h",
             name="Wholesale leg (PN × MID)",
             marker_color=COLORS["da"],
-            text=[f"{r:.0%}" for r in df["ratio"]],
-            textposition="outside",
-            textfont=dict(size=11, color=_INK),
-            hovertemplate=(
-                "%{y}<br>Wholesale £%{x:,.0f}/MW/day"
-                "<br>%{text} of the sim ceiling<extra></extra>"
-            ),
+            hovertemplate="%{y}<br>Wholesale £%{x:,.0f}/MW/day<extra></extra>",
         )
     )
     fig.add_trace(
@@ -1763,7 +1761,7 @@ def chart_sim_vs_fleet_sites(df: pd.DataFrame, sim_gbp: float, sim_label: str) -
     apply_theme(
         fig,
         height=max(DEFAULT_CHART_HEIGHT, 30 * len(df) + 140),
-        title="Sites vs the sim ceiling — like legs compared, BM shown apart",
+        title="Real sites, wholesale beside balancing — the ceiling marked for scale",
     )
     fig.update_layout(barmode="relative")
     fig.update_xaxes(title_text="Estimated revenue (£/MW/day)")

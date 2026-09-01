@@ -253,6 +253,7 @@ Sidebar label: **Execution gap**.
 | — | **The headline gap** | — | *Like legs only — wholesale against wholesale.* | — |
 | SVF-2 | Simulation ceiling | Number | The best a perfect trader could have done on the DA/MID spread (£/MW/day). | Built |
 | SVF-3 | Fleet wholesale avg | Number | The wholesale leg (PN × MID) only, MW-weighted across the comparison sites — the single leg the simulation also plays. Balancing revenue is deliberately outside it. | Built |
+| SVF-12 | Where the gap comes from | Table | The headline factorised: £/MW/day is exactly cycles × duration × capture (£/MWh), so the three rows multiply back to it with no residual and say which factor the distance sits in. Both sides gross and wholesale-only, which the tiles above are not. Fleet ÷ Sim is not a score — nobody can trade against perfect foresight; the site quartiles beside it are the comparison that is about execution, real operators against each other. | Added |
 | SVF-11 | Physical gap | Number | Fleet cycles per day against the simulation's, on delivered throughput. Explains *why* the realisation gap exists: did the fleet trade the same energy worse, or simply move less of it? | Built |
 | SVF-5 | Sites compared | Note | How many real batteries are in the comparison, and how many were excluded, as a caption under the numbers. It is context for reading them, not a measurement of its own. | Changed |
 | — | **Behaviour & timing** | — | *When does reality fall behind?* | — |
