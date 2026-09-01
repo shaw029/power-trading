@@ -105,25 +105,26 @@ the research layer, plus a methodology page carrying scope and caveats.
 
 ## Research
 
-The framework is also the instrument for a study of the GB battery fleet: does
-profit-optimal dispatch coincide with what a resilient system needs, and what
-would closing the gap cost?
-
-Ten notebooks. Five carry the argument, and each one interrogates the last.
+**Strategy — does it make money, and where does the money come from?**
 
 | | | |
 |---|---|---|
-| **04** | Alignment gap | Poses the question against a modelled battery, on a priced benchmark |
-| **05** | Stress response | Takes it to the real fleet, on the operator's own scarcity instruments rather than a price proxy |
-| **07** | Regime shift | **Attacks 05.** Rising response, or a step change at the Open Balancing Platform cutover? |
-| **09** | Model vs fleet | **Concedes 04 and 05 were never comparable** — two rulers, two questions — and rebuilds them onto one |
-| **10** | Acceptances | **Corrects 05, 08 and 09.** A notification is a plan; the Balancing Mechanism instructs units away from it |
+| **01** | DA positioning | Model shootout, nested walk-forward calibration with an explicit stability check, execution sweep under liquidity and risk constraints, production tear sheet — and a naive-baseline decomposition separating model skill from imbalance carry |
+| **02** | Hybrid execution | Hedge-ratio sweep across 0–1 against a risk/reward frontier, worst drawdowns under full imbalance exposure, and the production choice at 0.15 — the hedge is priced, and production carries only the portion the data shows to be free |
+| **03** | BESS dispatch | PnL waterfall from DA benchmark through intraday improvement, execution friction, imbalance and degradation; price capture, rebalancing impact, and the DA/intraday capacity allocation frontier |
+
+**The fleet study — the same machinery turned on a different question:** does
+profit-optimal dispatch serve a system under stress, and what would closing the
+gap cost? **04** poses it against a modelled battery, **05** takes it to the real
+GB fleet on the operator's own scarcity instruments, **07** attacks 05's own trend
+model, **09** concedes 04 and 05 were never comparable and rebuilds them onto one
+ruler, and **10** corrects three earlier notebooks for the difference between a
+notified plan and what the operator actually instructed.
 
 The finding: energy prices already secure most of a modelled battery's high-load
 alignment, and what stays unpriced is readiness for scarcity.
 
-The census behind the denominators (06), the modern-era re-cut (08), the strategy
-backtests (01–03), the robustness checks and the A0 board:
+All ten notebooks, the robustness checks behind them and the A0 board:
 **[research/](research/)**
 
 ---
@@ -144,7 +145,7 @@ backtests (01–03), the robustness checks and the A0 board:
 
 - [x] **Phase 1 — DA positioning engine.** Walk-forward validated XGBoost on residual-load mispricing, with signal gating, execution constraints and dynamic sizing.
 - [x] **Phase 2 — Intraday execution.** Hybrid passive-MID / active-TP-SL engine with configurable hedge ratio and per-period stop-loss cap.
-- [ ] **Phase 3 — Physical asset optimisation (in progress).** LP day-ahead scheduling plus rolling-horizon intraday re-optimisation, SOC tracking, asymmetric efficiencies, priced degradation, and the market-allocation lever. Validated against the live GB benchmark and the real fleet.
+- [x] **Phase 3 — Physical asset optimisation.** LP day-ahead scheduling plus rolling-horizon intraday re-optimisation, SOC tracking, asymmetric efficiencies, priced degradation, and the market-allocation lever. Validated against the live GB benchmark and the real fleet.
 - [ ] **Phase 4 — Stochastic optimisation and MID forecasting (planned).** Replace the constant `da_commit_fraction` with a two-stage scenario LP; replace the DA-price proxy for unseen periods with a genuine updating MID forecast; then reformulate the replan as a multi-stage stochastic programme, producing dispatch robust to forecast error rather than point-optimal against a single forecast.
 
 ---
