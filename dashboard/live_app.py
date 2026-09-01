@@ -85,16 +85,13 @@ from src.bess.bess_asset import BESSAsset  # noqa: E402
 REPO_URL = "https://github.com/shaw029/power-trading"
 
 SCOPE = f"""
-**Live, and deliberately light.** Every figure here is fetched from free public
-feeds on demand and settled while you wait — no database, no precomputed
-artifacts, no API keys. That design is also the limit: it runs on free hosting,
-so it carries a rolling 60-day window and the 51 battery sites that can be priced
-from public data, which is 4,091 MW, or 66% of GB BM-registered battery MW.
+The dashboard reads free public feeds on demand and settles the benchmark within
+the session. That keeps it to a rolling 60-day window and to the 51 battery sites
+that can be priced from public data — 4,091 MW, or 66% of GB BM-registered
+battery MW.
 
-**The research is not this scaled down.** What is true of the fleet *as a whole*
-needs years of data and the full census — more than an interactive app can hold —
-so those questions are answered in notebooks instead, and the two are built to
-different budgets.
+Questions about the fleet as a whole need a longer window and the full census, so
+they are answered in the repository's notebooks rather than here.
 
 | | Here | In the repository |
 |---|---|---|
@@ -103,9 +100,9 @@ different budgets.
 | Revenue | wholesale proxy + balancing | adds per-unit ancillary |
 | Data | fetched live, cached per day | complete day-file archive |
 
-**[Source, method and the full study on GitHub]({REPO_URL})** — the notebooks are
-under `research/`, the board they feed is `research/poster/`, and the reasoning
-behind the split is `docs/DATA_ARCHITECTURE.md`.
+[Source, method and the full study on GitHub]({REPO_URL}) — notebooks under
+`research/`, the board they feed in `research/poster/`, and the reasoning behind
+the split in `docs/DATA_ARCHITECTURE.md`.
 """
 
 METHODOLOGY = """
@@ -2391,10 +2388,10 @@ and system need, from the same public feeds as everything else.
   latest print per settlement period (forecast horizon 1, else the shortest
   published) — tight when LoLP > 0 or the de-rated margin is below {TIER2_BAR} MW
   (roughly one large CCGT plus operating reserve; an absolute threshold by
-  design, unlike tier 1's window-relative decile). **This is a looser bar than
-  the {SCARCITY_BAR} MW scarcity threshold above, deliberately**: the dashboard's job
-  is to show the margin tightening, and the research's is to certify that the
-  system was genuinely short. A tier-2 period is not a scarcity event. Tier 3 is a declared
+  design, unlike tier 1's window-relative decile). This is a looser bar than the
+  {SCARCITY_BAR} MW scarcity threshold above, which is the research's: tier 2 marks the
+  margin tightening rather than certifying a shortage, so a tier-2 period is not
+  a scarcity event. Tier 3 is a declared
   Capacity Market Notice: the half-hour overlaps an issued notice's target
   window (cancellations are not applied in this version — a cancelled CMN can
   over-shade, never hide a tight period). Periods without a LoLP/DRM print are
@@ -2432,7 +2429,7 @@ GLOSSARY = _fill_bars(GLOSSARY)
 
 
 def _page_methodology():
-    _page_header("Methodology", "What these numbers are, and what they are not")
+    _page_header("Methodology", "How each figure on this page set is produced")
 
     # Numbered, because the sections answer a reader's questions in order: what
     # this is, then each of the three things it measures, then how to read the
@@ -2443,10 +2440,7 @@ def _page_methodology():
 
     st.divider()
     st.subheader("1 · The benchmark battery")
-    st.caption(
-        "Configured from the sidebar, so every *Benchmark* figure moves with it — "
-        "two readers on different settings are looking at different batteries."
-    )
+    st.caption("Configured from the sidebar; every *Benchmark* figure moves with those settings.")
     st.markdown(METHODOLOGY)
 
     st.divider()
