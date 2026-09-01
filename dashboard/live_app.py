@@ -2111,17 +2111,6 @@ def _page_alignment():
     )
 
     # --- System tightness: operator-grade margin + declared notices -----------
-    # Fetched here rather than lower down: two of the numbers below are the
-    # fleet's own response, and the page keeps its numbers together. The per-day
-    # profile is cached, so the cost is the same wherever it is called.
-    fleet_df = _with_duration(_fleet_range(_dates()))
-    scatter_df = pd.DataFrame()
-    profiles = pd.DataFrame()
-    if not fleet_df.empty:
-        fleet_df = fleet_df[fleet_df["date"].isin(dates_shown)]
-    if not fleet_df.empty:
-        profiles = pd.concat([_fleet_profile_day(iso) for iso in dates_shown], ignore_index=True)
-
     lolpdrm = _lolpdrm_window(tuple(dates_shown))
     cmn = _cmn_notices(dt.datetime.now(dt.timezone.utc).date().isoformat())
     window_start = pd.Timestamp(dates_shown[0], tz="UTC")
@@ -2175,11 +2164,21 @@ def _page_alignment():
         "shows the register's most recent notice regardless of window.",
     )
 
-    # --- Does the fleet relieve tight margins, or compete with them? ----------
+    # The per-BMU fetch is the heaviest call on the page, so it runs after the
+    # tiles above have painted rather than before them. Everything below needs it.
+    fleet_df = _with_duration(_fleet_range(_dates()))
+    scatter_df = pd.DataFrame()
+    profiles = pd.DataFrame()
+    if not fleet_df.empty:
+        fleet_df = fleet_df[fleet_df["date"].isin(dates_shown)]
+    if not fleet_df.empty:
+        profiles = pd.concat([_fleet_profile_day(iso) for iso in dates_shown], ignore_index=True)
+
+    # Fleet net position by de-rated margin band, for the chart lower down. Both
+    # inputs are already on this page — the fleet's half-hourly profile and the
+    # margin feed fetched for the tier ladder — so this costs a groupby, not a
+    # fetch.
     band_df = None
-    # Both inputs are already on this page: the fleet's half-hourly profile,
-    # built above for the scatter, and the margin feed fetched for the tier
-    # ladder. So this costs a groupby, not a fetch.
     if not profiles.empty and not lolpdrm.empty and "drm_mw" in lolpdrm:
         net = profiles.groupby("time")["mw"].sum().rename("fleet_mw")
         joined = pd.concat([net, lolpdrm["drm_mw"]], axis=1).dropna()
@@ -2199,26 +2198,6 @@ def _page_alignment():
                 for _, sub in joined.groupby("band")
             ]
             band_df = pd.DataFrame(bands)
-            tight, loose = band_df.iloc[0], band_df.iloc[-1]
-            mcols = st.columns(2)
-            mcols[0].metric(
-                _unit_label("Fleet response when tightest", "MW"),
-                f"{tight['mean_fleet_mw']:,.0f}",
-                f"{tight['charging_share']:.0%} of those periods charging",
-                delta_color="off",
-                help="Mean fleet net output across the tightest fifth of the "
-                "window's de-rated margins. Positive means the fleet was "
-                "discharging into tightness rather than competing with it.",
-            )
-            mcols[1].metric(
-                _unit_label("Swing from loosest to tightest", "MW"),
-                f"{tight['mean_fleet_mw'] - loose['mean_fleet_mw']:+,.0f}",
-                f"loosest fifth {loose['mean_fleet_mw']:,.0f} MW",
-                delta_color="off",
-                help="How far the fleet's net position moves between the "
-                "loosest and tightest fifth of margins — the size of the "
-                "response, as opposed to its direction.",
-            )
 
     # State plainly what this window contained. A rolling 60-day window is
     # usually a summer one, where the operator's margin never approaches the
