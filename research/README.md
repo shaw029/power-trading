@@ -80,6 +80,6 @@ reason the poster's inputs are tracked while its exports are not — see
 [`poster/README.md`](poster/README.md).
 
 ```bash
-make poster    # compile both A0 variants
+make poster    # compile the A0 board
 make digest    # rebuild the digest from stored outputs
 ```

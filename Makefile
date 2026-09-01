@@ -20,7 +20,7 @@ check: format lint typecheck test
 dashboard:
 	streamlit run dashboard/app.py
 
-# Compile both A0 poster variants from their layout source
+# Compile the A0 poster from its layout source
 poster:
 	./research/poster/build.sh
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Compile the A0 boards, and keep their tracked inputs honest.
+# Compile the A0 board, and keep its tracked inputs honest.
 #
 # The notebooks export every figure three ways into ./exports,
 # which is gitignored: it is bulky, it is derived, and it is rebuilt whenever a
@@ -9,9 +9,9 @@
 # author those exports are unreproducible, and a board whose inputs are missing
 # is a layout file nobody can render.
 #
-# So the subset the boards actually place is published into ./assets, which is
-# tracked. That set is derived by reading the .typ sources rather than listed
-# here, which means a panel added to a board is picked up automatically instead
+# So the subset the board actually places is published into ./assets, which is
+# tracked. That set is derived by reading the .typ source rather than listed
+# here, which means a panel added to the board is picked up automatically instead
 # of being forgotten until someone clones and the build breaks.
 set -euo pipefail
 
@@ -24,7 +24,7 @@ command -v typst >/dev/null 2>&1 || {
   exit 1
 }
 
-# Everything the two boards reference, read straight out of their source.
+# Everything the board references, read straight out of its source.
 needed=$(
   { grep -ohE '"[a-z0-9_]+\.svg"' ./*.typ | tr -d '"'
     grep -ohE 'json\("assets/[a-z0-9_]+\.json"\)' ./*.typ | grep -oE '[a-z0-9_]+\.json'
@@ -51,8 +51,5 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
-for variant in poster poster_lean; do
-  typst compile --root . "${variant}.typ" "${variant}.pdf"
-  printf '  %-12s -> research/poster/%s.pdf (%s)\n' \
-    "$variant" "$variant" "$(du -h "${variant}.pdf" | cut -f1)"
-done
+typst compile --root . poster.typ poster.pdf
+printf '  poster -> research/poster/poster.pdf (%s)\n' "$(du -h poster.pdf | cut -f1)"

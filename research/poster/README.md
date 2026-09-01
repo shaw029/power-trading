@@ -9,36 +9,28 @@ Abhinav Shaw · A0 landscape (1189 × 841 mm)
 ## Build
 
 ```bash
-make poster          # both variants, from the repo root
+make poster                    # from the repo root
+./research/poster/build.sh     # or directly
 ```
 
-or directly:
+Requires [Typst](https://typst.app) (`brew install typst`). Output lands beside the
+source as `poster.pdf`, gitignored — the layout source is the artifact under
+version control, the board is a render of it.
 
-```bash
-./research/poster/build.sh
-```
+## Reading design
 
-Requires [Typst](https://typst.app) (`brew install typst`). Output lands beside
-the source as `poster.pdf` and `poster_lean.pdf`, both gitignored — the layout
-source is the artifact under version control, the board is a render of it.
+A poster session gives five seconds walking past, sixty seconds if the reader
+stops, and after that the author is the medium. So the board is built in three
+tiers rather than two: every finding opens with a bold statement that stands on
+its own, with two or three lines of support beneath it. A reader who takes only
+the bold lines leaves with the whole argument; a judge who reads everything still
+finds the caveats. Material that exists to defend rather than to inform sits
+behind the QR.
 
-## Two variants, one set of numbers
-
-| | length | reading tiers | for |
-|---|---|---|---|
-| `poster.typ` | ~2,290 words, a nine minute read | title, body | the reader who stops and reads |
-| `poster_lean.typ` | about a third shorter | title, **bold finding line**, body | the reader walking past |
-
-The lean variant exists because a poster session gives five seconds walking past
-and sixty seconds if the reader stops. The dense board asks for time the format
-does not give. The lean one adds the middle tier it lacks: every finding opens
-with a bold statement that stands alone, with two or three lines of support
-beneath. A reader who takes only the bold lines still leaves with the whole
-argument.
-
-Both read the **same** metric JSONs and the **same** SVG panels from `assets/`,
-so they cannot disagree about a number. Change an analysis, re-run the notebook
-that owns it, and both boards move together.
+No number on the board is typed by hand. Every figure and metric is read from
+`assets/`, written by the notebook that computes it, so the board cannot drift
+from the analysis: change an analysis, re-run its notebook, and the board moves
+with it.
 
 ## Structure
 
@@ -61,7 +53,7 @@ clone cannot rebuild it. The store those notebooks read is 18 GB and is not in
 the repository, so for anyone but the author those exports are unreproducible,
 and a board whose inputs are missing is a layout file nobody can render.
 
-So `build.sh` publishes the subset the boards actually place into `assets/`, and
+So `build.sh` publishes the subset the board actually places into `assets/`, and
 that subset is tracked — 16 files, 456 KB:
 
 - `nb{04,05,06,07,08,09,10}_metrics.json` and `stats_metrics.json` — every number
