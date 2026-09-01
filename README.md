@@ -1,46 +1,10 @@
 # Day-Ahead Power Trading
 
-Quantitative research on the GB wholesale electricity market: a trading framework
-for virtual and battery strategies, and a study of what the real GB battery fleet
-does when the system is short.
-
-Two things live here, and they answer different questions.
-
-| | |
-|---|---|
-| **The framework** | Can a battery be dispatched profitably against GB day-ahead and intraday prices? LP scheduling, rolling-horizon re-optimisation, walk-forward ML, a live benchmark. |
-| **The study** | Does profit-optimal dispatch coincide with what a resilient system needs — and if not, what does closing the gap cost? |
-
----
-
-## The finding
-
-**Energy prices already secure about four-fifths of a modelled battery's
-high-load alignment. What remains unpriced is readiness for scarcity.**
-
-| | |
-|---|---|
-| Stress delivery the profit-optimal battery forgoes | **18%** — 481 of 2,656 MWh (CI 9–28%) |
-| Cost of closing that gap completely | **£6/MW/day**, 6% of benchmark revenue |
-| Alignment obtained for free by price signal alone | **81%** |
-| Reserve scarcity price, the signal meant to buy readiness | **£0.00/MWh** mean, exactly zero in **99.5%** of periods |
-
-And the real fleet, measured against the operator's own scarcity instruments
-rather than a price proxy:
-
-| | |
-|---|---|
-| GB BM-registered battery population reconstructed | **87 sites, 124 BM Units, 6,234 MW** |
-| Modern fleet response vs. the 2018–2026 average | **2.5–2.8x harder** (from April 2024, 45 events) |
-| State of charge at scarcity onset, then vs. now | **61% → 47%** |
-| Balancing Mechanism acceptances vs. notified plans | acceptances cut measured delivery **27%** |
-
-The last line is the reason notebook 10 exists: every fleet figure built from
-Final Physical Notifications is a plan, not an outcome, and correcting for what
-the operator actually instructed moves all of them.
-
-Full argument, caveats and method: **[research/](research/)** ·
-the A0 board: **[research/poster/](research/poster/)**
+An end-to-end quantitative trading framework for the GB wholesale electricity
+market: day-ahead virtual positioning against imbalance, hybrid intraday
+execution, and battery dispatch optimised by LP with rolling-horizon
+re-optimisation — validated on a 2018 backtest and benchmarked live against the
+real GB battery fleet.
 
 ![Virtual strategy](research/notebooks/assets/equity_curve.png)
 ![Battery dispatch in the DA market](research/notebooks/assets/bess_strategy_showcase.png)
@@ -136,6 +100,18 @@ grouped by epistemic status: the simulated benchmark, the observed GB system, an
 the research layer, plus a methodology page carrying scope and caveats.
 
 → Deploy steps and structure in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#dashboard).
+
+---
+
+## Research
+
+The framework is also the instrument for a study of the GB battery fleet: whether
+profit-optimal dispatch coincides with what a resilient system needs, and what
+closing the gap would cost. Ten notebooks, the robustness checks behind them, and
+an A0 conference board.
+
+Findings, method and caveats: **[research/](research/)** · the board:
+**[research/poster/](research/poster/)**
 
 ---
 
