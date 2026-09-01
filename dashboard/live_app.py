@@ -112,7 +112,8 @@ So fleet figures here describe GB grid-scale storage closely, and describe the s
 tail poorly. What is missing is not a random sample: it is small sites, plus every
 battery traded behind an aggregator or supplier unit, which has no per-unit feed at all
 and sits outside even the denominator. The census behind these numbers is in
-`notebooks/06_fleet_coverage_census.ipynb`; the tier split is in `DATA_ARCHITECTURE.md`.
+`research/notebooks/06_fleet_coverage_census.ipynb`; the tier split is in
+`docs/DATA_ARCHITECTURE.md`.
 
 *Coverage figures are computed in the notebook on its pinned register snapshot. This page states
 them rather than recomputing them — keeping the census out of the dashboard's process is
@@ -2225,7 +2226,7 @@ def _page_alignment():
                 "therefore a *utilisation* finding — what the fleet did when "
                 "the system worked hardest. What it does when the operator is "
                 "genuinely short needs years of history and lives in "
-                "`notebooks/05` and `08`."
+                "`research/notebooks/05` and `08`."
             )
 
     n_unknown = int(len(tiers) - tm["n_tier2_known"])
@@ -2427,7 +2428,7 @@ and system need, from the same public feeds as everything else.
   as a resilience finding**, here or in the research. This dashboard's rolling
   60-day window is almost always a utilisation window, and the Alignment gap
   page says so on the page when it is; the scarcity lane needs years of history
-  and lives in `notebooks/05` and `08`.
+  and lives in `research/notebooks/05` and `08`.
 - **Residual load** — transmission demand (ITSDO) minus wind (FUELHH) minus
   embedded solar (PV_Live), half-hourly. **Top-decile load** = the busiest tenth
   of half-hours over the shown window; **surplus** = the quietest tenth, or any
