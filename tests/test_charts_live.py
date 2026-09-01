@@ -37,6 +37,7 @@ from dashboard.charts import (  # noqa: F401
     chart_generation_mix,
     chart_renewable_daily,
     chart_price_capture,
+    chart_realized_shape,
     chart_price_volatility,
     chart_shape_overlay,
     chart_stress_frequency,
@@ -329,6 +330,46 @@ def test_chart_mean_top_decile_day_without_a_persistent_peak():
         index=range(24),
     )
     assert not chart_mean_top_decile_day(df).layout.shapes
+
+
+def test_every_live_chart_wears_the_shared_theme():
+    """One look across the app: a chart that sets its own layout drifts.
+
+    Two charts used to call ``update_layout(template=...)`` directly and so
+    rendered in plotly's default font and ink beside thirty that did not.
+    """
+    import re
+
+    import dashboard.charts as charts_mod
+
+    src = open("dashboard/charts.py", encoding="utf-8").read()
+    live = open("dashboard/live_app.py", encoding="utf-8").read()
+    blocks = re.split(r"\ndef (chart_[a-z_0-9]+)\(", src)
+    offenders = []
+    for i in range(1, len(blocks), 2):
+        name, body = blocks[i], blocks[i + 1].split("\ndef ")[0]
+        if not re.search(rf"\b{name}\(", live):
+            continue                      # not on the live dashboard
+        if "apply_theme(" in body or "_chart_fleet_grouped(" in body:
+            continue                      # themed directly or by delegation
+        offenders.append(name)
+    assert not offenders, f"live charts bypassing apply_theme: {offenders}"
+    assert hasattr(charts_mod, "apply_theme")
+
+
+def test_realized_shape_keeps_its_two_axis_titles():
+    """The dual axis is the subject here, so neither label may be clobbered."""
+    times = pd.date_range("2024-01-01T00:00:00Z", periods=24, freq="60min")
+    dispatch = pd.DataFrame(
+        {"timestamp": times, "final_mw": [10.0] * 24, "da_mw": [8.0] * 24}
+    )
+    prices = pd.DataFrame(
+        {"day_ahead_price": [50.0] * 24, "mid_price": [55.0] * 24}, index=times
+    )
+    sched = pd.DataFrame({"timestamp": times, "da_mw": [8.0] * 24})
+    fig = chart_realized_shape(dispatch, prices, sched)
+    assert fig.layout.yaxis.title.text == "Price (£/MWh)"
+    assert fig.layout.yaxis2.title.text.startswith("Dispatch")
 
 
 def test_chart_generation_mix_stacks_groups_and_demand():

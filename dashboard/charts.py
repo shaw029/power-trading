@@ -277,23 +277,33 @@ def chart_realized_shape(
             legendrank=1,
         )
     )
-    fig.update_layout(
+    # Through apply_theme like every other chart, so it inherits the app's
+    # font, ink and hairline grid instead of plotly's defaults. The dual axis
+    # is the one thing it needs on top: price and MW share a clock but not a
+    # scale, and here the second axis is the subject rather than a comparison
+    # smuggled in.
+    apply_theme(
+        fig,
+        height=DEFAULT_CHART_HEIGHT,
         # Kept short: the chart sits in a half-width column, where the old
         # subtitle truncated mid-word. The legend already names every series.
         title="Optimiser dispatch — plan vs realised",
-        xaxis=dict(title="Hour of Day", dtick=1),
-        yaxis=dict(title="Price (£/MWh)", side="left"),
+    )
+    # Both y-axis titles set in one call: a bare update_yaxes would write the
+    # price label onto the dispatch axis too, since it selects every y-axis.
+    fig.update_layout(
+        yaxis=dict(title="Price (£/MWh)"),
         yaxis2=dict(
             title=dispatch_axis,
             side="right",
             overlaying="y",
-            title_font=dict(color="#555"),
+            title_font=dict(size=12, color=_MUTED),
+            tickfont=dict(size=11, color=_MUTED),
+            showgrid=False,
         ),
         barmode="overlay",
-        legend=dict(x=0, y=1.12, orientation="h"),
-        template="plotly_white",
-        height=400,
     )
+    fig.update_xaxes(title_text="Hour of Day", dtick=1)
     return fig
 
 
@@ -476,7 +486,7 @@ def chart_operation_explorer(
             y=[0] * len(day_marks),
             mode="text",
             text=[str(t.day) for t in day_marks],
-            textfont=dict(size=10, color="#7f8c8d"),
+            textfont=dict(size=10, color=_MUTED),
             showlegend=False,
             hoverinfo="skip",
         ),
@@ -1338,13 +1348,13 @@ def chart_price_capture(
             ),
             secondary_y=True,
         )
-    fig.update_layout(
-        title=f"Price Capture — charge/discharge vs DA price (achieved spread £{spread:,.2f}/MWh)",
-        barmode="group",
-        template="plotly_white",
-        height=400,
-        legend=dict(orientation="h", x=0, y=1.12),
+    apply_theme(
+        fig,
+        height=DEFAULT_CHART_HEIGHT,
+        title=f"Price capture — charge/discharge vs DA price "
+              f"(achieved spread £{spread:,.2f}/MWh)",
     )
+    fig.update_layout(barmode="group")
     fig.update_xaxes(title_text="Hour of Day", dtick=2)
     fig.update_yaxes(
         title_text="Energy per day (MWh)" if days else "Energy (MWh)", secondary_y=False

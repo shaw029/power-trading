@@ -386,28 +386,34 @@ def _fleet_range(date_isos: tuple) -> pd.DataFrame:
     day by day. The split exists because only the first phase is I/O — the
     second is CPU on files already local, and cached per day.
     """
-    show_bar = not st.session_state.get("_fleet_warmed")
-    n = len(date_isos)
-    bar = st.progress(0.0, text=f"First load — fetching per-unit Elexon data for {n} days…") if show_bar else None
-
-    fetched: set[str] = st.session_state.setdefault("_fleet_fetched", set())
-    todo = [iso for iso in date_isos if iso not in fetched]
+    # Same rule as _warm_fetch, and for the same reason: a one-shot "warmed"
+    # flag meant only the first fleet page in a session drew a bar, so a later
+    # page — or widening the filter — did minutes of work in silence. Work not
+    # yet done shows a bar; work already cached does not.
+    done: set[str] = st.session_state.setdefault("_fleet_done", set())
+    todo = [iso for iso in date_isos if iso not in done]
+    bar = (
+        st.progress(0.0, text=f"Fetching per-unit Elexon data for {len(todo)} day(s)…")
+        if todo
+        else None
+    )
     _prefetch_fleet_days(todo, bar)
-    fetched.update(todo)
 
     frames = []
-    for i, iso in enumerate(date_isos):
+    built = 0
+    for iso in date_isos:
         day = _fleet_day(iso)
         if not day.empty:
             frames.append(day)
-        if bar is not None:
+        if bar is not None and iso in set(todo):
+            built += 1
             bar.progress(
-                0.8 + (i + 1) / n * 0.2,
-                text=f"Reconstructing delivery · {iso} ({i + 1}/{n})",
+                0.8 + built / len(todo) * 0.2,
+                text=f"Reconstructing delivery · {iso} ({built}/{len(todo)})",
             )
     if bar is not None:
         bar.empty()
-    st.session_state["_fleet_warmed"] = True
+    done.update(date_isos)
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
