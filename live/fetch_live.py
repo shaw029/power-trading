@@ -95,11 +95,28 @@ def get_day_prices(date: dt.date, da_source: str = _DA_SOURCE) -> pd.DataFrame:
     # away an otherwise valid day-ahead row, so drop on that column alone.
     prices = prices[["day_ahead_price", "mid_price"]].dropna(subset=["day_ahead_price"])
     # A missing intraday MID for an otherwise valid period falls back to that
-    # period's day-ahead price (MID == DA → zero intraday spread, so the engine
-    # simply won't deviate). Leaving it NaN would crash the intraday LP
+    # period's day-ahead price. Leaving it NaN would crash the intraday LP
     # ("Cannot multiply variables with NaN/inf") and, if it ever survived,
     # serialise to an invalid JSON NaN token that blanks the dashboard.
+    #
+    # The substitution is *recorded*, not silent. Downstream the fallback is
+    # indistinguishable from a real print that happened to equal the day-ahead
+    # price, and the two mean opposite things: one is "no intraday deviation was
+    # worth taking", the other is "we never saw an intraday price". The claim
+    # that MID == DA implies no deviation is also not generally true — capacity
+    # can be held back for intraday, or other horizon constraints can bind — so
+    # a consumer that wants to reason about deviations needs to know which rows
+    # are real. ``mid_is_proxy`` is that flag.
+    prices["mid_is_proxy"] = prices["mid_price"].isna()
     prices["mid_price"] = prices["mid_price"].fillna(prices["day_ahead_price"])
+    if prices["mid_is_proxy"].any():
+        logger.info(
+            "MID missing for %d of %d periods on %s — day-ahead price substituted "
+            "and flagged in mid_is_proxy",
+            int(prices["mid_is_proxy"].sum()),
+            len(prices),
+            date_str,
+        )
     prices.index.name = "time"
     return prices
 

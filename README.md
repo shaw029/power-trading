@@ -29,18 +29,34 @@ tests/        run in CI on every push
 
 ## Quick-start
 
+There are two installs, and the research one is **not** `requirements.txt`.
+That file is deliberately trimmed to what the Streamlit Cloud dashboard imports,
+because adding the ML stack to it breaks the deploy.
+
 ```bash
 conda create -n quantenv python=3.12 && conda activate quantenv
-pip install -r requirements.txt
+
+# Research / pipeline / notebooks / tests — a superset of the dashboard runtime.
+pip install -r requirements-ml.txt
+
+# Formatting, linting and type-checking (only needed for `make check`).
+pip install black flake8 mypy pandas-stubs types-PyYAML types-requests
 
 cp .env.example .env                          # add your ENTSO-E API key
 cp configs/config.example.yaml configs/config.yaml
 
-python bootstrap_data.py                      # seed sample data
+python bootstrap_data.py                      # seed 3 recent days from the live feeds
 make install-hooks                            # pre-commit hook, blocks CI-breaking commits
 make check                                    # format, lint, type-check, test
 python main.py --config configs/config.yaml   # run the pipeline
 ```
+
+To run only the live dashboard, `pip install -r requirements.txt` is enough.
+
+**`bootstrap_data.py` seeds three recent days — it does not reproduce the study.**
+The 2018 experiment needs a 200-day training window plus a 30-day fold and a
+60-day holdout, so a full rebuild means backfilling the whole
+`data.periods` range in the config (see `scripts/backfill_market_data.py`).
 
 ```bash
 python main.py --config configs/config.yaml --mode bess   # battery strategy
@@ -55,12 +71,15 @@ make poster                                               # compile the A0 board
 ## The strategies
 
 **Virtual** — ML-proxied residual-load mispricing against the EPEX day-ahead
-auction. Features pinned to the D-1 10:30 pre-auction vintage; walk-forward
-validation on sliding 200-day windows; exposure capped at the top-5
-highest-conviction periods per direction per day. Intraday execution splits
-volume between a passive MID hedge (15%, selected in notebook 02) and an active
-TP/SL engine, with imbalance as the deliberate terminal fallback rather than an
-unavoidable residual.
+auction. Features pinned to the D-1 10:30 pre-auction vintage, with every lagged
+series offset far enough (48 h) that its source period closed before the auction
+the position was committed at — a property `build_features` asserts on the frame
+it writes rather than claiming in prose. Walk-forward validation on sliding
+200-day windows, with the **last 60 market days held out entirely** and never
+shown to any selection step. Exposure capped at the top-5 highest-conviction
+periods per direction per day. The selected configuration takes imbalance
+settlement as its exit: on leakage-free features the passive-MID hedge sweep is
+monotone, so every step of passive share costs both PnL and Sharpe.
 
 **BESS** — Day-ahead schedule solved by LP (PuLP/HiGHS) against an ML price
 forecast, settling against the actual cleared price, so forecast quality drives
@@ -76,9 +95,34 @@ the daily cycle budget between the auction and the intraday stage. Partitioning
 energy as well as power is what makes the reservation real; notebook 03 sweeps
 the frontier to find what the optimal constant split would have been.
 
-**Backtest results are upper-bound estimates on a single 2018 window.** Notebook
-01 §3, §5 and §6 carry the hyperparameter-stability check, drawdown context and
-the naive-baseline decomposition that separates model skill from imbalance carry.
+### What the backtest actually shows
+
+The only figure quoted as out-of-sample is the untouched 60-day holdout. Model,
+signal and execution parameters are all chosen by reading the development folds,
+so the development curve is an artefact of that search, not evidence.
+
+| | Development (90 days, used for selection) | **Holdout (60 days, untouched)** |
+|---|---:|---:|
+| Executed trades | 451 | **324** |
+| Net PnL | £48,856 | **£31,891** |
+| 95% CI on net PnL | — | **£1,521 to £61,689** |
+| Sharpe (daily % returns) | 7.24 | **5.81** |
+| 95% CI on Sharpe | — | **1.06 to 11.37** |
+| Max drawdown | — | **£11,993** |
+| Traded volume / fees | — | 6,176 MWh / £6,176 |
+
+**Read the intervals, not the point estimates.** Sixty days is far too short to
+pin a Sharpe: the bootstrap cannot distinguish 1 from 11. And a large part of
+the result is not model skill at all — the mean cash-out-minus-auction spread in
+this sample is −£2.04/MWh, so a control that simply shorts the same periods the
+model selects earns £7,636 (Sharpe 1.84) on the same holdout. The model's claim
+is the distance between those, on one 60-day window, in a single 2018 regime.
+
+**Everything priced off MID is an idealised execution study.** The Market Index
+Price is a volume-weighted average of completed trades, not a quote anyone can
+hit, and one value per settlement period carries no path — so a stop is
+triggered and filled off the same number. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 → Commercial model, asset state machine and PnL decomposition in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#5-phase-3-physical-asset-bess-optimisation).
@@ -91,8 +135,8 @@ the naive-baseline decomposition that separates model skill from imbalance carry
 
 | | | |
 |---|---|---|
-| **01** | DA positioning | Model shootout, nested walk-forward calibration with an explicit stability check, execution sweep under liquidity and risk constraints, production tear sheet — and a naive-baseline decomposition separating model skill from imbalance carry |
-| **02** | Hybrid execution | Hedge-ratio sweep across 0–1 against a risk/reward frontier, worst drawdowns under full imbalance exposure, and the production choice at 0.15 — the hedge is priced, and production carries only the portion the data shows to be free |
+| **01** | DA positioning | Model shootout, walk-forward calibration on a development period with an explicit stability check, execution sweep under liquidity and risk constraints, and a single scoring of the frozen configuration on an untouched 60-day holdout |
+| **02** | Hybrid execution | Hedge-ratio sweep across the full 0–1 range, endpoints included, on the development split only, ranked by one stated criterion. Net PnL falls monotonically with passive share while Sharpe peaks near 0.40 — a real trade-off rather than the flat band previously claimed, and a peak too small (+0.25 Sharpe on 90 days) to justify the £7k of P&L it costs |
 | **03** | BESS dispatch | PnL waterfall from DA benchmark through intraday improvement, execution friction, imbalance and degradation; price capture, rebalancing impact, and the DA/intraday capacity allocation frontier |
 
 **The fleet study — the same machinery turned on a different question:** does
@@ -103,9 +147,16 @@ model, **09** concedes 04 and 05 were never comparable and rebuilds them onto on
 ruler, and **10** corrects three earlier notebooks for the difference between a
 notified plan and what the operator actually instructed.
 
-The finding: energy prices already secure about four-fifths of a modelled
-battery's high-load alignment. Response during scarcity and readiness before
-scarcity emerge as distinct dimensions of battery behaviour.
+The finding: energy prices already secure most of a modelled battery's
+high-load alignment. Response during scarcity and readiness before scarcity
+emerge as distinct dimensions of battery behaviour.
+
+> **Residual load was recomputed in September 2026.** ITSDO is already net of
+> embedded solar, so the previous formula subtracted solar a second time. On the
+> poster window that moved the top-decile threshold from 23,343.6 MW to
+> 24,800.9 MW and replaced 81 of 288 top-decile half-hours. Figures derived from
+> that classification have been regenerated; see each notebook's own metrics
+> export for the current values.
 
 All ten notebooks, the robustness checks behind them and the A0 board:
 **[research/](research/)**

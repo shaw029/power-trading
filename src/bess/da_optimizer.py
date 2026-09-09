@@ -3,6 +3,7 @@ import logging
 import pulp
 
 from src.bess.bess_asset import BESSAsset
+from src.bess.lp_common import add_mutual_exclusion, validate_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,11 @@ def optimize_da_schedule(
         for h in range(n_periods + 1)
     ]
 
+    # Charging and discharging in the same period is not a thing a battery can
+    # do, and at deeply negative prices the relaxation would otherwise pay the
+    # solver to pretend otherwise (see src/bess/lp_common).
+    add_mutual_exclusion(prob, charge, discharge, da_power, tag="_da")
+
     prob += pulp.lpSum(
         (discharge[h] - charge[h]) * da_price_forecast[h] * duration_h
         - (discharge[h] + charge[h]) * asset.degradation_cost_per_mwh * duration_h
@@ -113,4 +119,8 @@ def optimize_da_schedule(
         return [0.0] * n_periods
 
     schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
-    return _project_to_feasible(schedule, asset, duration_h)
+    projected = _project_to_feasible(schedule, asset, duration_h)
+    validate_schedule(
+        projected, asset, duration_h, target_daily_cycles, commit_fraction, label="DA schedule"
+    )
+    return projected

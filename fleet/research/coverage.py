@@ -62,9 +62,7 @@ logger = logging.getLogger(__name__)
 #: moving this module does not silently point it at a directory that does not
 #: exist — which is what happened when it moved into fleet/research, and which
 #: this file's own "optional" handling would have hidden indefinitely.
-_REPO_ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
-)
+_REPO_ROOT = next(p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists())
 ENERGY_WORKSHEET = _REPO_ROOT / "data" / "reference" / "battery_energy_capacity.xlsx"
 
 #: Accepted values of the worksheet's ``source_type``. A figure's standing

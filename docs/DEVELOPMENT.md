@@ -7,8 +7,19 @@ This project uses a Conda environment for all development and testing.
 ```bash
 conda create -n quantenv python=3.12
 conda activate quantenv
-pip install -r requirements.txt
+
+# Everything below assumes the research install, not the dashboard one.
+# requirements.txt holds only what dashboard/live_app.py imports, because it is
+# what Streamlit Cloud installs and the ML stack breaks that build.
+pip install -r requirements-ml.txt
+
+# `make check` additionally needs the tooling, which is not in either file:
+pip install black flake8 mypy pandas-stubs types-PyYAML types-requests
 ```
+
+Installing `requirements.txt` alone gives a working dashboard and a test suite
+that cannot even be collected: `pytest`, `scikit-learn`, `xgboost`, `shap`,
+`joblib`, `seaborn` and `openpyxl` all live in `requirements-ml.txt`.
 
 ## Running Tests
 

@@ -63,13 +63,39 @@ def test_get_day_prices_returns_hourly_frame_with_both_columns():
     ):
         prices = fetch_live.get_day_prices(_DAY)
 
-    assert list(prices.columns) == ["day_ahead_price", "mid_price"]
+    assert list(prices.columns) == ["day_ahead_price", "mid_price", "mid_is_proxy"]
     assert len(prices) == 24
     assert isinstance(prices.index, pd.DatetimeIndex)
     assert str(prices.index.tz) == "UTC"
     assert prices.index.min() == pd.Timestamp("2024-01-01T00:00:00Z")
     assert prices.index.max() == pd.Timestamp("2024-01-01T23:00:00Z")
     assert not prices.isna().any().any()
+
+
+def test_substituted_mid_is_flagged_and_real_prints_are_not():
+    # A proxied MID and a genuine print that happens to equal the day-ahead
+    # price are numerically identical and mean opposite things, so the fallback
+    # has to be recorded rather than inferred from the value.
+    mid_short = _mid_raw().iloc[: 23 * 2]
+    with (
+        mock.patch.object(fetch_live, "fetch_day_ahead_price", return_value=_day_ahead_raw()),
+        mock.patch.object(fetch_live, "fetch_market_index_price", return_value=mid_short),
+    ):
+        prices = fetch_live.get_day_prices(_DAY)
+
+    last = pd.Timestamp("2024-01-01T23:00:00Z")
+    assert bool(prices.loc[last, "mid_is_proxy"]) is True
+    assert prices["mid_is_proxy"].sum() == 1
+    assert not prices.drop(index=last)["mid_is_proxy"].any()
+
+
+def test_no_proxy_flag_when_mid_is_complete():
+    with (
+        mock.patch.object(fetch_live, "fetch_day_ahead_price", return_value=_day_ahead_raw()),
+        mock.patch.object(fetch_live, "fetch_market_index_price", return_value=_mid_raw()),
+    ):
+        prices = fetch_live.get_day_prices(_DAY)
+    assert not prices["mid_is_proxy"].any()
 
 
 def test_get_day_prices_falls_back_missing_mid_to_day_ahead():

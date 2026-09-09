@@ -8,8 +8,11 @@ and that a day which fails is recorded rather than aborting the run.
 
 import datetime as dt
 import importlib.util
+import json
 import sys
 from pathlib import Path
+
+import pandas as pd
 from unittest import mock
 
 import pytest
@@ -110,3 +113,106 @@ def test_nordpool_is_not_offered_for_backfill():
     """Its portal serves ~65 rolling days, so asking would log a thousand failures."""
     assert "NORDPOOL_DA" not in backfill.DEFAULT_FEEDS
     assert "NORDPOOL_DA" in cov.FEEDS
+
+
+# --------------------------------------------------------------------------- #
+# Cache readers must honour the window they are asked for
+# --------------------------------------------------------------------------- #
+
+
+class TestCacheReadersRespectDateRange:
+    """A fetcher that ignores start/end silently widens everything downstream.
+
+    Two of them did. `fetch_imbalance_price` and the NESO demand forecast globbed
+    their whole cache directory, so a request for the 2018 study window came back
+    with every settlement day on disk — 2017 through 2026. The feature frame then
+    spanned eight years instead of one, and the BESS pipeline, which sized its
+    price fetch from that frame, asked ENTSO-E for GB day-ahead prices that stop
+    existing after Brexit.
+    """
+
+    def _write_day_files(self, root, dataset, dates, payload_for):
+        d = root / dataset
+        d.mkdir(parents=True, exist_ok=True)
+        for stamp in dates:
+            (d / f"{dataset}_{stamp}_page_1.json").write_text(json.dumps(payload_for(stamp)))
+        return d
+
+    def test_b1770_reader_selects_only_the_requested_days(self, tmp_path, monkeypatch):
+        from src.data import download as D
+
+        dates = ["20171231", "20180101", "20180102", "20260824"]
+        self._write_day_files(
+            tmp_path,
+            "B1770",
+            dates,
+            lambda s: {
+                "data": [
+                    {
+                        "startTime": f"{s[:4]}-{s[4:6]}-{s[6:]}T00:00:00Z",
+                        "systemBuyPrice": 50.0,
+                        "systemSellPrice": 50.0,
+                        "netImbalanceVolume": 0.0,
+                    }
+                ]
+            },
+        )
+        monkeypatch.setattr(D, "RAW_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(D, "download_b1770", lambda *a, **k: None)
+
+        df = D.fetch_imbalance_price(
+            source="ELEXON", start_date="2018-01-01", end_date="2018-01-02"
+        )
+        got = set(pd.to_datetime(df["startTime"], utc=True).dt.strftime("%Y%m%d"))
+        assert "20260824" not in got, "reader returned days outside the requested window"
+        assert {"20180101", "20180102"} <= got
+
+    def test_ndfd_reader_selects_only_the_requested_days(self, tmp_path, monkeypatch):
+        from src.data import download as D
+
+        def payload(stamp):
+            return {
+                "result": {
+                    "records": [
+                        {
+                            "TARGETDATE": f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}",
+                            "CP_ST_TIME": "1700",
+                            "FORECAST_TIMESTAMP": f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}T08:45:00",
+                            "FORECASTDEMAND": 30000,
+                            "DAYSAHEAD": 1,
+                        }
+                    ]
+                }
+            }
+
+        self._write_day_files(tmp_path, "NESO_NDFD", ["20180102", "20180103", "20260819"], payload)
+        monkeypatch.setattr(D, "RAW_DATA_DIR", str(tmp_path))
+
+        df = D.read_neso_ndfd(start_date="2018-01-02", end_date="2018-01-03")
+        years = set(pd.to_datetime(df["TARGETDATE"]).dt.year)
+        assert 2026 not in years, "reader returned days outside the requested window"
+        assert years == {2018}
+
+    def test_reading_without_a_window_still_returns_everything(self, tmp_path, monkeypatch):
+        # The filter is opt-in: callers that pass no dates keep the old behaviour.
+        from src.data import download as D
+
+        def payload(stamp):
+            return {
+                "result": {
+                    "records": [
+                        {
+                            "TARGETDATE": f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}",
+                            "CP_ST_TIME": "1700",
+                            "FORECAST_TIMESTAMP": f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}T08:45:00",
+                            "FORECASTDEMAND": 30000,
+                            "DAYSAHEAD": 1,
+                        }
+                    ]
+                }
+            }
+
+        self._write_day_files(tmp_path, "NESO_NDFD", ["20180102", "20260819"], payload)
+        monkeypatch.setattr(D, "RAW_DATA_DIR", str(tmp_path))
+        df = D.read_neso_ndfd()
+        assert set(pd.to_datetime(df["TARGETDATE"]).dt.year) == {2018, 2026}

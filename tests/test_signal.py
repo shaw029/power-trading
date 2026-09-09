@@ -8,66 +8,38 @@ from src.models.signal import (
     generate_signal,
     build_daily_schedule,
     generate_signal_from_dataframe,
-    compute_penalty_buffer,
+    compute_execution_buffer,
     compute_volatility_threshold,
-    _PENALTY_LAG,
-    _PENALTY_WINDOW,
     _VOL_LAG,
     _VOL_WINDOW,
 )
 
 # ---------------------------------------------------------------------------
-# compute_penalty_buffer
+# compute_execution_buffer
 # ---------------------------------------------------------------------------
 
-_MIN_WARMUP = _PENALTY_LAG + 48  # first index with a valid (non-NaN) value
 
+class TestComputeExecutionBuffer:
+    """The hurdle is a fee schedule, not an estimate from settlement history.
 
-class TestComputePenaltyBuffer:
-    def _constant_series(self, value: float, n: int = 500):
-        return np.full(n, value), np.zeros(n)  # buy, sell → spread = value
+    It replaced a rolling mean of (SBP - SSP), which under GB's single cash-out
+    price is zero in every settlement period and so never moved the gate.
+    """
 
-    def test_output_length_matches_input(self):
-        buy, sell = self._constant_series(10.0)
-        result = compute_penalty_buffer(buy, sell)
-        assert len(result) == len(buy)
+    def test_sums_its_two_components(self):
+        assert compute_execution_buffer(transaction_cost=1.0, slippage=2.0) == pytest.approx(3.0)
 
-    def test_first_values_are_nan_before_warmup(self):
-        buy, sell = self._constant_series(5.0)
-        result = compute_penalty_buffer(buy, sell)
-        assert np.all(np.isnan(result[: _MIN_WARMUP - 1]))
+    def test_defaults_to_zero(self):
+        assert compute_execution_buffer() == pytest.approx(0.0)
 
-    def test_first_valid_value_at_warmup_index(self):
-        buy, sell = self._constant_series(5.0)
-        result = compute_penalty_buffer(buy, sell)
-        assert not np.isnan(result[_MIN_WARMUP - 1])
+    def test_returns_a_scalar_float(self):
+        assert isinstance(compute_execution_buffer(1.0, 2.0), float)
 
-    def test_constant_spread_converges_to_that_spread(self):
-        # After the full window warms up, rolling mean of constant c == c
-        c = 8.0
-        n = _PENALTY_LAG + _PENALTY_WINDOW + 10
-        buy = np.full(n, c)
-        sell = np.zeros(n)
-        result = compute_penalty_buffer(buy, sell)
-        assert result[-1] == pytest.approx(c)
+    def test_fee_only(self):
+        assert compute_execution_buffer(transaction_cost=1.5) == pytest.approx(1.5)
 
-    def test_zero_spread_gives_zero_penalty(self):
-        buy = sell = np.zeros(500)
-        result = compute_penalty_buffer(buy, sell)
-        valid = result[~np.isnan(result)]
-        assert np.all(valid == pytest.approx(0.0))
-
-    def test_accepts_pandas_series(self):
-        buy = pd.Series(np.full(500, 5.0))
-        sell = pd.Series(np.zeros(500))
-        result = compute_penalty_buffer(buy, sell)
-        assert isinstance(result, np.ndarray)
-        assert len(result) == 500
-
-    def test_returns_numpy_array(self):
-        buy, sell = self._constant_series(3.0)
-        result = compute_penalty_buffer(buy, sell)
-        assert isinstance(result, np.ndarray)
+    def test_slippage_only(self):
+        assert compute_execution_buffer(slippage=2.5) == pytest.approx(2.5)
 
 
 # ---------------------------------------------------------------------------
@@ -140,98 +112,77 @@ class TestComputeVolatilityThreshold:
 class TestGenerateSignal:
     def test_buy_signal_when_spread_exceeds_threshold(self):
         spread = np.array([10.0])  # 10 > 0 + 5
-        penalty = np.array([0.0])
-        result = generate_signal(spread, penalty)
+        result = generate_signal(spread)
         assert result[0] == 1
 
     def test_sell_signal_when_spread_below_negative_threshold(self):
         spread = np.array([-10.0])  # -10 < -(0 + 5)
-        penalty = np.array([0.0])
-        result = generate_signal(spread, penalty)
+        result = generate_signal(spread)
         assert result[0] == -1
 
     def test_neutral_when_spread_inside_threshold_band(self):
         spread = np.array([3.0])  # 3 < 0 + 5
-        penalty = np.array([0.0])
-        result = generate_signal(spread, penalty)
+        result = generate_signal(spread)
         assert result[0] == 0
 
     def test_exact_threshold_boundary_is_neutral(self):
         # spread == threshold → NOT strictly greater → neutral
         spread = np.array([5.0])
-        penalty = np.array([0.0])
-        result = generate_signal(spread, penalty)
+        result = generate_signal(spread)
         assert result[0] == 0
 
     def test_just_above_threshold_fires_buy(self):
         spread = np.array([5.001])
-        penalty = np.array([0.0])
-        result = generate_signal(spread, penalty)
+        result = generate_signal(spread)
         assert result[0] == 1
 
-    def test_positive_penalty_raises_threshold(self):
-        # penalty=3 → adjusted=8; spread=6 is below 8 → neutral
+    def test_execution_buffer_raises_the_gate(self):
+        # buffer=3 → gate=8; spread=6 is below 8 → neutral
         spread = np.array([6.0])
-        penalty = np.array([3.0])
-        result = generate_signal(spread, penalty, threshold=5.0)
+        result = generate_signal(spread, execution_buffer=3.0, threshold=5.0)
         assert result[0] == 0
 
-    def test_positive_penalty_raises_threshold_fires_above(self):
+    def test_execution_buffer_still_fires_above_the_raised_gate(self):
         spread = np.array([9.0])
-        penalty = np.array([3.0])
-        result = generate_signal(spread, penalty, threshold=5.0)
+        result = generate_signal(spread, execution_buffer=3.0, threshold=5.0)
         assert result[0] == 1
 
-    def test_negative_penalty_clipped_to_zero(self):
-        # negative penalty clipped → adjusted = 0 + 5 = 5; spread=6 → buy
+    def test_negative_execution_buffer_clipped_to_zero(self):
+        # a negative hurdle is meaningless; clipped → gate = 0 + 5 = 5, spread=6 → buy
         spread = np.array([6.0])
-        penalty = np.array([-10.0])
-        result = generate_signal(spread, penalty)
+        result = generate_signal(spread, execution_buffer=-10.0)
         assert result[0] == 1
-
-    def test_nan_penalty_treated_as_zero(self):
-        spread = np.array([6.0])
-        penalty = np.array([np.nan])
-        result = generate_signal(spread, penalty)
-        assert result[0] == 1  # nan→0, adjusted=5, 6>5 → BUY
 
     def test_custom_threshold(self):
         spread = np.array([12.0])
-        penalty = np.array([0.0])
         # 12 > 10 → BUY
-        result = generate_signal(spread, penalty, threshold=10.0)
+        result = generate_signal(spread, threshold=10.0)
         assert result[0] == 1
         # 12 > 13 is False → NEUTRAL
-        result2 = generate_signal(spread, penalty, threshold=13.0)
+        result2 = generate_signal(spread, threshold=13.0)
         assert result2[0] == 0
 
     def test_all_neutral_returns_zeros(self):
         spread = np.zeros(10)
-        penalty = np.zeros(10)
-        result = generate_signal(spread, penalty)
+        result = generate_signal(spread)
         assert (result == 0).all()
 
     def test_output_dtype_is_int(self):
-        result = generate_signal(np.array([6.0]), np.array([0.0]))
+        result = generate_signal(np.array([6.0]))
         assert result.dtype == int
 
     def test_output_length_matches_input(self):
         n = 100
-        result = generate_signal(np.random.randn(n), np.zeros(n))
+        result = generate_signal(np.random.randn(n))
         assert len(result) == n
 
-    def test_mismatched_lengths_raise(self):
-        with pytest.raises(ValueError, match="length"):
-            generate_signal(np.array([1.0, 2.0]), np.array([0.0]))
-
     def test_list_inputs_accepted(self):
-        result = generate_signal([10.0, -10.0, 1.0], [0.0, 0.0, 0.0])
+        result = generate_signal([10.0, -10.0, 1.0])
         assert list(result) == [1, -1, 0]
 
     def test_mixed_signals(self):
         spread = np.array([10.0, -10.0, 3.0, -3.0, 6.0])
-        penalty = np.zeros(5)
-        result = generate_signal(spread, penalty)
+        result = generate_signal(spread)
         assert list(result) == [1, -1, 0, 0, 1]
 
     # --- volatility-adjusted gate ---
@@ -240,54 +191,37 @@ class TestGenerateSignal:
         # Without vol: spread=6 > threshold=5 → BUY
         # With vol=8, multiplier=1.0: gate=max(5, 8)=8; 6 < 8 → NEUTRAL
         spread = np.array([6.0])
-        penalty = np.array([0.0])
-        assert generate_signal(spread, penalty, threshold=5.0)[0] == 1
+        assert generate_signal(spread, threshold=5.0)[0] == 1
         vol = np.array([8.0])
-        assert (
-            generate_signal(spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)[
-                0
-            ]
-            == 0
-        )
+        assert generate_signal(spread, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)[0] == 0
 
     def test_vol_threshold_floor_is_static_threshold(self):
         # vol=2, multiplier=1.0 → vol_gate=2 < threshold=5 → floor kicks in → gate=5
         # spread=6 > 5 → BUY (same as no-vol case)
         spread = np.array([6.0])
-        penalty = np.array([0.0])
         vol = np.array([2.0])
-        result = generate_signal(
-            spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0
-        )
+        result = generate_signal(spread, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)
         assert result[0] == 1
 
     def test_vol_multiplier_scales_gate(self):
         # vol=4, multiplier=2.0 → vol_gate=8 > threshold=5 → gate=8
         # spread=7 < 8 → NEUTRAL; spread=9 > 8 → BUY
-        penalty = np.array([0.0, 0.0])
         vol = np.array([4.0, 4.0])
         spread = np.array([7.0, 9.0])
-        result = generate_signal(
-            spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=2.0
-        )
+        result = generate_signal(spread, threshold=5.0, vol_threshold=vol, vol_multiplier=2.0)
         assert result[0] == 0
         assert result[1] == 1
 
     def test_vol_nan_treated_as_zero_falls_back_to_floor(self):
         # NaN vol → 0 after nan_to_num → vol_gate=max(5, 0)=5 → same as static threshold
         spread = np.array([6.0])
-        penalty = np.array([0.0])
         vol = np.array([np.nan])
-        result = generate_signal(
-            spread, penalty, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0
-        )
+        result = generate_signal(spread, threshold=5.0, vol_threshold=vol, vol_multiplier=1.0)
         assert result[0] == 1
 
     def test_vol_threshold_length_mismatch_raises(self):
         with pytest.raises(ValueError, match="length"):
-            generate_signal(
-                np.array([1.0, 2.0]), np.array([0.0, 0.0]), vol_threshold=np.array([1.0])
-            )
+            generate_signal(np.array([1.0, 2.0]), vol_threshold=np.array([1.0]))
 
 
 # ---------------------------------------------------------------------------
@@ -398,15 +332,12 @@ class TestBuildDailySchedule:
 
 
 class TestGenerateSignalFromDataframe:
-    def _make_df(self, with_penalty: bool = True):
+    def _make_df(self, with_penalty: bool = False):
         df = pd.DataFrame(
             {
                 "predicted_spread": [10.0, -10.0, 1.0],
-                "penalty_buffer": [0.0, 0.0, 0.0],
             }
         )
-        if not with_penalty:
-            df = df.drop(columns=["penalty_buffer"])
         return df
 
     def test_signal_column_added(self):
@@ -417,8 +348,8 @@ class TestGenerateSignalFromDataframe:
         result = generate_signal_from_dataframe(self._make_df())
         assert list(result["signal"]) == [1, -1, 0]
 
-    def test_no_penalty_column_defaults_to_zero_penalty(self):
-        df = self._make_df(with_penalty=False)
+    def test_defaults_to_zero_execution_buffer(self):
+        df = self._make_df()
         result = generate_signal_from_dataframe(df)
         assert list(result["signal"]) == [1, -1, 0]
 
@@ -434,7 +365,7 @@ class TestGenerateSignalFromDataframe:
             generate_signal_from_dataframe(df)
 
     def test_custom_threshold_applied(self):
-        df = pd.DataFrame({"predicted_spread": [6.0], "penalty_buffer": [0.0]})
+        df = pd.DataFrame({"predicted_spread": [6.0]})
         result_default = generate_signal_from_dataframe(df, threshold=5.0)
         result_high = generate_signal_from_dataframe(df, threshold=7.0)
         assert result_default["signal"].iloc[0] == 1
@@ -447,7 +378,6 @@ class TestGenerateSignalFromDataframe:
             {
                 "time": ts,
                 "predicted_spread": [10.0, 9.0, 8.0, 7.0, 6.0, 1.0],
-                "penalty_buffer": np.zeros(6),
             }
         )
         result = generate_signal_from_dataframe(df, threshold=5.0, top_n=None)
@@ -460,7 +390,6 @@ class TestGenerateSignalFromDataframe:
             {
                 "time": ts,
                 "predicted_spread": [10.0, 9.0, 8.0, 7.0],
-                "penalty_buffer": np.zeros(4),
             }
         )
         result = generate_signal_from_dataframe(df, threshold=5.0, top_n=2)
@@ -475,7 +404,6 @@ class TestGenerateSignalFromDataframe:
         df = pd.DataFrame(
             {
                 "predicted_spread": [10.0, 9.0, 8.0, 7.0],
-                "penalty_buffer": np.zeros(4),
             }
         )
         result = generate_signal_from_dataframe(df, threshold=5.0, top_n=1)

@@ -73,9 +73,16 @@ CMN_BASE_URL = "https://gbcmn.nationalenergyso.com/api/notifications"
 # NESO CKAN Resource IDs
 NESO_NDFD_RESOURCE_ID = "9847e7bb-986e-49be-8138-717b25933fbb"
 
-# Legacy constants — kept for downstream imports until download.py is migrated
-START_DATE = "2018-01-01"
-END_DATE = "2019-01-01"
+# Default fetch window for the download helpers, overridable by environment.
+#
+# These are the fallback dates every ``fetch_*`` in src/data/download.py takes
+# when a caller passes none. They were hardcoded to the 2018 study window while
+# ``bootstrap_data.py`` set START_DATE/END_DATE in ``os.environ`` and expected
+# them to be honoured — so the "seed three recent days" quick-start step
+# silently asked every feed for a full year of 2018 instead, against live APIs.
+# Reading the environment here makes that override work as the caller intended.
+START_DATE = os.environ.get("START_DATE", "2018-01-01")
+END_DATE = os.environ.get("END_DATE", "2019-01-01")
 DEFAULT_DEMAND_FORECAST_SOURCE = "NESO_API"
 DEFAULT_WIND_FORECAST_SOURCE = "ELEXON"
 DEFAULT_GENERATION_ACTUAL_SOURCE = "ELEXON"

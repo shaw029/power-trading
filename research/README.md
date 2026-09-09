@@ -73,6 +73,17 @@ built from NESO, Elexon and ENTSO-E feeds that is roughly 18 GB and is not in th
 repository. Rebuild it first with `scripts/build_stress_store.py` and
 `scripts/backfill_market_data.py` — hours, and an ENTSO-E API key.
 
+**And a rebuild will not stay possible indefinitely.** The GB day-ahead price
+comes from the Nord Pool data portal, which serves a rolling window of roughly
+65 days. The 2026 alignment window (`2026-06-26` to `2026-08-24`) is inside it
+today and was refetched in September 2026; once it ages out, current code plus an
+API key is no longer enough, and the study becomes reproducible only from the
+cached day-files under `data/raw_new/NORDPOOL_DA/` — which are subject to Nord
+Pool's licence and are not redistributed here. Anyone depending on an exact
+rebuild should archive that cache now rather than assume the feed will still
+answer. The 2018 trading study has no such problem: ENTSO-E serves its window
+historically, and the raw day-files it needs are cached in `data/raw_2018/`.
+
 That is also why notebook **outputs are committed**: they are the only way to read
 the study without rebuilding the data, they render on GitHub, and
 `build_digest.py` extracts the digest's charts directly from them. For the same

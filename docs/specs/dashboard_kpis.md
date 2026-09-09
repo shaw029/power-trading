@@ -89,7 +89,7 @@ grid did, and what the real fleet did — and ungrouped they read as one undiffe
 | DAY-2 | Net PnL | Number | What the battery made today, per MW, against a typical day in the window. | Built |
 | DAY-3 | Intraday improvement | Number | What re-optimising against the realised intraday price added on top of the day-ahead schedule, and its share of net PnL. Perfect foresight, so an upper bound. | Changed |
 | DAY-4 | Cycles | Number | How hard it worked today, with the cycle target beside it. | Built |
-| DAY-20 | Capture spread | Number | Gross margin per MWh discharged today. Same measure as the optimiser and fleet pages, and shares units with the degradation lever, so a day below it earned less per MWh than wear cost. | Added |
+| DAY-20 | Capture spread | Number | Gross margin per MWh discharged today. Same measure as the optimiser and fleet pages. Capture spread is £ per MWh **discharged**; the degradation lever is £ per MWh of **throughput** (every MWh in plus every MWh out). Same units, different denominators, so the raw lever is not the hurdle: at 0.94/0.94 efficiencies £5/MWh of throughput is £10.66 per MWh discharged. The wear line is converted onto the discharged basis before it is drawn, and labelled with both numbers. | Added |
 | — | **GB system** | — | — | — |
 | DAY-6 | DA P90−P10 spread | Number | Cheapest to dearest decile today — the opportunity a battery could actually work. | Changed |
 | DAY-21 | Peak & floor price | Number | The dearest and cheapest hours the auction cleared. A negative floor means generators paid to keep running. | Added |
@@ -130,7 +130,7 @@ Sidebar label: **Optimiser performance**  ·  URL `/optimiser`.
 | HIS-5 | Daily attribution | Graph | Each day's earnings split into where the money came from. | Built |
 | HIS-6 | Price capture | Graph | Charging and discharging by hour of day, averaged per day, against the average day-ahead price — when the battery trades, not just how much. Per day rather than window totals, which would say more about the date filter than the battery. | Built |
 | HIS-9 | Avg capture spread | Number | Margin on every MWh discharged, averaged over the window — the same measure the fleet page reports, so simulated and real batteries compare on margin. | Built |
-| HIS-10 | Capture spread by day | Graph | That margin day by day, against the window mean and the degradation cost the lever is set to. Days below the wear line earned less per MWh than cycling cost. | Built |
+| HIS-10 | Capture spread by day | Graph | That margin day by day, against the window mean and the wear line. Capture spread is £ per MWh **discharged**; the degradation lever is £ per MWh of **throughput** (every MWh in plus every MWh out). Same units, different denominators, so the raw lever is not the hurdle: at 0.94/0.94 efficiencies £5/MWh of throughput is £10.66 per MWh discharged. The wear line is converted onto the discharged basis before it is drawn, and labelled with both numbers. Days below the converted line earned less per MWh discharged than the cycling that produced it cost. | Built |
 | HIS-8 | Dispatch explorer | Graph | Hour by hour over exactly the days the sidebar selected: prices, what the battery traded, and its state of charge on one timeline. No day control of its own. | Built |
 
 ## System overview — the GB grid itself  ·  *GB power system*
@@ -189,8 +189,7 @@ are revenue-only whatever the switch says — that is the main change on this pa
 
 **Capture spread** is total revenue ÷ total discharged MWh: gross margin on every MWh pushed
 through the battery, normalised for power and duration at once, so a 500 MW site and a 34 MW
-one compare honestly. It shares units with the degradation-cost lever, which makes it readable
-against wear — a site earning less per MWh than its wear costs is losing money by trading.
+one compare honestly. Comparing it to wear needs one conversion first: Capture spread is £ per MWh **discharged**; the degradation lever is £ per MWh of **throughput** (every MWh in plus every MWh out). Same units, different denominators, so the raw lever is not the hurdle: at 0.94/0.94 efficiencies £5/MWh of throughput is £10.66 per MWh discharged. The wear line is converted onto the discharged basis before it is drawn, and labelled with both numbers.
 It is deliberately **not** divided by days: £/MWh is already a rate, so a per-day version would
 read 60× smaller over a 60-day window than over one day for identical trading, and would stop
 being comparable to the degradation lever.

@@ -338,3 +338,32 @@ def test_duration_change_does_not_error(app):
     apply_btn.set_value(True).run()
     assert not at.exception
     assert "4h" in at.radio[0].value
+
+
+# --------------------------------------------------------------------------- #
+# Cache vintage — a provisional fetch must not outlive the feed catching up
+# --------------------------------------------------------------------------- #
+
+
+def test_recent_days_get_an_expiring_vintage_key():
+    import datetime as dt
+
+    from dashboard import live_app
+
+    today = dt.date.today().isoformat()
+    assert live_app._vintage(today).startswith("provisional-")
+
+
+def test_settled_days_are_keyed_on_the_date_alone():
+    import datetime as dt
+
+    from dashboard import live_app
+
+    old = (dt.date.today() - dt.timedelta(days=live_app.PROVISIONAL_DAYS + 10)).isoformat()
+    assert live_app._vintage(old) == "final"
+
+
+def test_unparseable_date_is_treated_as_final_not_crashed():
+    from dashboard import live_app
+
+    assert live_app._vintage("not-a-date") == "final"

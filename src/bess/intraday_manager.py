@@ -3,6 +3,7 @@ import logging
 import pulp
 
 from src.bess.bess_asset import BESSAsset
+from src.bess.lp_common import add_mutual_exclusion, validate_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ def _reoptimize_schedule(
         pulp.LpVariable(f"s_{h}", lowBound=asset._min_soc_mwh, upBound=asset._max_soc_mwh)
         for h in range(n + 1)
     ]
+    add_mutual_exclusion(prob, charge, discharge, asset.power_mw, tag="_id")
     dev_pos = [pulp.LpVariable(f"dp_{h}", lowBound=0) for h in range(n)]  # extra discharge (sell)
     dev_neg = [pulp.LpVariable(f"dn_{h}", lowBound=0) for h in range(n)]  # extra charge (buy)
 
@@ -112,7 +114,15 @@ def _reoptimize_schedule(
         )
         return list(da_schedule)
 
-    return [discharge[h].varValue - charge[h].varValue for h in range(n)]
+    schedule = [discharge[h].varValue - charge[h].varValue for h in range(n)]
+    validate_schedule(
+        schedule,
+        asset,
+        duration_h,
+        label="intraday re-optimisation",
+        start_soc_mwh=start_soc_mwh,
+    )
+    return schedule
 
 
 def run_intraday_session(

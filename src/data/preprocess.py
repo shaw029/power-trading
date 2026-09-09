@@ -316,8 +316,21 @@ def process_demand_forecast(df: pd.DataFrame) -> pd.DataFrame:
         result = rolling.join(static, how="outer")
 
     result.index.name = "time"
-    result = result.sort_index().resample(_30MIN).ffill()
-    logger.info("Demand forecast processed (30-min snapshots). Shape: %s", result.shape)
+    result = result.sort_index().resample(_30MIN)
+
+    # NESO's NDFD publishes ~12 *cardinal points* per market day (overnight
+    # trough, morning rise, evening peak, …) rather than a 48-period curve, so
+    # the resampled frame is mostly gaps. Holding the last point flat would put
+    # a step between the 04:30 trough and the 08:00 morning peak and read as
+    # several GW of instantaneous demand; interpolating in time between the
+    # published points reconstructs the shape those points were chosen to
+    # describe. This is a reconstruction, not a native half-hourly forecast, and
+    # is documented as such wherever the feature is quoted.
+    result = result.interpolate(method="time", limit_area="inside")
+    logger.info(
+        "Demand forecast processed (30-min, interpolated from cardinal points). Shape: %s",
+        result.shape,
+    )
     return result
 
 

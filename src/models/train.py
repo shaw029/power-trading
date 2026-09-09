@@ -8,26 +8,66 @@ from src.utils.config import FEATURES_DATASET
 
 logger = logging.getLogger(__name__)
 
-# Pre-auction features — all known by 11:00 AM on Day-1 before the EPEX auction.
-# No Day-1 settlement data (system_buy/sell, niv, demand_actual) is included here.
+# Pre-auction features — every one admissible at the D-1 10:30 decision for its
+# own delivery period. No same-day settlement data, and no 24-hour lags: those
+# read a period that closes after the auction for every delivery hour past 10:30
+# (see src/features/build_features.py, which asserts the property).
+#
+# Only one cash-out leg appears. GB has settled on a single imbalance price
+# since BSC P305 (5 November 2015), so system_sell_price and system_buy_price
+# are the same series to the penny — carrying both would double-count one
+# signal and read as two.
 _FEATURE_COLS = [
     "wind_fc_da_d1_10h30",  # wind auction fundamental
     "demand_fc_da_d1_10h30",  # demand auction fundamental
     "auction_residual_load",  # demand_da - wind_da (computed in build_features)
     "wind_auction_drift",  # wind_da_10h30 - wind_da_07h (momentum)
-    "day_ahead_price_lag48",  # DA price 24 h ago (last complete day)
     "day_ahead_price_lag96",  # DA price 48 h ago
-    "system_sell_price_lag48",  # imbalance sell price 24 h ago
-    "system_sell_price_lag96",  # imbalance sell price 48 h ago
-    "system_buy_price_lag48",  # imbalance buy price 24 h ago
-    "system_buy_price_lag96",  # imbalance buy price 48 h ago
-    "imbalance_spread_lag48",  # SBP − SSP spread 24 h ago
-    "imbalance_spread_lag96",  # SBP − SSP spread 48 h ago
+    "day_ahead_price_lag144",  # DA price 72 h ago
+    "system_buy_price_lag96",  # cash-out price 48 h ago
+    "system_buy_price_lag144",  # cash-out price 72 h ago
+    "imbalance_gap_lag96",  # cash-out minus DA, 48 h ago
+    "imbalance_gap_lag144",  # cash-out minus DA, 72 h ago
     "hour_sin",
     "hour_cos",
     "dow_sin",
     "dow_cos",
 ]
+
+# Features the research thesis actually rests on. Residual-load mispricing is
+# the explanation the README gives for the whole strategy, so a run that
+# quietly drops it is not the strategy being described — it is a different,
+# undocumented model wearing its name. Missing these is a failed run, not a
+# warning: both were absent from every saved artifact before this was enforced.
+_REQUIRED_FEATURE_COLS = frozenset(
+    {
+        "wind_fc_da_d1_10h30",
+        "demand_fc_da_d1_10h30",
+        "auction_residual_load",
+    }
+)
+
+
+def _resolve_features(df: pd.DataFrame) -> list[str]:
+    """Feature columns present in ``df``, failing if an indispensable one is not.
+
+    Raises:
+        ValueError: if any of ``_REQUIRED_FEATURE_COLS`` is absent.
+    """
+    missing_required = sorted(_REQUIRED_FEATURE_COLS - set(df.columns))
+    if missing_required:
+        raise ValueError(
+            "Feature set is missing indispensable auction fundamentals: "
+            f"{missing_required}. These carry the residual-load signal the "
+            "strategy is built on; rebuild features rather than training without "
+            "them. (Check the NESO NDFD demand forecast parsed correctly.)"
+        )
+
+    features = [c for c in _FEATURE_COLS if c in df.columns]
+    optional_missing = [c for c in _FEATURE_COLS if c not in df.columns]
+    if optional_missing:
+        logger.warning("Optional feature columns absent (skipped): %s", optional_missing)
+    return features
 
 
 def _fit_model(
@@ -110,10 +150,23 @@ def train_with_validation(
     wf_train_days: int = 200,
     wf_test_days: int = 30,
     wf_step_days: int = 30,
+    holdout_days: int = 0,
     actual_col: str = "actual_spread",
     predicted_col: str = "predicted_spread",
 ) -> tuple:
     """Split df, fit model(s), and return out-of-sample predictions.
+
+    With ``holdout_days`` set, the final stretch of the sample is cut away before
+    any folding and never participates in selection. Walk-forward runs on what is
+    left (the *development* period), and the held-back days are scored once by a
+    model fitted on all of development. Rows come back in one frame tagged by a
+    ``split`` column so the caller can report the two separately.
+
+    This is what makes an out-of-sample claim mean something once hyperparameters,
+    signal settings and execution parameters have all been chosen by looking at
+    walk-forward results: every one of those choices has seen the development
+    folds, so the development curve is an in-sample artefact of the selection
+    procedure no matter how chronological the folds inside it were.
 
     Args:
         df:             NaN-free DataFrame with features, target, and price columns.
@@ -167,12 +220,35 @@ def train_with_validation(
     elif validation_type == "walk_forward":
         from src.evaluation.splitter import walk_forward_split
 
+        market_day = (
+            pd.to_datetime(df["time"], utc=True).dt.tz_convert("Europe/London").dt.normalize()
+        )
+        all_dates = sorted(market_day.unique())
+
+        if holdout_days > 0:
+            if holdout_days >= len(all_dates):
+                raise ValueError(
+                    f"holdout_days={holdout_days} leaves no development period "
+                    f"({len(all_dates)} market days available)"
+                )
+            holdout_dates = set(all_dates[-holdout_days:])
+            dev_df = df[~market_day.isin(holdout_dates)].reset_index(drop=True)
+            holdout_df = df[market_day.isin(holdout_dates)].reset_index(drop=True)
+            logger.info(
+                "Outer holdout reserved: %d market days (%s onward), untouched by selection",
+                holdout_days,
+                min(holdout_dates).date(),
+            )
+        else:
+            dev_df = df
+            holdout_df = df.iloc[0:0]
+
         folds: list[pd.DataFrame] = []
         model = None
         X_test_last = None
 
         for fold_idx, (train_df, test_df) in enumerate(
-            walk_forward_split(df, wf_train_days, wf_test_days, wf_step_days)
+            walk_forward_split(dev_df, wf_train_days, wf_test_days, wf_step_days)
         ):
             X_train = train_df[features]
             y_train = train_df[target_col]
@@ -191,9 +267,19 @@ def train_with_validation(
                 fold_mae,
             )
 
-            folds.append(
-                _make_predictions_df(test_df, y_test, predictions, actual_col, predicted_col)
+            fold_preds = _make_predictions_df(
+                test_df, y_test, predictions, actual_col, predicted_col
             )
+            # Provenance travels with the prediction. Downstream stages used to
+            # keep only the *dates* covered here and then re-predict them with
+            # whichever model happened to be fitted last — which for the earlier
+            # folds is a model trained on the very rows it is scoring. Carrying
+            # the fold's identity and training boundary makes that substitution
+            # detectable instead of invisible.
+            fold_preds["fold_id"] = fold_idx
+            fold_preds["train_end"] = pd.to_datetime(train_df["time"], utc=True).max()
+            fold_preds["split"] = "development"
+            folds.append(fold_preds)
             X_test_last = X_test
 
         if not folds:
@@ -204,6 +290,30 @@ def train_with_validation(
             )
 
         logger.info("Walk-forward complete: %d folds", len(folds))
+
+        if len(holdout_df) > 0:
+            # One model, fitted on everything development had, scored once on the
+            # untouched tail. No selection has seen these rows.
+            final_model = _fit_model(dev_df[features], dev_df[target_col], model_type, model_params)
+            holdout_preds = _make_predictions_df(
+                holdout_df,
+                holdout_df[target_col],
+                final_model.predict(holdout_df[features]),
+                actual_col,
+                predicted_col,
+            )
+            holdout_preds["fold_id"] = -1
+            holdout_preds["train_end"] = pd.to_datetime(dev_df["time"], utc=True).max()
+            holdout_preds["split"] = "holdout"
+            folds.append(holdout_preds)
+            model = final_model
+            X_test_last = holdout_df[features]
+            logger.info(
+                "Holdout scored: %d rows | MAE: %.2f",
+                len(holdout_preds),
+                mean_absolute_error(holdout_preds[actual_col], holdout_preds[predicted_col]),
+            )
+
         predictions_df = (
             pd.concat(folds, ignore_index=True).sort_values("time").reset_index(drop=True)
         )
@@ -223,6 +333,7 @@ def train_model(
     wf_train_days: int = 200,
     wf_test_days: int = 30,
     wf_step_days: int = 30,
+    holdout_days: int = 0,
 ) -> tuple:
     """Load features, prepare data, and run train_with_validation.
 
@@ -254,10 +365,7 @@ def train_model(
 
     df["target_pnl_long"] = df["system_sell_price"] - df["day_ahead_price"]
 
-    features = [c for c in _FEATURE_COLS if c in df.columns]
-    missing = [c for c in _FEATURE_COLS if c not in df.columns]
-    if missing:
-        logger.warning("Missing feature columns (skipped): %s", missing)
+    features = _resolve_features(df)
     logger.info("Using %d features: %s", len(features), features)
 
     valid = ~(df[features].isna().any(axis=1) | df["target_pnl_long"].isna())
@@ -274,6 +382,7 @@ def train_model(
         wf_train_days=wf_train_days,
         wf_test_days=wf_test_days,
         wf_step_days=wf_step_days,
+        holdout_days=holdout_days,
     )
 
     mae = mean_absolute_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
@@ -297,6 +406,7 @@ def train_da_price_model(
     wf_train_days: int = 200,
     wf_test_days: int = 30,
     wf_step_days: int = 30,
+    holdout_days: int = 0,
 ) -> tuple:
     """Train an ML model to predict day-ahead prices from pre-auction features.
 
@@ -327,10 +437,7 @@ def train_da_price_model(
     if "day_ahead_price" not in df.columns:
         raise ValueError("Features dataset must contain day_ahead_price")
 
-    features = [c for c in _FEATURE_COLS if c in df.columns]
-    missing = [c for c in _FEATURE_COLS if c not in df.columns]
-    if missing:
-        logger.warning("Missing feature columns (skipped): %s", missing)
+    features = _resolve_features(df)
     logger.info("Using %d features: %s", len(features), features)
 
     valid = ~(df[features].isna().any(axis=1) | df["day_ahead_price"].isna())
@@ -347,6 +454,7 @@ def train_da_price_model(
         wf_train_days=wf_train_days,
         wf_test_days=wf_test_days,
         wf_step_days=wf_step_days,
+        holdout_days=holdout_days,
         actual_col="actual_da_price",
         predicted_col="predicted_da_price",
     )
