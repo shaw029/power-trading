@@ -197,14 +197,18 @@ class TestPositionSizing:
 
 
 class TestDrawdownHalt:
-    def test_simulation_halts_at_the_next_auction_after_a_breach(self):
-        # Day 1 loses the account through the floor; the halt bites at day 2's
-        # auction, which is the next moment a book could actually be withheld.
-        sigs = np.array([1, 1])
-        da = np.array([50.0, 50.0])
-        ssp = np.array([0.0, 0.0])  # SSP=0 → big loss per trade
-        sbp = np.array([55.0, 55.0])
-        ts = pd.to_datetime(["2024-01-01T12:00:00Z", "2024-01-02T12:00:00Z"], utc=True)
+    def test_simulation_halts_once_the_loss_has_actually_settled(self):
+        # Day 1 loses the account through the floor. Day 2's book was bid at
+        # 10:30 on day 1, while day 1 was still delivering, so the halt cannot
+        # know yet. It bites at day 3, the first auction held after day 1's
+        # settlement was observable.
+        sigs = np.array([1, 1, 1])
+        da = np.array([50.0, 50.0, 50.0])
+        ssp = np.array([0.0, 0.0, 0.0])  # SSP=0 → big loss per trade
+        sbp = np.array([55.0, 55.0, 55.0])
+        ts = pd.to_datetime(
+            ["2024-01-01T12:00:00Z", "2024-01-02T12:00:00Z", "2024-01-03T12:00:00Z"], utc=True
+        )
         pnl, metrics = run_backtest(
             sigs,
             da,
@@ -218,7 +222,8 @@ class TestDrawdownHalt:
         )
         assert metrics["halted_at_period"] is not None
         assert pnl[0] != 0.0  # day 1 traded
-        assert pnl[1] == 0.0  # day 2 never bid
+        assert pnl[1] != 0.0  # day 2 was already committed and could not be pulled
+        assert pnl[2] == 0.0  # day 3 never bid
 
     def test_halt_cannot_cancel_contracts_already_in_the_book(self):
         # All three periods belong to one delivery day, so all three were bid at
@@ -750,19 +755,38 @@ class TestAuctionBookSizing:
         spiked = self._two_contracts(100.0)
         assert flat[1] == pytest.approx(spiked[1])
 
-    def test_a_later_day_does_compound_on_the_earlier_one(self):
-        # Across auctions the account genuinely has learned the result, so the
-        # next book is sized on the new equity.
-        ts = pd.to_datetime(["2024-01-01T12:00:00Z", "2024-01-02T12:00:00Z"], utc=True)
+    def test_capital_compounds_once_a_book_has_settled(self):
+        # Equity is released with a one-book lag: day 2 is bid while day 1 is
+        # still delivering, so it cannot yet see day 1's result. Day 3 can.
+        ts = pd.to_datetime(
+            ["2024-01-01T12:00:00Z", "2024-01-02T12:00:00Z", "2024-01-03T12:00:00Z"], utc=True
+        )
         pnl, _ = run_backtest(
-            signals=np.array([1, 1]),
-            da_prices=np.array([50.0, 50.0]),
-            system_sell_price=np.array([60.0, 60.0]),
-            system_buy_price=np.array([60.0, 60.0]),
+            signals=np.array([1, 1, 1]),
+            da_prices=np.array([50.0, 50.0, 50.0]),
+            system_sell_price=np.array([60.0, 60.0, 60.0]),
+            system_buy_price=np.array([60.0, 60.0, 60.0]),
             timestamps=ts,
             cost_per_trade=0.0,
         )
-        assert pnl[1] > pnl[0]
+        assert pnl[1] == pytest.approx(pnl[0])  # day 2 sized before day 1 settled
+        assert pnl[2] > pnl[1]  # day 3 compounds on it
+
+    def test_a_settled_outcome_cannot_resize_an_already_committed_book(self):
+        # The cross-day version of the same rule: changing day 1's cash-out must
+        # not move day 2's quantity, because day 2 was bid before it landed.
+        def run(first_cashout):
+            ts = pd.to_datetime(["2024-01-01T20:00:00Z", "2024-01-02T20:00:00Z"], utc=True)
+            return run_backtest(
+                signals=np.array([1, 1]),
+                da_prices=np.array([50.0, 50.0]),
+                system_sell_price=np.array([first_cashout, 60.0]),
+                system_buy_price=np.array([first_cashout, 60.0]),
+                timestamps=ts,
+                cost_per_trade=0.0,
+            )[0]
+
+        assert run(50.0)[1] == pytest.approx(run(100.0)[1])
 
     def test_book_exposure_budget_scales_the_day_back(self):
         ts = pd.to_datetime([f"2024-01-01T{h:02d}:00:00Z" for h in range(10)], utc=True)

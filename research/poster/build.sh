@@ -52,4 +52,16 @@ if [ -n "$missing" ]; then
 fi
 
 typst compile --root . poster.typ poster.pdf
-printf '  poster -> research/poster/poster.pdf (%s)\n' "$(du -h poster.pdf | cut -f1)"
+
+# An A0 board is one page. Typst compiles a two-page document perfectly happily,
+# so a successful build says nothing about whether the content still fits: an
+# overlong paragraph silently pushes the footer onto a second sheet that nobody
+# prints. Fail here instead.
+pages=$(python3 -c "import re,sys; d=open('poster.pdf','rb').read(); m=re.search(rb'/Type\\s*/Pages[^>]*?/Count\\s+(\\d+)', d, re.S); print(m.group(1).decode() if m else '?')")
+if [ "$pages" != "1" ]; then
+  echo "poster.pdf has $pages pages; an A0 board must be exactly 1." >&2
+  echo "Something overflowed - shorten the copy or tighten the spacers." >&2
+  exit 1
+fi
+
+printf '  poster -> research/poster/poster.pdf (%s, %s page)\n' "$(du -h poster.pdf | cut -f1)" "$pages"

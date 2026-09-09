@@ -560,6 +560,33 @@ def _run_bess_pipeline(config: dict) -> dict:
             }
         )
 
+    # Persist the forecast the dispatch actually ran on, with its provenance.
+    # Without this artifact every downstream consumer has to re-derive a forecast
+    # from the saved final estimator — which is the leak this pipeline was fixed
+    # to remove, reintroduced one notebook at a time.
+    forecast_out = da_predictions_df.copy()
+    forecast_out = forecast_out[
+        [
+            c
+            for c in (
+                "time",
+                "actual_da_price",
+                "predicted_da_price",
+                "fold_id",
+                "train_end",
+                "split",
+            )
+            if c in forecast_out.columns
+        ]
+    ]
+    paths["trading_dir"].mkdir(parents=True, exist_ok=True)
+    forecast_out.to_csv(paths["trading_dir"] / "da_forecast.csv", index=False)
+    logger.info(
+        "BESS DA forecast saved to %s (%d rows)",
+        paths["trading_dir"] / "da_forecast.csv",
+        len(forecast_out),
+    )
+
     if skipped:
         logger.warning(
             "BESS simulation skipped %d day(s) for incomplete coverage: %s",
@@ -737,11 +764,33 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
         predicted = predictions_df["predicted_spread"].values
         directional_accuracy = float(np.mean(np.sign(actual) == np.sign(predicted)))
 
+        # Forecast accuracy per split. The blended `mae` below spans development
+        # AND holdout, so ranking candidates on it reads the holdout during
+        # hyperparameter selection — the split has to exist here, not only on the
+        # trading metrics, or notebook 01's model tournament cannot avoid it.
+        by_split: dict = {}
+        if "split" in predictions_df.columns:
+            for name, part in predictions_df.groupby("split"):
+                by_split[str(name)] = {
+                    "mae": float(
+                        mean_absolute_error(part["actual_spread"], part["predicted_spread"])
+                    ),
+                    "rmse": float(
+                        np.sqrt(mean_squared_error(part["actual_spread"], part["predicted_spread"]))
+                    ),
+                    "directional_accuracy": float(
+                        np.mean(np.sign(part["actual_spread"]) == np.sign(part["predicted_spread"]))
+                    ),
+                    "n_rows": int(len(part)),
+                }
+
         ts = predictions_df["time"].values
         model_metrics = {
             "mae": mae,
             "rmse": rmse,
             "directional_accuracy": directional_accuracy,
+            # Blended figures above are exploratory only; select on this.
+            "by_split": by_split,
             "test_period_start": str(pd.to_datetime(ts[0], utc=True)),
             "test_period_end": str(pd.to_datetime(ts[-1], utc=True)),
             "test_n_periods": int(len(predictions_df)),

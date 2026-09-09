@@ -263,19 +263,17 @@ are excluded from every state-of-charge figure.
   unrewarded.
   #v(1.5mm)
   *Belgium computes a continuous scarcity price,* through adders derived from an
-  operating-reserve demand curve. Elia has published them on a D+1 basis since
-  October 2019 — but as a parallel calculation for information, not as a
-  settled payment: no battery has been paid these adders. The instrument is
-  designed and running alongside the market, which is a different claim from
-  a market that pays for scarcity.
+  operating-reserve demand curve. Elia has published them D+1 since October 2019
+  — but as a parallel calculation for information, not a settled payment: no
+  battery has been paid these adders. Designed and running alongside the market
+  is a different claim from a market that pays for scarcity.
   #v(1mm)
   *France pays for the charging behaviour directly.* TURPE 7's injection-withdrawal
-  component is *optional* and *locational*: it applies from 1 August 2026, to
-  storage connected at HTA, HTB 1 and HTB 2, and only in the zones CRE has
-  designated as having predictable local constraints. Where it does apply,
-  distribution-connected batteries receive up to €69/MWh to charge in midday
-  solar hours and are penalised for discharging at the wrong ones. Unlike
-  Belgium's, this one settles.
+  component is *optional* and *locational*: from 1 August 2026, for storage at
+  HTA, HTB 1 and HTB 2, and only in zones CRE has designated as having
+  predictable local constraints. Where it applies, distribution-connected
+  batteries receive up to €69/MWh to charge in midday solar hours and are
+  penalised for discharging at the wrong ones. Unlike Belgium's, this settles.
   #v(1mm)
   *GB applies neither instrument.* Scarcity reaches the battery only through
   cash-out. The
@@ -503,11 +501,11 @@ compositional: a fixed panel of #n7.panel_sites sites shifts
       outturn. \
       *Operator disclosures:* site energy capacity, each carrying its source
       and read date.
-      #v(2.5mm)
+      #v(1.5mm)
       All feeds are public. The census, the dispatch engine and every figure
       here rebuild from them at #box[*github.com/shaw029/power-trading*], with the
       full methods and limitations.
-      #v(2.5mm)
+      #v(1.5mm)
       *Policy, external to this study:* Papavasiliou et al., _The Electricity
       Journal_ 33 (2020); CRE, _TURPE 7_ (2025); DESNZ, _REMA Summer Update_
       (10 July 2025).

@@ -140,6 +140,46 @@ def _make_predictions_df(
     return pd.DataFrame(result)
 
 
+def purge_unavailable_labels(
+    train_df: pd.DataFrame, first_test_time, label_lag: pd.Timedelta | None = None
+) -> pd.DataFrame:
+    """Drop training rows whose label had not been observed by the decision time.
+
+    A chronological split is not the same as an *available* one. The book for the
+    first test day is committed at that day's D-1 10:30 auction, but the fold's
+    training window runs to the last settlement period of the preceding delivery
+    day — i.e. through the evening *after* that auction. For a target built from
+    realised cash-out prices, those labels did not exist when the model that uses
+    them had to be fitted.
+
+    On the shipped 200/30/30 walk-forward this purges roughly the last 13 hours
+    of each fold's training window; the canonical holdout fit trained to
+    2018-11-02 23:30 for a first book decided at 2018-11-02 10:30.
+
+    ``label_lag`` is added on top: a settlement price is not published the
+    instant its period ends, so the usable cutoff is earlier still. It defaults
+    to zero, which is the optimistic bound rather than the realistic one, and is
+    stated as such wherever the result is quoted.
+    """
+    from src.features.build_features import auction_decision_time
+
+    first = pd.Series([pd.to_datetime(first_test_time, utc=True)])
+    cutoff = auction_decision_time(first).iloc[0]
+    if label_lag is not None:
+        cutoff = cutoff - label_lag
+
+    times = pd.to_datetime(train_df["time"], utc=True)
+    keep = times <= cutoff
+    dropped = int((~keep).sum())
+    if dropped:
+        logger.info(
+            "Purged %d training rows whose label postdates the %s decision",
+            dropped,
+            cutoff.isoformat(),
+        )
+    return train_df[keep].reset_index(drop=True)
+
+
 def train_with_validation(
     df: pd.DataFrame,
     features: list[str],
@@ -250,6 +290,9 @@ def train_with_validation(
         for fold_idx, (train_df, test_df) in enumerate(
             walk_forward_split(dev_df, wf_train_days, wf_test_days, wf_step_days)
         ):
+            # Chronological is not the same as available: purge labels the first
+            # test book's auction could not have seen.
+            train_df = purge_unavailable_labels(train_df, test_df["time"].min())
             X_train = train_df[features]
             y_train = train_df[target_col]
             X_test = test_df[features]
@@ -292,9 +335,13 @@ def train_with_validation(
         logger.info("Walk-forward complete: %d folds", len(folds))
 
         if len(holdout_df) > 0:
-            # One model, fitted on everything development had, scored once on the
+            # One model, fitted on everything development had that the holdout's
+            # first auction could actually have seen, scored once on the
             # untouched tail. No selection has seen these rows.
-            final_model = _fit_model(dev_df[features], dev_df[target_col], model_type, model_params)
+            outer_train = purge_unavailable_labels(dev_df, holdout_df["time"].min())
+            final_model = _fit_model(
+                outer_train[features], outer_train[target_col], model_type, model_params
+            )
             holdout_preds = _make_predictions_df(
                 holdout_df,
                 holdout_df[target_col],
@@ -303,7 +350,7 @@ def train_with_validation(
                 predicted_col,
             )
             holdout_preds["fold_id"] = -1
-            holdout_preds["train_end"] = pd.to_datetime(dev_df["time"], utc=True).max()
+            holdout_preds["train_end"] = pd.to_datetime(outer_train["time"], utc=True).max()
             holdout_preds["split"] = "holdout"
             folds.append(holdout_preds)
             model = final_model

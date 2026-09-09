@@ -27,6 +27,7 @@ engine uses and refuses anything that does not fit.
 from __future__ import annotations
 
 import logging
+import math
 
 import pulp
 
@@ -85,6 +86,7 @@ def validate_schedule(
     commit_fraction: float = 1.0,
     label: str = "schedule",
     start_soc_mwh: float | None = None,
+    strict: bool = False,
 ) -> dict:
     """Replay a net schedule through the asset's physics and report what it does.
 
@@ -99,9 +101,18 @@ def validate_schedule(
     instead would replay a rolling re-solve from the morning's opening charge and
     report floor breaches that never happen.
 
+    With ``strict``, a schedule that does not fit is raised rather than logged.
+    Reporting alone is not a guard: a caller that logs a warning and returns the
+    schedule anyway still hands an unexecutable plan to the engine, which is the
+    failure the check exists to prevent. Non-finite dispatch is always a
+    violation — a NaN silently passes every inequality below.
+
     Returns:
         ``{"feasible": bool, "min_soc_mwh", "max_soc_mwh", "end_soc_mwh",
         "discharge_mwh", "throughput_mwh", "violations": [str, ...]}``
+
+    Raises:
+        ValueError: if ``strict`` and the schedule is not physically executable.
     """
     soc = asset._soc_mwh if start_soc_mwh is None else start_soc_mwh
     lo, hi = asset._min_soc_mwh, asset._max_soc_mwh
@@ -110,6 +121,9 @@ def validate_schedule(
     violations: list[str] = []
 
     for h, mw in enumerate(schedule):
+        if not math.isfinite(mw):
+            violations.append(f"period {h}: dispatch is {mw!r}, not a finite MW value")
+            continue
         if mw > 0:
             released = mw * duration_h
             soc -= released / asset.discharge_efficiency
@@ -137,7 +151,10 @@ def validate_schedule(
             )
 
     if violations:
-        logger.warning("%s is not physically executable: %s", label, "; ".join(violations[:5]))
+        detail = "; ".join(violations[:5])
+        if strict:
+            raise ValueError(f"{label} is not physically executable: {detail}")
+        logger.warning("%s is not physically executable: %s", label, detail)
 
     return {
         "feasible": not violations,

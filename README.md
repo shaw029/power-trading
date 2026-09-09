@@ -78,8 +78,10 @@ it writes rather than claiming in prose. Walk-forward validation on sliding
 200-day windows, with the **last 60 market days held out entirely** and never
 shown to any selection step. Exposure capped at the top-5 highest-conviction
 periods per direction per day. The selected configuration takes imbalance
-settlement as its exit: on leakage-free features the passive-MID hedge sweep is
-monotone, so every step of passive share costs both PnL and Sharpe.
+settlement as its exit, with the TP/SL gate off — so there is no passive slice
+to size, and hedge ratio and gate are one decision rather than two. Swept
+separately inside the gate-on archetype, passive share trades P&L against
+Sharpe rather than dominating: see notebook 02.
 
 **BESS** — Day-ahead schedule solved by LP (PuLP/HiGHS) against an ML price
 forecast, settling against the actual cleared price, so forecast quality drives
@@ -103,19 +105,27 @@ so the development curve is an artefact of that search, not evidence.
 
 | | Development (90 days, used for selection) | **Holdout (60 days, untouched)** |
 |---|---:|---:|
-| Executed trades | 451 | **324** |
-| Net PnL | £48,856 | **£31,891** |
-| 95% CI on net PnL | — | **£1,521 to £61,689** |
-| Sharpe (daily % returns) | 7.24 | **5.81** |
-| 95% CI on Sharpe | — | **1.06 to 11.37** |
-| Max drawdown | — | **£11,993** |
-| Traded volume / fees | — | 6,176 MWh / £6,176 |
+| Executed trades | 456 | **329** |
+| Net PnL | £50,101 | **£29,173** |
+| 95% CI on net PnL | — | **£5 to £57,526** |
+| Sharpe (daily % returns) | 7.48 | **5.40** |
+| 95% CI on Sharpe | — | **0.56 to 10.83** |
+| Max drawdown | — | **£12,236** |
+| Traded volume / fees | — | 6,012 MWh / £6,012 |
+
+Intervals are a percentile bootstrap over **market days** — 10,000 replicates,
+seed 7 — computed by [`src/evaluation/holdout_report.py`](src/evaluation/holdout_report.py),
+not by hand. The resampling unit matters: a market day is what the strategy
+commits at, so resampling settlement periods would break the book and
+understate the spread.
 
 **Read the intervals, not the point estimates.** Sixty days is far too short to
-pin a Sharpe: the bootstrap cannot distinguish 1 from 11. And a large part of
+pin anything: the bootstrap interval on net P&L runs from roughly **breakeven**
+to £57,526, and on Sharpe from 0.56 to 10.83. A point estimate quoted without
+that range would be the single most misleading number on this page. And a large part of
 the result is not model skill at all — the mean cash-out-minus-auction spread in
 this sample is −£2.04/MWh, so a control that simply shorts the same periods the
-model selects earns £7,636 (Sharpe 1.84) on the same holdout. The model's claim
+model selects earns £7,225 (Sharpe 1.72) on the same holdout. The model's claim
 is the distance between those, on one 60-day window, in a single 2018 regime.
 
 **Everything priced off MID is an idealised execution study.** The Market Index

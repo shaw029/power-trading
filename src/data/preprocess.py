@@ -316,7 +316,7 @@ def process_demand_forecast(df: pd.DataFrame) -> pd.DataFrame:
         result = rolling.join(static, how="outer")
 
     result.index.name = "time"
-    result = result.sort_index().resample(_30MIN)
+    result = result.sort_index().resample(_30MIN).mean()
 
     # NESO's NDFD publishes ~12 *cardinal points* per market day (overnight
     # trough, morning rise, evening peak, …) rather than a 48-period curve, so
@@ -326,9 +326,25 @@ def process_demand_forecast(df: pd.DataFrame) -> pd.DataFrame:
     # published points reconstructs the shape those points were chosen to
     # describe. This is a reconstruction, not a native half-hourly forecast, and
     # is documented as such wherever the feature is quoted.
-    result = result.interpolate(method="time", limit_area="inside")
+    #
+    # **Interpolate within one market day, never across the boundary.**
+    # Each ``fc_da_*`` column is assembled by picking, per delivery period, the
+    # latest publication eligible at that period's own cutoff — so consecutive
+    # cardinal points on opposite sides of a midnight boundary can carry
+    # different information vintages. Interpolating straight down the index
+    # bridges them, and the earlier day's "frozen" value then moves when a
+    # *later* publication changes. On the 2018 cache that affected 283 rows; a
+    # two-point probe moved a 23:00 delivery's demand from 166.67 to 300 MW by
+    # editing only the next day's forecast. Grouping by market day confines each
+    # interpolation to a single auction's information set.
+    london_day = result.index.tz_convert("Europe/London").normalize()
+    result = (
+        result.groupby(london_day, group_keys=False)
+        .apply(lambda day: day.interpolate(method="time", limit_area="inside"))
+        .sort_index()
+    )
     logger.info(
-        "Demand forecast processed (30-min, interpolated from cardinal points). Shape: %s",
+        "Demand forecast processed (30-min, interpolated within market day). Shape: %s",
         result.shape,
     )
     return result

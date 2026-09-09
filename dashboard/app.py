@@ -26,7 +26,7 @@ from src.bess.bess_asset import BESSAsset  # noqa: E402
 from src.bess.da_optimizer import optimize_da_schedule  # noqa: E402
 from src.bess.intraday_manager import run_intraday_session  # noqa: E402
 from src.features.build_features import build_features  # noqa: E402
-from src.models.train import train_da_price_model, _FEATURE_COLS  # noqa: E402
+from src.models.train import train_da_price_model  # noqa: E402
 from dashboard.charts import (  # noqa: E402
     chart_da_commitment_shape,
     chart_daily_attribution,
@@ -89,19 +89,20 @@ def load_da_price_forecast(model_cfg: dict, val_cfg: dict) -> pd.Series:
         wf_train_days=val_cfg.get("train_days", 200),
         wf_test_days=val_cfg.get("test_days", 30),
         wf_step_days=val_cfg.get("step_days", 30),
+        holdout_days=val_cfg.get("holdout_days", 0),
     )
 
-    oos_dates = set(
-        pd.to_datetime(predictions_df["time"], utc=True).dt.tz_convert("Europe/London").dt.date
+    # The walk-forward predictions *are* the forecast. Keeping only the dates
+    # they cover and then re-scoring those dates with `da_model` — the single
+    # last-fitted estimator — hands most of the window to a model that trained
+    # on it. This is a replay of a backtest, so it has to replay the fold that
+    # actually produced each prediction.
+    forecast = (
+        predictions_df.assign(time=pd.to_datetime(predictions_df["time"], utc=True))
+        .set_index("time")["predicted_da_price"]
+        .astype(float)
+        .sort_index()
     )
-    features_df = pd.read_parquet(FEATURES_CACHE)
-    features_df["time"] = pd.to_datetime(features_df["time"], utc=True)
-    london_date = features_df["time"].dt.tz_convert("Europe/London").dt.date
-    feature_cols = [c for c in _FEATURE_COLS if c in features_df.columns]
-
-    oos_rows = features_df[london_date.isin(oos_dates)]
-    X = oos_rows[feature_cols].dropna()
-    forecast = pd.Series(da_model.predict(X), index=oos_rows.loc[X.index, "time"]).sort_index()
     forecast.index.name = "time"
     return forecast
 

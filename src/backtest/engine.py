@@ -113,6 +113,10 @@ def run_backtest(
     # ------------------------------------------------------------------
     drawdown_floor = starting_capital * (1.0 - max_drawdown_pct)
     current_capital = starting_capital
+    # `settled_capital` is equity observable at the auction being sized;
+    # `pending_pnl` holds the book that is delivering but has not settled yet.
+    settled_capital = starting_capital
+    pending_pnl = 0.0
     net_pnl = np.zeros(n, dtype=float)
     position_mwh_arr = np.zeros(n, dtype=float)
     fee_paid_arr = np.zeros(n, dtype=float)
@@ -139,7 +143,9 @@ def run_backtest(
     for book_id in sorted(books, key=lambda k: (k is None, k)):
         idx = books[book_id]
 
-        if current_capital <= drawdown_floor:
+        # The halt reads the same observable equity as the sizing rule: a book
+        # cannot be withheld on the strength of a settlement that has not landed.
+        if settled_capital <= drawdown_floor:
             halted_at = int(idx[0])
             logger.warning(
                 "Max drawdown reached before the %s auction (capital £%.0f ≤ floor £%.0f) "
@@ -150,8 +156,17 @@ def run_backtest(
             )
             break
 
-        # Equity at this auction. Fixed for every contract in the book.
-        auction_capital = current_capital
+        # Equity known at this auction. Fixed for every contract in the book.
+        #
+        # The book for delivery day D is committed at D-1 10:30, while day D-1 is
+        # still being delivered — so D-1's settlement is NOT known yet. Folding a
+        # book's P&L into equity the moment it finishes still let the next day's
+        # quantities respond to an outcome that arrived after they were bid: a
+        # two-contract probe moved the second day's P&L from £200 to £204 purely
+        # by changing the first day's cash-out. Settlement is therefore released
+        # with a one-book lag, so sizing sees only books that had fully settled
+        # before this auction opened.
+        auction_capital = settled_capital
 
         tradable = [
             i
@@ -258,8 +273,12 @@ def run_backtest(
             fee_paid_arr[i] = fee
             book_pnl += net
 
-        # The book settles as a whole; only then does equity move.
+        # The book settles as a whole, but its result only becomes *available* to
+        # size a later book once a full delivery day has passed — the auction for
+        # the next day has already closed by the time this one finishes settling.
         current_capital += book_pnl
+        settled_capital += pending_pnl
+        pending_pnl = book_pnl
 
     final_capital = starting_capital + float(np.sum(net_pnl))
     total_return_pct = (final_capital - starting_capital) / starting_capital

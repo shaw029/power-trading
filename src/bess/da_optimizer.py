@@ -121,6 +121,12 @@ def optimize_da_schedule(
     schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
     projected = _project_to_feasible(schedule, asset, duration_h)
     validate_schedule(
-        projected, asset, duration_h, target_daily_cycles, commit_fraction, label="DA schedule"
+        projected,
+        asset,
+        duration_h,
+        target_daily_cycles,
+        commit_fraction,
+        label="DA schedule",
+        strict=True,
     )
     return projected

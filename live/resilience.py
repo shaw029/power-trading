@@ -390,7 +390,14 @@ def optimize_resilience_dispatch(
         return [0.0] * n
 
     schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
-    validate_schedule(schedule, asset, duration_h, target_daily_cycles, label="resilience dispatch")
+    validate_schedule(
+        schedule,
+        asset,
+        duration_h,
+        target_daily_cycles,
+        label="resilience dispatch",
+        strict=True,
+    )
     return schedule
 
 
@@ -500,7 +507,9 @@ def optimize_blended_dispatch(
         return [0.0] * n
 
     schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
-    validate_schedule(schedule, asset, duration_h, target_daily_cycles, label="blended dispatch")
+    validate_schedule(
+        schedule, asset, duration_h, target_daily_cycles, label="blended dispatch", strict=True
+    )
     return schedule
 
 

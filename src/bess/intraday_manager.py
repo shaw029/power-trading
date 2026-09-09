@@ -121,6 +121,7 @@ def _reoptimize_schedule(
         duration_h,
         label="intraday re-optimisation",
         start_soc_mwh=start_soc_mwh,
+        strict=True,
     )
     return schedule
 

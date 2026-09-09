@@ -1,7 +1,7 @@
 {
-  "break_rank": "20 of 29",
-  "corr_raw": "+0.29",
-  "corr_within": "+0.13",
+  "break_rank": "18 of 29",
+  "corr_raw": "+0.25",
+  "corr_within": "+0.11",
   "gate_events_total": "345",
   "gate_outcome": "C",
   "onset_diff": "-19",

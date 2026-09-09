@@ -417,8 +417,10 @@ def read_neso_ndfd(start_date: str | None = None, end_date: str | None = None) -
     files = sorted(glob.glob(os.path.join(dataset_dir, "NESO_NDFD_*_page_*.json")))
     # As above: honour the requested window instead of returning the whole cache.
     if start_date and end_date:
+        # As above: an empty match means "no cached days in this window", not
+        # "read everything".
         _window = _files_in_range(files, "NESO_NDFD", start_date, end_date, margin_days=1)
-        if _window:
+        if any(re.search(r"NESO_NDFD_(\d{8})_page_", os.path.basename(f)) for f in files):
             files = _window
     if not files:
         raise ValueError("No cached raw files found for NESO_NDFD")
@@ -1532,8 +1534,14 @@ def fetch_imbalance_price(
     # study window, and the BESS pipeline — which derives its price-fetch range
     # from that frame — then tried to fetch years of day-ahead prices that do
     # not exist for GB.
+    # Use the filtered window even when it is empty. Falling back to the whole
+    # cache on an empty match reproduces the very failure this filter exists to
+    # prevent — a request for a window with no cached days silently returning
+    # every unrelated year on disk. `_files_in_range` returns [] only when no
+    # filename carries a parseable date, which is a different condition and the
+    # one the fallback is for.
     window = _files_in_range(files, "B1770", start_date, end_date, margin_days=1)
-    if window:
+    if any(re.search(r"B1770_(\d{8})_page_", os.path.basename(f)) for f in files):
         files = window
 
     all_records = []

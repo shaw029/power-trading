@@ -304,10 +304,16 @@ print("\nThe date the study imposes:")
 print(imposed.to_string(index=False, float_format=lambda v: f"{v:.2f}"))
 best = search.iloc[0]
 print(f"\nAIC-minimising break : {best['break_at']}  (AIC {best['AIC']:.2f})")
+break_rank_text = None
 if not imposed.empty:
     row = imposed.iloc[0]
     rank = int((search["AIC"] < row["AIC"]).sum()) + 1
-    print(f"Imposed break 2023Q4 : AIC {row['AIC']:.2f}, rank {rank} of {len(search)}")
+    # Kept for the export below. The poster used to receive this as the literal
+    # "20 of 29" typed into the metrics dict, so re-running the script published
+    # the old rank no matter what the data said — the one number in this file
+    # that a rerun could not correct.
+    break_rank_text = f"{rank} of {len(search)}"
+    print(f"Imposed break 2023Q4 : AIC {row['AIC']:.2f}, rank {break_rank_text}")
     print(f"AIC penalty for imposing it rather than fitting it: " f"{row['AIC'] - best['AIC']:.2f}")
 out["d2"] = search
 
@@ -475,7 +481,7 @@ sx = {
     "skill12_ppv": f"{out['d9'][out['d9'].horizon_h == 12].PPV.iloc[0]:.0%}",
     "corr_raw": f"+{out['d7']['raw_r']:.2f}",
     "corr_within": f"+{out['d7']['within_r']:.2f}",
-    "break_rank": "20 of 29",
+    "break_rank": break_rank_text if break_rank_text else "n/a",
     "resp_pre_cl": f"{out['d10_skip']['point']:+.3f}",
     "resp_pre_ci": f"[{out['d10_skip']['lo']:+.3f}, {out['d10_skip']['hi']:+.3f}]",
     "resp_mod_cl": f"{out['d10_modern']['point']:+.3f}",

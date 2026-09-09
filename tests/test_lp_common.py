@@ -100,3 +100,28 @@ class TestNegativePriceChurn:
         assert schedule[0] < 0  # charge cheap
         assert schedule[1] > 0  # discharge dear
         assert validate_schedule(schedule, a, duration_h=1.0)["feasible"]
+
+
+class TestStrictRejection:
+    """Reporting is not a guard — strict mode has to actually refuse."""
+
+    def test_strict_raises_on_an_impossible_schedule(self):
+        a = _asset(initial_soc_pct=0.90)
+        with pytest.raises(ValueError, match="not physically executable"):
+            validate_schedule([-50.0], a, duration_h=1.0, strict=True)
+
+    def test_non_strict_still_only_reports(self):
+        a = _asset(initial_soc_pct=0.90)
+        assert validate_schedule([-50.0], a, duration_h=1.0)["feasible"] is False
+
+    def test_non_finite_dispatch_is_a_violation(self):
+        # A NaN passes every inequality silently, so it has to be caught by name.
+        r = validate_schedule([float("nan")], _asset(), duration_h=1.0)
+        assert not r["feasible"]
+        assert any("finite" in v for v in r["violations"])
+
+    def test_optimisers_refuse_rather_than_return_an_unexecutable_plan(self):
+        a = _asset(initial_soc_pct=0.90)
+        schedule = optimize_da_schedule([-1000.0, -1000.0], a, duration_h=1.0)
+        # Reaching here at all means the optimiser's own strict check passed.
+        assert validate_schedule(schedule, a, duration_h=1.0, strict=True)["feasible"]
