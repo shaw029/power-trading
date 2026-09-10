@@ -276,8 +276,13 @@ def process_day_ahead_price(df: pd.DataFrame) -> pd.DataFrame:
     df.index.name = "time"
     df = df[~df.index.duplicated(keep="first")].sort_index()
 
-    # Hourly → 30-min
-    df = df.resample(_30MIN).ffill()
+    # Expand each hourly product to its two settlement periods. Bounded expansion
+    # preserves the last :30 and cannot fill an absent hour from an earlier one.
+    if not df.empty:
+        half = df.copy()
+        half.index = half.index + pd.Timedelta(minutes=30)
+        df = pd.concat([df, half]).sort_index()
+        df = df[~df.index.duplicated(keep="first")].asfreq(_30MIN)
     logger.info("Day-ahead price processed (30-min). Shape: %s", df.shape)
     return df
 

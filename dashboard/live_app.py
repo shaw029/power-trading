@@ -298,7 +298,7 @@ def _warm_fetch(date_isos: tuple, system_isos: tuple | None = None) -> None:
     warmed_system |= todo_system
 
 
-@st.cache_data(show_spinner="Settling the benchmark battery…")
+@st.cache_data(show_spinner="Settling the benchmark battery…", ttl=_RECENT_TTL_SECONDS)
 def _settle_range(
     date_isos: tuple, duration, cycle_target, degradation, soc_min, soc_max, commit, vintages=()
 ):
@@ -337,7 +337,7 @@ def _settle_range(
     return out
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=_RECENT_TTL_SECONDS)
 def _fleet_day(date_iso: str) -> pd.DataFrame:
     """Per-site metrics for every real fleet battery on one day.
 
@@ -706,10 +706,15 @@ def _page_day():
         _unit_label("Capture spread", "£/MWh"),
         f"{row['capture_spread']:,.1f}" if pd.notna(row["capture_spread"]) else "—",
         help="Gross trading margin on every MWh physically discharged today, "
-        "before wear and slippage. Shares units with the degradation lever "
-        f"(£{params['degradation']:,.1f}/MWh), so a day below that earned less "
-        "per MWh than cycling cost it.",
+        "before wear and slippage. The degradation lever charges both charging and "
+        "discharging throughput; compare capture with total daily wear divided "
+        "by discharged MWh, not directly with that lever.",
     )
+
+    if record["result"].mid_proxy_periods:
+        st.warning(
+            f"MID coverage: {record['result'].mid_proxy_periods} hourly bins include substituted DA prices."
+        )
 
     st.markdown("**GB system**")
     sysc = st.columns(4)
@@ -1782,7 +1787,7 @@ def _page_fleet():
     _render_fleet(fleet_df, _day_labels(window), start, end, day_types)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=_RECENT_TTL_SECONDS)
 def _system_day(date_iso: str) -> pd.DataFrame:
     """Whole-system half-hourly snapshot for one day (cached on the date)."""
     return fetch_live.get_day_system(dt.date.fromisoformat(date_iso))

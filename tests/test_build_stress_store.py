@@ -74,6 +74,7 @@ def patched(monkeypatch):
     monkeypatch.setitem(bss.DAY_FEEDS, "system", (_system, "system"))
     monkeypatch.setitem(bss.DAY_FEEDS, "lolpdrm", (_prints, "lolpdrm_prints"))
     monkeypatch.setitem(bss.DAY_FEEDS, "pn", (_profile, "fleet_pn"))
+    monkeypatch.setitem(bss.DAY_FEEDS, "boa", (_profile, "fleet_boa"))
     monkeypatch.setitem(bss.DAY_FEEDS, "mels", (_profile, "fleet_mels"))
     monkeypatch.setitem(bss.DAY_FEEDS, "mils", (_profile, "fleet_mils"))
 

@@ -35,7 +35,7 @@ def _synthetic_dst_prices(start_date, end_date):
     tz = "Europe/London"
     start = pd.Timestamp(start_date, tz=tz)
     end = pd.Timestamp(end_date, tz=tz)
-    index = pd.date_range(start, end, freq="1h", inclusive="left")
+    index = pd.date_range(start, end, freq="30min", inclusive="left")
 
     rng = np.random.default_rng(42)
     n = len(index)

@@ -22,11 +22,9 @@ from src.bess.bess_asset import BESSAsset
 from src.bess.da_optimizer import optimize_da_schedule
 from src.bess.intraday_manager import run_intraday_session
 
-# The live benchmark runs the hourly engine, so a normal day has 24 periods and
-# the two DST changeover days have 23 (spring) and 25 (autumn). Any other count
-# signals malformed/incomplete price data and is refused. Mirrors the
-# ``valid_period_counts`` guard in ``pipeline._run_bess_pipeline``.
-VALID_PERIOD_COUNTS: frozenset[int] = frozenset({23, 24, 25})
+# The live benchmark uses UTC calendar days, consistently with its fetcher and charts.
+# UTC days always have 24 hours; London DST counts belong to research dispatch.
+VALID_PERIOD_COUNTS: frozenset[int] = frozenset({24})
 
 # Below this arbitrage ceiling the day has no meaningful spread to capture, so
 # the capture ratio is reported as zero rather than dividing by ~0.
@@ -63,6 +61,7 @@ class DayResult:
 
     date: dt.date
     durations: dict[str, DurationResult]
+    mid_proxy_periods: int = 0
 
 
 def _arbitrage_upper_bound(
@@ -195,6 +194,13 @@ def settle_day(
     if "day_ahead_price" not in prices.columns or "mid_price" not in prices.columns:
         return None
 
+    # This benchmark's fetcher and charts use UTC days: exactly 24 hourly bins.
+    expected = pd.date_range(pd.Timestamp(date, tz="UTC"), periods=24, freq="1h")
+    if (
+        not prices.index.equals(expected)
+        or prices[["day_ahead_price", "mid_price"]].isna().any().any()
+    ):
+        return None
     day_ahead_prices = prices["day_ahead_price"].tolist()
     mid_prices = prices["mid_price"].tolist()
 
@@ -208,4 +214,10 @@ def settle_day(
             start_soc_pct=prev_end_soc.get(duration, asset.initial_soc_pct),
         )
 
-    return DayResult(date=date, durations=durations)
+    return DayResult(
+        date=date,
+        durations=durations,
+        mid_proxy_periods=int(
+            prices.get("mid_is_proxy", pd.Series(False, index=prices.index)).sum()
+        ),
+    )

@@ -1,27 +1,10 @@
-"""Holdout scoring for the day-ahead positioning strategy.
+"""Retrospective evaluation scoring and conditional day-bootstrap intervals.
 
-The development curve is an artefact of the search that produced it: model
-hyperparameters, signal settings and the execution archetype are all chosen by
-reading walk-forward folds. The holdout is the only window no selection step has
-seen, and this module is what turns it into a quotable number.
-
-It exists because the figures it produces were previously computed in a scratch
-script and typed into the README. A confidence interval on sixty daily
-observations depends entirely on choices — resampling unit, replicate count,
-seed, whether compounding is held fixed — that a prose sentence cannot carry. If
-the interval is worth quoting, its derivation is worth committing.
-
-Two things are reported alongside the strategy, and both matter more than the
-point estimate:
-
-**The interval.** Sixty days is far too short to pin an annualised Sharpe. The
-bootstrap resamples market days with replacement, which is the unit the strategy
-actually decides on, and reports the 2.5th/97.5th percentiles.
-
-**The always-short control.** The mean cash-out-minus-auction spread in this
-sample is negative, so a rule that simply shorts every period the model selects
-makes money without any forecast at all. The strategy's claim is the distance
-between the two, not its own P&L.
+The reserved 2018 tail is excluded from the current selection procedure but has
+been inspected in earlier research. Intervals resample observed cash PnL and
+account returns independently by market day; they do not rerun compounding,
+risk halts, selection or serial dependence. The always-short control retains
+model-selected timestamps and is a directional, not model-free, control.
 """
 
 from __future__ import annotations

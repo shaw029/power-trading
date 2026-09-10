@@ -16,6 +16,7 @@ run.
 import datetime as dt
 import json
 import logging
+from src.utils.raw_cache import cache_is_fresh
 import os
 from typing import Any, cast
 
@@ -60,7 +61,7 @@ def _dir_for(subdir: str, population: Population) -> str:
 
 def _read_cache(subdir: str, date: dt.date) -> Any:
     path = _cache_path(subdir, date)
-    if os.path.exists(path):
+    if cache_is_fresh(path, date):
         with open(path, "r", encoding="utf-8") as fp:
             return json.load(fp)
     return None

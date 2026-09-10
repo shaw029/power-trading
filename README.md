@@ -99,34 +99,35 @@ the frontier to find what the optimal constant split would have been.
 
 ### What the backtest actually shows
 
-The only figure quoted as out-of-sample is the untouched 60-day holdout. Model,
-signal and execution parameters are all chosen by reading the development folds,
-so the development curve is an artefact of that search, not evidence.
+The canonical run is `s4_n15_t30_vm00_tc10`. Model candidates are ranked on development MAE;
+signal settings are ranked on development Sharpe within the £1/MWh cost tier and
+one-trade-per-day floor. The selected model is linear regression. The last 60
+market days are reserved from this selection, but were inspected in earlier
+research and are therefore a **retrospective evaluation split**, not a fresh sample.
 
-| | Development (90 days, used for selection) | **Holdout (60 days, untouched)** |
+| | Development (90 days, selection) | Evaluation (60 days) |
 |---|---:|---:|
-| Executed trades | 456 | **329** |
-| Net PnL | £50,101 | **£29,173** |
-| 95% CI on net PnL | — | **£5 to £57,526** |
-| Sharpe (daily % returns) | 7.48 | **5.40** |
-| 95% CI on Sharpe | — | **0.56 to 10.83** |
-| Max drawdown | — | **£12,236** |
-| Traded volume / fees | — | 6,012 MWh / £6,012 |
+| Executed trades | 1,130 | 824 |
+| Net PnL | £113,700 | £44,542 |
+| 95% conditional PnL interval | — | £-24,358 to £112,361 |
+| Sharpe (daily account returns) | 5.01 | 4.42 |
+| 95% conditional Sharpe interval | — | -0.43 to 10.11 |
+| Max cash drawdown | £31,605 | £28,393 |
+| Evaluation volume / fees | — | 25,711 MWh / £25,711 |
 
-Intervals are a percentile bootstrap over **market days** — 10,000 replicates,
-seed 7 — computed by [`src/evaluation/holdout_report.py`](src/evaluation/holdout_report.py),
-not by hand. The resampling unit matters: a market day is what the strategy
-commits at, so resampling settlement periods would break the book and
-understate the spread.
+The intervals include zero and do not establish a reliable trading edge.
+[`score_holdout`](src/evaluation/holdout_report.py) uses 10,000 independent
+market-day bootstrap draws, seed 7, conditional on observed daily cash PnL and
+returns. It does not rerun compounding, capital halts or selection, or account for
+serial dependence. The always-short directional control on **model-selected
+periods** earns £-9,158 (Sharpe -3.06);
+it is not a model-free scheduling baseline.
 
-**Read the intervals, not the point estimates.** Sixty days is far too short to
-pin anything: the bootstrap interval on net P&L runs from roughly **breakeven**
-to £57,526, and on Sharpe from 0.56 to 10.83. A point estimate quoted without
-that range would be the single most misleading number on this page. And a large part of
-the result is not model skill at all — the mean cash-out-minus-auction spread in
-this sample is −£2.04/MWh, so a control that simply shorts the same periods the
-model selects earns £7,225 (Sharpe 1.72) on the same holdout. The model's claim
-is the distance between those, on one 60-day window, in a single 2018 regime.
+Quantities use a fixed pre-auction £50/MWh reference, and auction equity admits
+settlements only after the delivery day ends plus a one-hour publication
+assumption. Historical revised prices are not a point-in-time publication archive.
+Notebook 02 reports no eligible hybrid under its capital-floor constraint: all hybrid candidates halt. This is a failed development calibration, not an improved strategy. Notebook 03 discloses missing-input imputation and excludes incomplete
+London dispatch days.
 
 **Everything priced off MID is an idealised execution study.** The Market Index
 Price is a volume-weighted average of completed trades, not a quote anyone can
@@ -145,7 +146,7 @@ triggered and filled off the same number. See
 
 | | | |
 |---|---|---|
-| **01** | DA positioning | Model shootout, walk-forward calibration on a development period with an explicit stability check, execution sweep under liquidity and risk constraints, and a single scoring of the frozen configuration on an untouched 60-day holdout |
+| **01** | DA positioning | Model shootout, walk-forward calibration on a development period with an explicit stability check, execution sweep under liquidity and risk constraints, and a single scoring of the frozen configuration on a reserved retrospective 60-day evaluation split |
 | **02** | Hybrid execution | Hedge-ratio sweep across the full 0–1 range, endpoints included, on the development split only, ranked by one stated criterion. Net PnL falls monotonically with passive share while Sharpe peaks near 0.40 — a real trade-off rather than the flat band previously claimed, and a peak too small (+0.25 Sharpe on 90 days) to justify the £7k of P&L it costs |
 | **03** | BESS dispatch | PnL waterfall from DA benchmark through intraday improvement, execution friction, imbalance and degradation; price capture, rebalancing impact, and the DA/intraday capacity allocation frontier |
 
@@ -208,7 +209,7 @@ the research layer, plus a methodology page carrying scope and caveats.
 
 ## Roadmap
 
-- [x] **Phase 1 — DA positioning engine.** Walk-forward validated XGBoost on residual-load mispricing, with signal gating, execution constraints and dynamic sizing.
+- [x] **Phase 1 — DA positioning engine.** Development-selected forecasting model on residual-load mispricing, with signal gating, execution constraints and dynamic sizing.
 - [x] **Phase 2 — Intraday execution.** Hybrid passive-MID / active-TP-SL engine with configurable hedge ratio and per-period stop-loss cap.
 - [x] **Phase 3 — Physical asset optimisation.** LP day-ahead scheduling plus rolling-horizon intraday re-optimisation, SOC tracking, asymmetric efficiencies, priced degradation, and the market-allocation lever. Validated against the live GB benchmark and the real fleet.
 - [ ] **Phase 4 — Stochastic optimisation and MID forecasting (planned).** Replace the constant `da_commit_fraction` with a two-stage scenario LP; replace the DA-price proxy for unseen periods with a genuine updating MID forecast; then reformulate the replan as a multi-stage stochastic programme, producing dispatch robust to forecast error rather than point-optimal against a single forecast.

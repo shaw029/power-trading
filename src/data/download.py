@@ -4,6 +4,7 @@ import re
 import pandas as pd
 import requests
 import logging
+from src.utils.raw_cache import cache_is_fresh
 import os
 from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
@@ -59,8 +60,9 @@ def _save_raw_json(dataset_name: str, filename: str, payload: object) -> None:
     dataset_dir = os.path.join(RAW_DATA_DIR, dataset_name)
     os.makedirs(dataset_dir, exist_ok=True)
     raw_path = os.path.join(dataset_dir, filename)
-    with open(raw_path, "w", encoding="utf-8") as fp:
+    with open(raw_path + ".tmp", "w", encoding="utf-8") as fp:
         json.dump(payload, fp, indent=2)
+    os.replace(raw_path + ".tmp", raw_path)
     logger.info(f"Saved raw JSON to {raw_path}")
 
 
@@ -76,7 +78,8 @@ def _chunk_has_raw_files(dataset: str, date_str: str) -> bool:
     dataset_dir = _raw_dataset_dir(dataset)
     if not os.path.isdir(dataset_dir):
         return False
-    return bool(glob.glob(os.path.join(dataset_dir, f"{dataset}_{date_str}_page_*.json")))
+    files = glob.glob(os.path.join(dataset_dir, f"{dataset}_{date_str}_page_*.json"))
+    return bool(files) and all(cache_is_fresh(path, date_str) for path in files)
 
 
 def _load_raw_records_from_file(filepath: str) -> list[dict]:
@@ -140,6 +143,7 @@ def download_elexon_dataset(dataset: str, start_date: str, end_date: str) -> Non
 
         url: str | None = base_url
         page = 1
+        fetched_pages = []
         while url:
             request_params = params if url == base_url else None
             response = requests.get(
@@ -149,7 +153,7 @@ def download_elexon_dataset(dataset: str, start_date: str, end_date: str) -> Non
             payload = response.json()
 
             raw_path = _raw_json_path(dataset, date_str, page)
-            _save_raw_json(dataset, os.path.basename(raw_path), payload)
+            fetched_pages.append((os.path.basename(raw_path), payload))
 
             if isinstance(payload, dict) and "data" in payload:
                 records = payload["data"]
@@ -168,6 +172,15 @@ def download_elexon_dataset(dataset: str, start_date: str, end_date: str) -> Non
                 url = None
             page += 1
 
+        if fetched_pages:
+            for filename, payload in fetched_pages:
+                _save_raw_json(dataset, filename, payload)
+            keep = {filename for filename, _ in fetched_pages}
+            for old in glob.glob(
+                os.path.join(_raw_dataset_dir(dataset), f"{dataset}_{date_str}_page_*.json")
+            ):
+                if os.path.basename(old) not in keep:
+                    os.unlink(old)
         current_date = next_date
 
 
@@ -747,7 +760,7 @@ def _fetch_pvlive_day(market_day: pd.Timestamp) -> list[dict]:
     cache_dir = os.path.join(RAW_DATA_DIR, "PVLIVE_SOLAR")
     daily_file = os.path.join(cache_dir, f"PVLIVE_SOLAR_{date_str}.json")
 
-    if os.path.exists(daily_file):
+    if cache_is_fresh(daily_file, date_str):
         with open(daily_file, encoding="utf-8") as fp:
             cached: list[dict] = json.load(fp).get("data", [])
         return cached
@@ -831,7 +844,7 @@ def _fetch_lolpdrm_day(market_day: pd.Timestamp) -> list[dict]:
     cache_dir = os.path.join(RAW_DATA_DIR, "LOLPDRM")
     daily_file = os.path.join(cache_dir, f"LOLPDRM_{date_str}.json")
 
-    if os.path.exists(daily_file):
+    if cache_is_fresh(daily_file, date_str):
         with open(daily_file, encoding="utf-8") as fp:
             cached: list[dict] = json.load(fp).get("data", [])
         return cached
@@ -904,7 +917,7 @@ def fetch_cmn_notices(number: int = 200) -> list[dict]:
     cache_dir = os.path.join(RAW_DATA_DIR, "CMN")
     daily_file = os.path.join(cache_dir, f"CMN_{today_str}.json")
 
-    if os.path.exists(daily_file):
+    if cache_is_fresh(daily_file, today_str):
         with open(daily_file, encoding="utf-8") as fp:
             cached: list[dict] = json.load(fp).get("data", [])
         return cached
@@ -1070,7 +1083,7 @@ def _fetch_nordpool_da_day(market_day: pd.Timestamp) -> pd.DataFrame:
     cache_dir = os.path.join(RAW_DATA_DIR, "NORDPOOL_DA")
     daily_file = os.path.join(cache_dir, f"NORDPOOL_DA_{date_str}.json")
 
-    if os.path.exists(daily_file):
+    if cache_is_fresh(daily_file, date_str):
         with open(daily_file, encoding="utf-8") as fp:
             records = json.load(fp).get("data", [])
     else:
@@ -1167,7 +1180,7 @@ def fetch_day_ahead_price(
             RAW_DATA_DIR, "entsoe_day_ahead_price", f"entsoe_day_ahead_price_{date_str}.json"
         )
 
-        if os.path.exists(daily_file):
+        if cache_is_fresh(daily_file, date_str):
             logger.info(f"Loading cached ENTSO-E {current.date()}")
             try:
                 with open(daily_file, encoding="utf-8") as fp:
@@ -1339,7 +1352,7 @@ def fetch_entsoe_demand_forecast(
         date_str = current.strftime("%Y%m%d")
         daily_file = os.path.join(RAW_DATA_DIR, dataset_name, f"{dataset_name}_{date_str}.json")
 
-        if os.path.exists(daily_file):
+        if cache_is_fresh(daily_file, date_str):
             logger.info("Loading cached ENTSO-E demand forecast %s", current.date())
             try:
                 with open(daily_file, encoding="utf-8") as fp:
@@ -1402,7 +1415,7 @@ def download_b1770(start_date: str, end_date: str) -> None:
         date_iso = current.strftime("%Y-%m-%d")
         cache_path = os.path.join(dataset_dir, f"{dataset}_{date_str}_page_1.json")
 
-        if os.path.exists(cache_path):
+        if cache_is_fresh(cache_path, date_str):
             logger.info(f"Skipping B1770 {date_iso}: already cached")
             current += timedelta(days=1)
             continue

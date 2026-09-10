@@ -26,8 +26,9 @@ MIN_AUCTION_SAFE_LAG = 96
 def auction_decision_time(delivery_time: pd.Series) -> pd.Series:
     """The instant the book for each delivery period had to be committed (UTC)."""
     london = pd.to_datetime(delivery_time, utc=True).dt.tz_convert("Europe/London")
-    market_date = london.dt.normalize()
-    return (market_date - pd.Timedelta(days=1) + AUCTION_DECISION_TOD).dt.tz_convert("UTC")
+    market_date = london.dt.tz_localize(None).dt.normalize()
+    decision = market_date - pd.Timedelta(days=1) + AUCTION_DECISION_TOD
+    return decision.dt.tz_localize("Europe/London").dt.tz_convert("UTC")
 
 
 def assert_auction_available(df: pd.DataFrame, lagged_cols: dict[str, int]) -> None:
@@ -46,7 +47,7 @@ def assert_auction_available(df: pd.DataFrame, lagged_cols: dict[str, int]) -> N
     for col, periods in lagged_cols.items():
         if col not in df.columns:
             continue
-        source = time.shift(periods)
+        source = time.shift(periods) + pd.Timedelta(minutes=90)
         late = df[col].notna() & source.notna() & (source > decision)
         if late.any():
             violations[col] = int(late.sum())

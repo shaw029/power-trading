@@ -75,9 +75,8 @@ repository. Rebuild it first with `scripts/build_stress_store.py` and
 
 **And a rebuild will not stay possible indefinitely.** The GB day-ahead price
 comes from the Nord Pool data portal, which serves a rolling window of roughly
-65 days. The 2026 alignment window (`2026-06-26` to `2026-08-24`) is inside it
-today and was refetched in September 2026; once it ages out, current code plus an
-API key is no longer enough, and the study becomes reproducible only from the
+65 days. The 2026 alignment window (`2026-06-26` to `2026-08-24`) is an archived window; its older dates may no longer be downloadable from the public endpoint
+; current code plus an API key is therefore not always enough, and the study becomes reproducible only from the
 cached day-files under `data/raw_new/NORDPOOL_DA/` — which are subject to Nord
 Pool's licence and are not redistributed here. Anyone depending on an exact
 rebuild should archive that cache now rather than assume the feed will still

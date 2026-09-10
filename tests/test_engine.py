@@ -142,7 +142,7 @@ class TestShortTrade:
         pnl, _ = run_backtest(
             sigs, da, ssp, sbp, starting_capital=50_000, risk_pct=0.02, cost_per_trade=0.0
         )
-        position = 50_000 * 0.02 / 80.0
+        position = 50_000 * 0.02 / 50.0
         expected = position * (80.0 - 60.0)
         assert pnl[0] == pytest.approx(expected, rel=1e-6)
 
@@ -165,26 +165,40 @@ class TestPositionSizing:
         )
         assert abs(pnl_large[0]) > abs(pnl_small[0])
 
-    def test_near_zero_da_price_floored_at_10(self):
+    def test_near_zero_reference_price_floored_at_10(self):
         """DA price < 10 should be treated as 10 (floor guard)."""
         sigs = np.array([1])
         da = np.array([1.0])  # would give huge position without floor
         ssp = np.array([70.0])
         sbp = np.array([75.0])
         pnl, _ = run_backtest(
-            sigs, da, ssp, sbp, starting_capital=50_000, risk_pct=0.02, cost_per_trade=0.0
+            sigs,
+            da,
+            ssp,
+            sbp,
+            starting_capital=50_000,
+            risk_pct=0.02,
+            cost_per_trade=0.0,
+            sizing_prices=da,
         )
         # With floor=10: position = 50000*0.02/10 = 100 MWh
         expected = 100.0 * (70.0 - 1.0)
         assert pnl[0] == pytest.approx(expected, rel=1e-6)
 
-    def test_negative_da_price_uses_abs_floor(self):
+    def test_negative_reference_price_uses_abs_floor(self):
         sigs = np.array([1])
         da = np.array([-5.0])  # negative price; abs(-5)=5 < 10 → floor at 10
         ssp = np.array([0.0])
         sbp = np.array([5.0])
         pnl, _ = run_backtest(
-            sigs, da, ssp, sbp, starting_capital=50_000, risk_pct=0.02, cost_per_trade=0.0
+            sigs,
+            da,
+            ssp,
+            sbp,
+            starting_capital=50_000,
+            risk_pct=0.02,
+            cost_per_trade=0.0,
+            sizing_prices=da,
         )
         position = 50_000 * 0.02 / 10.0
         expected = position * (0.0 - (-5.0))

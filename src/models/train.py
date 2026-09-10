@@ -118,6 +118,11 @@ def _fit_model(
         )
 
     logger.info("Training %s on %d rows", model_type, len(X_train))
+    from sklearn.impute import SimpleImputer
+    from sklearn.pipeline import make_pipeline
+
+    # Imputation is fitted inside each training fold, never on evaluation rows.
+    model = make_pipeline(SimpleImputer(strategy="median", keep_empty_features=True), model)
     model.fit(X_train, y_train)
     return model
 
@@ -137,39 +142,31 @@ def _make_predictions_df(
     for col in ("day_ahead_price", "mid_price", "system_sell_price", "system_buy_price"):
         if col in test_df.columns:
             result[col] = test_df[col].ffill().values if col == "mid_price" else test_df[col].values
+    if "feature_imputed" in test_df.columns:
+        result["feature_imputed"] = test_df["feature_imputed"].values
     return pd.DataFrame(result)
 
 
 def purge_unavailable_labels(
     train_df: pd.DataFrame, first_test_time, label_lag: pd.Timedelta | None = None
 ) -> pd.DataFrame:
-    """Drop training rows whose label had not been observed by the decision time.
+    """Purge labels unavailable at the first test book's D-1 10:30 decision.
 
-    A chronological split is not the same as an *available* one. The book for the
-    first test day is committed at that day's D-1 10:30 auction, but the fold's
-    training window runs to the last settlement period of the preceding delivery
-    day — i.e. through the evening *after* that auction. For a target built from
-    realised cash-out prices, those labels did not exist when the model that uses
-    them had to be fitted.
-
-    On the shipped 200/30/30 walk-forward this purges roughly the last 13 hours
-    of each fold's training window; the canonical holdout fit trained to
-    2018-11-02 23:30 for a first book decided at 2018-11-02 10:30.
-
-    ``label_lag`` is added on top: a settlement price is not published the
-    instant its period ends, so the usable cutoff is earlier still. It defaults
-    to zero, which is the optimistic bound rather than the realistic one, and is
-    stated as such wherever the result is quoted.
+    Timestamps label settlement-period starts. Availability is period end (30
+    minutes later) plus a conservative one-hour publication assumption by default.
+    Historical revised prices are not a point-in-time publication archive.
+    The same conservative convention is applied to both target models.
     """
     from src.features.build_features import auction_decision_time
 
     first = pd.Series([pd.to_datetime(first_test_time, utc=True)])
     cutoff = auction_decision_time(first).iloc[0]
-    if label_lag is not None:
-        cutoff = cutoff - label_lag
+    lag = pd.Timedelta(hours=1) if label_lag is None else label_lag
+    if lag < pd.Timedelta(0):
+        raise ValueError("label_lag must be non-negative")
 
     times = pd.to_datetime(train_df["time"], utc=True)
-    keep = times <= cutoff
+    keep = times + pd.Timedelta(minutes=30) + lag <= cutoff
     dropped = int((~keep).sum())
     if dropped:
         logger.info(
@@ -191,6 +188,7 @@ def train_with_validation(
     wf_test_days: int = 30,
     wf_step_days: int = 30,
     holdout_days: int = 0,
+    evaluate_holdout: bool = True,
     actual_col: str = "actual_spread",
     predicted_col: str = "predicted_spread",
 ) -> tuple:
@@ -238,6 +236,7 @@ def train_with_validation(
 
         train_df = df[market_day.isin(train_dates)].reset_index(drop=True)
         test_df = df[market_day.isin(test_dates)].reset_index(drop=True)
+        train_df = purge_unavailable_labels(train_df, test_df["time"].min())
 
         logger.info(
             "Static split — train: %d rows (%d days) | test: %d rows (%d days)",
@@ -275,7 +274,7 @@ def train_with_validation(
             dev_df = df[~market_day.isin(holdout_dates)].reset_index(drop=True)
             holdout_df = df[market_day.isin(holdout_dates)].reset_index(drop=True)
             logger.info(
-                "Outer holdout reserved: %d market days (%s onward), untouched by selection",
+                "Outer holdout reserved: %d market days (%s onward), excluded from selection",
                 holdout_days,
                 min(holdout_dates).date(),
             )
@@ -334,7 +333,7 @@ def train_with_validation(
 
         logger.info("Walk-forward complete: %d folds", len(folds))
 
-        if len(holdout_df) > 0:
+        if len(holdout_df) > 0 and evaluate_holdout:
             # One model, fitted on everything development had that the holdout's
             # first auction could actually have seen, scored once on the
             # untouched tail. No selection has seen these rows.
@@ -381,6 +380,7 @@ def train_model(
     wf_test_days: int = 30,
     wf_step_days: int = 30,
     holdout_days: int = 0,
+    evaluate_holdout: bool = True,
 ) -> tuple:
     """Load features, prepare data, and run train_with_validation.
 
@@ -430,6 +430,7 @@ def train_model(
         wf_test_days=wf_test_days,
         wf_step_days=wf_step_days,
         holdout_days=holdout_days,
+        evaluate_holdout=evaluate_holdout,
     )
 
     mae = mean_absolute_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
@@ -454,6 +455,7 @@ def train_da_price_model(
     wf_test_days: int = 30,
     wf_step_days: int = 30,
     holdout_days: int = 0,
+    evaluate_holdout: bool = True,
 ) -> tuple:
     """Train an ML model to predict day-ahead prices from pre-auction features.
 
@@ -487,7 +489,8 @@ def train_da_price_model(
     features = _resolve_features(df)
     logger.info("Using %d features: %s", len(features), features)
 
-    valid = ~(df[features].isna().any(axis=1) | df["day_ahead_price"].isna())
+    valid = df["day_ahead_price"].notna()
+    df["feature_imputed"] = df[features].isna().any(axis=1)
     df_valid = df[valid].reset_index(drop=True)
     logger.info("After NaN drop: %d rows remain (dropped %d)", len(df_valid), (~valid).sum())
 
@@ -502,6 +505,7 @@ def train_da_price_model(
         wf_test_days=wf_test_days,
         wf_step_days=wf_step_days,
         holdout_days=holdout_days,
+        evaluate_holdout=evaluate_holdout,
         actual_col="actual_da_price",
         predicted_col="predicted_da_price",
     )

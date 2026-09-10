@@ -22,15 +22,17 @@ def run_backtest(
     take_profit_pct: float = 0.90,
     stop_loss_price_delta: float = 5.00,
     slippage: float = 2.00,
+    sizing_prices: np.ndarray | None = None,
+    settlement_publication_lag_h: float = 1.0,
 ) -> tuple:
     """Run backtest for a Day-Ahead Auction vs Imbalance settlement strategy.
 
     Position sizing is account-based and committed per *auction book*:
-        position_mwh = (auction_capital × risk_pct) / da_price
+        position_mwh = (auction_capital × risk_pct) / max(abs(sizing_price), 10)
     where auction_capital is the equity standing when that delivery day's book
     was bid. Every contract for a market date is sized from the same figure,
     because they were all committed at the same auction; the day's realised P&L
-    moves the equity that sizes the *next* day. The book is scaled back pro-rata
+    becomes available only after delivery ends plus the publication lag. The book is scaled back pro-rata
     if its total notional would exceed max_book_exposure_pct of that equity.
 
     The simulation halts at an auction boundary if the account has breached the
@@ -60,6 +62,9 @@ def run_backtest(
         take_profit_pct:      Take-profit trigger as a fraction of predicted spread.
         stop_loss_price_delta: Stop-loss threshold — max adverse price move (£/MWh) before the active slice exits.
         slippage:             Bid-ask crossing cost applied to intraday mid-price exits (£/MWh).
+        sizing_prices:        Pre-auction reference prices; defaults to a fixed £50/MWh.
+                              Cleared DA prices never determine the bid quantity.
+        settlement_publication_lag_h: Assumed delay after the delivery day ends (1 hour).
 
     Returns:
         (net_pnl, trading_metrics)
@@ -81,6 +86,12 @@ def run_backtest(
 
     if not (len(da_prices) == len(sys_sell) == len(sys_buy) == n):
         raise ValueError("All input arrays must have the same length")
+
+    sizing = np.full(n, 50.0) if sizing_prices is None else np.asarray(sizing_prices, dtype=float)
+    if len(sizing) != n or not np.isfinite(sizing).all():
+        raise ValueError("sizing_prices must contain one finite pre-auction reference per row")
+    if not np.isfinite(settlement_publication_lag_h) or settlement_publication_lag_h < 0:
+        raise ValueError("settlement_publication_lag_h must be non-negative and finite")
 
     _mid: np.ndarray | None = None
     _pred: np.ndarray | None = None
@@ -116,7 +127,7 @@ def run_backtest(
     # `settled_capital` is equity observable at the auction being sized;
     # `pending_pnl` holds the book that is delivering but has not settled yet.
     settled_capital = starting_capital
-    pending_pnl = 0.0
+    pending_books: list[tuple[pd.Timestamp, float]] = []
     net_pnl = np.zeros(n, dtype=float)
     position_mwh_arr = np.zeros(n, dtype=float)
     fee_paid_arr = np.zeros(n, dtype=float)
@@ -128,6 +139,8 @@ def run_backtest(
 
     if timestamps is not None:
         _ts = pd.DatetimeIndex(pd.to_datetime(timestamps, utc=True))
+        if len(_ts) != n or _ts.hasnans or not _ts.is_monotonic_increasing:
+            raise ValueError("timestamps must be finite, chronological and match the input length")
         book_key = _ts.tz_convert("Europe/London").normalize()
     else:
         # Without timestamps there is no way to tell one auction from the next,
@@ -142,6 +155,17 @@ def run_backtest(
 
     for book_id in sorted(books, key=lambda k: (k is None, k)):
         idx = books[book_id]
+        if timestamps is not None:
+            # Calendar arithmetic preserves 10:30 London across DST transitions.
+            auction = (
+                book_id.tz_localize(None)
+                - pd.Timedelta(days=1)
+                + pd.Timedelta(hours=10, minutes=30)
+            ).tz_localize("Europe/London")
+            settled_capital += sum(pnl for available, pnl in pending_books if available <= auction)
+            pending_books = [
+                (available, pnl) for available, pnl in pending_books if available > auction
+            ]
 
         # The halt reads the same observable equity as the sizing rule: a book
         # cannot be withheld on the strength of a settlement that has not landed.
@@ -156,16 +180,7 @@ def run_backtest(
             )
             break
 
-        # Equity known at this auction. Fixed for every contract in the book.
-        #
-        # The book for delivery day D is committed at D-1 10:30, while day D-1 is
-        # still being delivered — so D-1's settlement is NOT known yet. Folding a
-        # book's P&L into equity the moment it finishes still let the next day's
-        # quantities respond to an outcome that arrived after they were bid: a
-        # two-contract probe moved the second day's P&L from £200 to £204 purely
-        # by changing the first day's cash-out. Settlement is therefore released
-        # with a one-book lag, so sizing sees only books that had fully settled
-        # before this auction opened.
+        # Release dated settlements before risk checks, even across empty days/gaps.
         auction_capital = settled_capital
 
         tradable = [
@@ -177,15 +192,15 @@ def run_backtest(
         if not tradable:
             continue
 
-        # Use abs(da_price) floored at £10 so negative or near-zero prices
+        # Use the pre-auction reference floored at £10 so negative or near-zero prices
         # (which occurred in GB in 2018/2019) don't invert or inflate position size.
-        sizes = {i: (auction_capital * risk_pct) / max(abs(da_prices[i]), 10.0) for i in tradable}
+        sizes = {i: (auction_capital * risk_pct) / max(abs(sizing[i]), 10.0) for i in tradable}
 
         # Aggregate exposure budget for the book. Sizing each contract at a fixed
         # fraction of equity is a per-trade rule; a day that fires many of them
         # still has to fit inside one balance sheet, so the book is scaled back
         # pro-rata if its total notional would exceed the budget.
-        notional = sum(sizes[i] * max(abs(da_prices[i]), 10.0) for i in tradable)
+        notional = sum(sizes[i] * max(abs(sizing[i]), 10.0) for i in tradable)
         budget = auction_capital * max_book_exposure_pct
         if notional > budget > 0:
             scale = budget / notional
@@ -277,8 +292,12 @@ def run_backtest(
         # size a later book once a full delivery day has passed — the auction for
         # the next day has already closed by the time this one finishes settling.
         current_capital += book_pnl
-        settled_capital += pending_pnl
-        pending_pnl = book_pnl
+        if timestamps is not None:
+            available = (book_id.tz_localize(None) + pd.Timedelta(days=1)).tz_localize(
+                "Europe/London"
+            )
+            available += pd.Timedelta(hours=settlement_publication_lag_h)
+            pending_books.append((available, book_pnl))
 
     final_capital = starting_capital + float(np.sum(net_pnl))
     total_return_pct = (final_capital - starting_capital) / starting_capital
@@ -488,6 +507,8 @@ def run_backtest_from_dataframe(
     take_profit_pct: float = 0.90,
     stop_loss_price_delta: float = 5.00,
     slippage: float = 2.00,
+    sizing_prices: np.ndarray | None = None,
+    settlement_publication_lag_h: float = 1.0,
 ) -> tuple:
     """Convenience wrapper: run backtest from a DataFrame and attach per-period PnL."""
     df = df.copy().sort_values(time_col).reset_index(drop=True)

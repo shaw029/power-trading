@@ -83,16 +83,11 @@ def test_soc_stays_within_band():
 
 
 @pytest.mark.parametrize("n_periods", [23, 25])
-def test_dst_days_are_handled(n_periods: int):
+def test_utc_benchmark_rejects_partial_or_overlapping_days(n_periods: int):
     cfg = bess_config()
     assets = build_assets()
     result = settle.settle_day(_DAY, _prices(n_periods), cfg, assets, _start_soc())
-
-    assert result is not None
-    assert set(result.durations) == set(REFERENCE_DURATIONS)
-    for dur in result.durations.values():
-        assert len(dur.da_schedule) == n_periods
-        assert len(dur.dispatch_log) == n_periods
+    assert result is None
 
 
 @pytest.mark.parametrize("n_periods", [0, 22, 26, 48])

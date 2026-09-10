@@ -15,6 +15,7 @@ The entry point is ``main.py``, which supplies the config and the mode. Calling
 ``configs/config.yaml`` holds.
 """
 
+from src.data.market_calendar import complete_resample
 import pandas as pd
 import numpy as np
 import logging
@@ -215,6 +216,14 @@ def build_features_pipeline(config, features_save_path=None):
 
         # Step 3: Build features
         logger.info("Step 3: Building features")
+        # Data-period end is exclusive; downloader margins are only for source context.
+        time = pd.to_datetime(processed_df["time"], utc=True)
+        in_period = pd.Series(False, index=processed_df.index)
+        for period in periods:
+            in_period |= (time >= pd.Timestamp(str(period["start"]), tz="Europe/London")) & (
+                time < pd.Timestamp(str(period["end"]), tz="Europe/London")
+            )
+        processed_df = processed_df[in_period].reset_index(drop=True)
         features_df = build_features(processed_df, save_path=features_save_path)
 
         logger.info(f"Features pipeline completed successfully. Final shape: {features_df.shape}")
@@ -324,11 +333,18 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
 
     net = results_df["net_pnl"]
     avg_daily = float(net.mean())
-    std_daily = float(net.std(ddof=1)) if len(net) > 1 else 0.0
-    sharpe = (avg_daily / std_daily) * np.sqrt(365) if std_daily > 0 else 0.0
+    daily = (
+        pd.Series(net.to_numpy(), index=pd.to_datetime(results_df["date"]))
+        .sort_index()
+        .asfreq("D", fill_value=0)
+    )
+    opening_equity = 50_000.0 + daily.cumsum().shift(1, fill_value=0)
+    daily_returns = daily / opening_equity
+    std_daily = float(daily_returns.std(ddof=1)) if len(daily) > 1 else 0.0
+    sharpe = float(daily_returns.mean()) / std_daily * np.sqrt(365) if std_daily > 0 else 0.0
 
     cumulative = net.cumsum()
-    max_drawdown = float((cumulative - cumulative.cummax()).min())
+    max_drawdown = float((cumulative - cumulative.cummax().clip(lower=0)).min())
 
     bess_cfg = config["bess"]
     total_degradation = float(results_df["degradation_cost"].sum())
@@ -463,12 +479,13 @@ def _run_bess_pipeline(config: dict) -> dict:
     duration_h = bess_cfg.get("resolution_h", 1.0)
     resample_freq = f"{int(duration_h * 60)}min"
 
-    prices = (
-        da_processed.resample(resample_freq)
-        .mean()
-        .join(mid_processed.resample(resample_freq).mean())
-        .dropna()
-    )
+    # Persist the native settlement inputs as well as the forecasts. Consumers
+    # must not substitute the feature merge's filled price columns for raw coverage.
+    native_prices = da_processed.join(mid_processed, how="outer").sort_index()
+    native_prices.index.name = "time"
+    paths["trading_dir"].mkdir(parents=True, exist_ok=True)
+    native_prices.to_csv(paths["trading_dir"] / "dispatch_prices.csv")
+    prices = complete_resample(native_prices, resample_freq).dropna()
 
     asset = BESSAsset(
         capacity_mwh=bess_cfg["capacity_mwh"],
@@ -487,7 +504,7 @@ def _run_bess_pipeline(config: dict) -> dict:
     # clock rather than by position — pairing arrays by index silently shifts
     # every later period of a day by one slot as soon as a single settlement
     # period is missing upstream, which happens on 16 days of the 2018 sample.
-    forecast_grid = oos_forecast.resample(resample_freq).mean()
+    forecast_grid = complete_resample(oos_forecast, resample_freq)
 
     daily_results = []
     skipped: dict[str, int] = {}
@@ -572,6 +589,7 @@ def _run_bess_pipeline(config: dict) -> dict:
                 "time",
                 "actual_da_price",
                 "predicted_da_price",
+                "feature_imputed",
                 "fold_id",
                 "train_end",
                 "split",
@@ -650,16 +668,38 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
             build_features_pipeline(config, features_save_path=paths["features_file"])
 
         logger.info("Training model")
-        model, predictions_df, X_test = train_model(
-            features_path=str(paths["features_file"]),
-            model_type=model_type,
-            model_params=model_params,
-            validation_type=val_type,
-            wf_train_days=wf_train_days,
-            wf_test_days=wf_test_days,
-            wf_step_days=wf_step_days,
-            holdout_days=holdout_days,
-        )
+        from src.utils.provenance import fingerprint
+        from pathlib import Path
+
+        cache_dir = (config or {}).get("training_cache_dir")
+        cached_fit = None
+        if cache_dir:
+            cache_key = fingerprint(
+                Path(__file__).resolve().parents[1],
+                {
+                    "model": (config or {}).get("model"),
+                    "validation": (config or {}).get("validation"),
+                },
+                features=paths["features_file"],
+            )
+            cached_fit = Path(cache_dir) / f"{cache_key}.joblib"
+        if cached_fit is not None and cached_fit.exists():
+            model, predictions_df, X_test = joblib.load(cached_fit)
+        else:
+            model, predictions_df, X_test = train_model(
+                features_path=str(paths["features_file"]),
+                model_type=model_type,
+                model_params=model_params,
+                validation_type=val_type,
+                wf_train_days=wf_train_days,
+                wf_test_days=wf_test_days,
+                wf_step_days=wf_step_days,
+                holdout_days=holdout_days,
+                evaluate_holdout=(config or {}).get("validation", {}).get("evaluate_holdout", True),
+            )
+            if cached_fit is not None:
+                cached_fit.parent.mkdir(parents=True, exist_ok=True)
+                joblib.dump((model, predictions_df, X_test), cached_fit)
 
         results["model"] = model
         results["predictions_df"] = predictions_df

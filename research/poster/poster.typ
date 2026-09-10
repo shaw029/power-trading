@@ -320,15 +320,16 @@ cash-out, so it never enters the day-ahead objective. It was exactly zero in
 Buying every top-decile hour costs #metric[#n4.cost_all]
 #text(size: 16pt)[(#n4.cost_all_ci)], which is #n4.cost_all_share. Buying the
 entire system-value schedule, a broader objective that also credits surplus
-absorption, costs #metric[#n4.cost_full_align] #text(size: 16pt)[(#n4.resample_range)]. No
+absorption, costs #metric[#n4.cost_full_align] #text(size: 16pt)[(#n4.resample_range)]. Within this conditional grid, no
 payment lifts the two-hour asset past #metric[#n4.dur2_best] of what six hours
 of storage reaches, a level the longer asset attains at
 #metric[#n4.dur6_free] before any payment.
 
 #panel("nb04_fig_duration_frontier.svg", ratio: 100%)[
   Figure 3. Each curve sweeps the weight on system value for one duration; the
-  dot marks its profit schedule. Capital cost of the extra energy is not
-  modelled.
+  dot marks its profit schedule. Each day restarts at 50% SOC; inventory
+  resets and extra energy capacity are unpriced. These are conditional daily
+  comparisons, not continuous strategies or procurement bounds.
 ]
 
 #colbreak()

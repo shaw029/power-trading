@@ -277,9 +277,9 @@ class TestProcessDayAheadPrice:
         return pd.DataFrame({"time": times, "value": [50.0] * n_hours})
 
     def test_hourly_expanded_to_30min(self):
-        # 2 hourly points at 00:00 and 01:00 → resample produces 00:00, 00:30, 01:00 = 3 slots
+        # Each hourly product covers both its settlement periods, including the final :30.
         result = process_day_ahead_price(self._make_hourly(2))
-        assert len(result) == 3
+        assert len(result) == 4
 
     def test_output_column(self):
         result = process_day_ahead_price(self._make_hourly(2))

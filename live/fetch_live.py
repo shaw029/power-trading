@@ -90,7 +90,14 @@ def get_day_prices(date: dt.date, da_source: str = _DA_SOURCE) -> pd.DataFrame:
 
     prices = day_ahead.join(mid, how="outer")
     prices = prices[(prices.index >= start) & (prices.index < end)]
-    prices = prices.resample(_RESAMPLE_RULE).mean()
+    # Establish half-hour coverage before averaging; partial MID bins are proxies too.
+    native = pd.date_range(start, end, freq="30min", inclusive="left")
+    prices = prices.reindex(native)
+    proxy = prices["mid_price"].isna().resample(_RESAMPLE_RULE).max()
+    prices["mid_price"] = prices["mid_price"].fillna(prices["day_ahead_price"])
+    from src.data.market_calendar import complete_resample
+
+    prices = complete_resample(prices, _RESAMPLE_RULE)
     # Only the day-ahead price is essential; a missing mid_price must not throw
     # away an otherwise valid day-ahead row, so drop on that column alone.
     prices = prices[["day_ahead_price", "mid_price"]].dropna(subset=["day_ahead_price"])
@@ -107,7 +114,7 @@ def get_day_prices(date: dt.date, da_source: str = _DA_SOURCE) -> pd.DataFrame:
     # can be held back for intraday, or other horizon constraints can bind — so
     # a consumer that wants to reason about deviations needs to know which rows
     # are real. ``mid_is_proxy`` is that flag.
-    prices["mid_is_proxy"] = prices["mid_price"].isna()
+    prices["mid_is_proxy"] = proxy.reindex(prices.index) | prices["mid_price"].isna()
     prices["mid_price"] = prices["mid_price"].fillna(prices["day_ahead_price"])
     if prices["mid_is_proxy"].any():
         logger.info(
