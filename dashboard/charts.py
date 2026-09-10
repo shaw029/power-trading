@@ -1622,21 +1622,38 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
             # an accepted bid *removes* discharge, so the segment goes the other
             # way. Stacked, the two sum to what was physically delivered, which
             # is the honest answer to "was this genuine trading or dispatch?".
-            for col, pn_col, name, colour, sign in (
-                ("discharge_mwh", "discharge_mwh_pn", "Discharged", COLORS["discharge"], 1.0),
-                ("charge_mwh", "charge_mwh_pn", "Charged", COLORS["charge"], -1.0),
+            for col, pn_col, name, verb, colour, sign in (
+                (
+                    "discharge_mwh",
+                    "discharge_mwh_pn",
+                    "Discharged",
+                    "discharge",
+                    COLORS["discharge"],
+                    1.0,
+                ),
+                ("charge_mwh", "charge_mwh_pn", "Charged", "charging", COLORS["charge"], -1.0),
             ):
                 notified = daily_df[pn_col] * sign
-                instructed = (daily_df[col] - daily_df[pn_col]) * sign
+                delta = daily_df[col] - daily_df[pn_col]
+                instructed = delta * sign
                 fig.add_trace(
                     go.Bar(
                         x=dates,
                         y=notified,
                         name=f"{name} — notified",
                         marker_color=colour,
-                        hovertemplate=f"{name} notified: %{{y:,.0f}} MWh<extra></extra>",
+                        hovertemplate=f"{name} notified: %{{customdata:,.0f}} MWh<extra></extra>",
+                        customdata=daily_df[pn_col].abs(),
                     )
                 )
+                # A balancing segment is signed against the direction it moves,
+                # so it can point *back through zero*: when the operator cuts
+                # charging below what was notified, the charge segment renders
+                # above the axis. That is the stack working — notified plus
+                # balancing equals delivered — but read naively it says
+                # "charging was positive", which is the opposite of what
+                # happened. The hover therefore names the direction rather than
+                # leaving a bare signed number to be misread.
                 fig.add_trace(
                     go.Bar(
                         x=dates,
@@ -1645,13 +1662,32 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
                         marker_color=colour,
                         marker_pattern_shape="/",
                         marker_line=dict(width=0),
-                        hovertemplate=f"{name} balancing: %{{y:,.0f}} MWh<extra></extra>",
+                        customdata=np.stack(
+                            [
+                                np.where(delta.to_numpy() >= 0, "added", "removed"),
+                                delta.abs().to_numpy(),
+                            ],
+                            axis=-1,
+                        ),
+                        hovertemplate=(
+                            f"Balancing %{{customdata[0]}} %{{customdata[1]:,.0f}} MWh "
+                            f"of {verb}<extra></extra>"
+                        ),
                     )
                 )
             title = "Fleet energy by day — notified vs balancing-instructed"
         apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
         fig.update_layout(barmode="relative", hovermode="x unified")
-        fig.update_yaxes(title_text="Energy (MWh; charge shown negative)")
+        # "Charge shown negative" describes the *notified* bars and the net
+        # result, not every segment: a balancing bar that removes charging
+        # points upward by construction. Say so on the axis rather than letting
+        # the reader infer a rule the chart does not follow.
+        fig.update_yaxes(
+            title_text=(
+                "Energy (MWh) — discharge above zero, charge below; "
+                "balancing bars point against the energy they remove"
+            )
+        )
         return fig
 
     if metric in ("cycles", "capacity", "capture"):

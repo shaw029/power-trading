@@ -6,6 +6,7 @@ existing dashboard charts.
 """
 
 import pandas as pd
+import pytest
 import plotly.graph_objects as go
 
 from dashboard.charts import (  # noqa: F401
@@ -870,3 +871,51 @@ def test_fleet_volume_without_the_split_columns():
     fig = chart_fleet_daily(daily, "volume")
     # Falls back to the plain discharge/charge pair rather than erroring.
     assert len(fig.data) == 2
+
+
+class TestFleetVolumeSigning:
+    """A balancing segment points against the energy it removes.
+
+    That is the stack working — notified plus balancing equals delivered — but a
+    charge segment above the axis reads as "charging was positive" unless the
+    chart says otherwise. These pin both the arithmetic and the wording.
+    """
+
+    def _frame(self):
+        # Day 2: the operator cut both notified charging and notified discharge.
+        return pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-09-05", "2026-09-06"]),
+                "discharge_mwh": [60.0, 40.0],
+                "charge_mwh": [50.0, 5.0],
+                "discharge_mwh_pn": [60.0, 55.0],
+                "charge_mwh_pn": [50.0, 85.0],
+            }
+        )
+
+    def _series(self, fig):
+        return {t.name: list(t.y) for t in fig.data}
+
+    def test_segments_sum_to_delivered_energy(self):
+        s = self._series(chart_fleet_daily(self._frame(), metric="volume"))
+        # charge is plotted negative, discharge positive
+        assert s["Charged — notified"][1] + s["Charged — balancing"][1] == pytest.approx(-5.0)
+        assert s["Discharged — notified"][1] + s["Discharged — balancing"][1] == pytest.approx(40.0)
+
+    def test_cutting_charge_puts_that_segment_above_the_axis(self):
+        s = self._series(chart_fleet_daily(self._frame(), metric="volume"))
+        assert s["Charged — balancing"][1] > 0  # removed charging points up
+        assert s["Discharged — balancing"][1] < 0  # removed discharge points down
+
+    def test_hover_names_the_direction_rather_than_a_bare_number(self):
+        fig = chart_fleet_daily(self._frame(), metric="volume")
+        by_name = {t.name: t for t in fig.data}
+        charge_bal = by_name["Charged — balancing"]
+        assert "removed" in list(charge_bal.customdata[1])
+        assert "of charging" in charge_bal.hovertemplate
+
+    def test_axis_does_not_claim_charge_is_always_negative(self):
+        fig = chart_fleet_daily(self._frame(), metric="volume")
+        title = fig.layout.yaxis.title.text
+        assert "charge shown negative" not in title
+        assert "remove" in title

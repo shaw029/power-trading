@@ -115,11 +115,51 @@ def process_lolpdrm(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def process_market_index_price(df: pd.DataFrame) -> pd.DataFrame:
-    """MID → mid_price, APXMIDP provider only (30-min native)."""
+    """MID → mid_price, APXMIDP provider only (30-min native).
+
+    **A zero-volume record carries no price.** The Market Index Price is the
+    volume-weighted average of qualifying trades in a settlement period, so when
+    no qualifying trade happened Elexon reports ``volume: 0.0`` alongside
+    ``price: 0.0``. That zero means "no trades", not "the market cleared at
+    nothing", and taking it at face value put £0.00 into the price series.
+
+    The correspondence is exact rather than approximate: across the 2018 APXMIDP
+    feed all 212 zero-volume records carry price 0.0, and no zero-volume record
+    carries a non-zero price. Three records pair a genuine £0 print with real
+    volume and are kept, which is why the test is on volume rather than on the
+    price being zero.
+
+    Left uncorrected this is not merely cosmetic. ``mid_price`` prices the
+    virtual engine's take-profit/stop-loss exits and settles the BESS intraday
+    deviations, so a phantom £0 reads as a catastrophic price move: it trips the
+    stop and then "fills" at a price that never existed. Thirteen such periods
+    fall inside the traded window of the canonical run and seven of them carry a
+    live signal.
+
+    Zero-volume periods therefore come back as NaN, which the live adapter
+    already knows how to record as a proxy rather than a print.
+    """
     df = df.copy()
     df = df[df["dataProvider"] == "APXMIDP"].copy()
     df.index = _utc_index(df["startTime"])
     df["mid_price"] = pd.to_numeric(df["price"], errors="coerce")
+
+    if "volume" in df.columns:
+        volume = pd.to_numeric(df["volume"], errors="coerce")
+        no_trades = volume.notna() & (volume <= 0)
+        if no_trades.any():
+            logger.info(
+                "Market index: %d settlement period(s) had no qualifying trade "
+                "(zero volume); their price is dropped rather than read as £0",
+                int(no_trades.sum()),
+            )
+        df.loc[no_trades, "mid_price"] = float("nan")
+    else:
+        logger.warning(
+            "Market index feed carries no volume column — zero-volume periods "
+            "cannot be distinguished from a genuine £0 print"
+        )
+
     df = df[["mid_price"]].sort_index()
     df = df[~df.index.duplicated(keep="first")]
     logger.info("Market index price (APXMIDP) processed. Shape: %s", df.shape)

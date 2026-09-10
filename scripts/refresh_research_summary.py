@@ -1,4 +1,4 @@
-"""Refresh README metrics and its equity image from notebook 01's selected run."""
+"""Refresh selected-run metrics and notebook 02's execution-comparison image."""
 
 import base64
 import json
@@ -64,13 +64,15 @@ London dispatch days.
     body = content.index("\n\n", start) + 2
     end = content.index("**Everything priced off MID", body)
     readme.write_text(content[:body] + text + content[end:])
-    book = json.loads((root / "research/notebooks/01_da_positioning_backtest.ipynb").read_text())
-    for output in book["cells"][17].get("outputs", []):
+    book = json.loads((root / "research/notebooks/02_hybrid_execution_analysis.ipynb").read_text())
+    for output in book["cells"][4].get("outputs", []):
         if "image/png" in output.get("data", {}):
             (root / "research/notebooks/assets/equity_curve.png").write_bytes(
                 base64.b64decode(output["data"]["image/png"])
             )
             break
+    else:
+        raise RuntimeError("Notebook 02 has no execution-comparison image; execute it first.")
     print(f"Refreshed README and equity image from {best}")
 
 

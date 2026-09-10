@@ -25,10 +25,20 @@ Rebuilt outcomes:
   include zero; the experiment does not establish a reliable trading edge.
 - Every hybrid candidate breaches the capital floor. Notebook 02 reports no
   eligible hybrid, retaining a rejected candidate only as a diagnostic.
-- BESS replay: 104 complete days, £139,934.46 net PnL (see the saved ledger for
+- BESS replay: 95 complete days, £128,144.50 net PnL (see the saved ledger for
   precision). Of 7,200 half-hour forecast rows, 1,066 use training-fold median
   imputation. Skipped dates are assumed idle for carried SOC; uncertainty in
-  pre-auction opening inventory is not simulated.
+  pre-auction opening inventory is not simulated. The day count fell from 104
+  after zero-volume market-index periods stopped being read as £0 prices (below):
+  those periods now fail coverage instead of supplying a phantom price.
+
+## Follow-up, 10 September 2026
+
+| Finding | Resolution and evidence |
+|---|---|
+| Market index £0 prints | Elexon reports `price: 0.0` with `volume: 0.0` when no qualifying trade occurred in a settlement period. The processor read `price` and ignored `volume`, so "no trades" entered the series as a £0 clearing price — visible as the MID collapse on 2018-11-29. Across the 2018 APXMIDP feed the correspondence is exact: 212 zero-volume records, all priced £0.00, and no zero-volume record carrying a real price. Three genuine £0 prints with real volume exist, so the test is on volume, not on the price being zero. Zero-volume periods now return NaN, which the live adapter already records via `mid_is_proxy`. Thirteen such periods fell inside the canonical traded window and seven carried a live signal; they did not affect the published headline because the canonical configuration runs with the TP/SL gate off, but they were live in the gate-on archetypes and the BESS intraday engine. |
+| Fleet volume chart sign | A balancing segment is signed against the direction it moves, so cutting notified charging renders the charge segment *above* the axis. The arithmetic was right — notified plus balancing equals delivered — but the axis claimed "charge shown negative" and the hover gave a bare signed number, so a cancelled 80 MWh of charging read as 80 MWh of charging. Axis and hover now name the direction ("Balancing removed 80 MWh of charging"); four tests pin both the stack arithmetic and the wording. |
+| Notebook 02 read as all-negative | Four of five archetypes lose money because they all run the take-profit/stop-loss gate; `Full Imbalance Exposure` does not, and returns £113,700. The notebook now decomposes that single binary choice: the gate costs £117,921 on this signal, of which £83,235 is spread crossing at £2/MWh per intraday exit. The hedge-ratio sweep varies passive share *within* the gate-on archetype, so every point of it inherits that cost first. |
 
 Validation: all three notebooks executed successfully with regenerated figures;
 659 tests passed and one optional local-config test skipped. After the last BESS
