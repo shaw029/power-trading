@@ -263,9 +263,9 @@ are excluded from every state-of-charge figure.
   unrewarded.
   #v(1.5mm)
   *Belgium computes a continuous scarcity price* from an operating-reserve demand
-  curve. Elia has published these adders D+1 since October 2019, but they remain
-  unsettled; its settled imbalance adder, alpha, responds to system-imbalance
-  magnitude rather than loss-of-load probability.
+  curve, published D+1 since October 2019 and still run as a simulation. Its
+  settled imbalance adder, alpha, is an incentivising component driven by system
+  imbalance, not a scarcity adder.
   #v(1mm)
   *France pays for the charging behaviour directly.* TURPE 7, in force since
   August 2025, carries an *optional* and *locational* injection-withdrawal
@@ -506,7 +506,7 @@ compositional: a fixed panel of #n7.panel_sites sites shifts
       here rebuild from them at #box[*github.com/shaw029/power-trading*], with the
       full methods and limitations.
       #v(1.5mm)
-      *Policy, external to this study:* Papavasiliou et al., _The Electricity
+      *Policy, external, as at September 2026:* Papavasiliou et al., _The Electricity
       Journal_ 33 (2020); CRE, _TURPE 7_ (2025); DESNZ, _REMA Summer Update_
       (10 July 2025).
     ]
