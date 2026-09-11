@@ -262,18 +262,17 @@ are excluded from every state-of-charge figure.
   schedule against, or pay directly for the charging behaviour that GB leaves
   unrewarded.
   #v(1.5mm)
-  *Belgium computes a continuous scarcity price,* through adders derived from an
-  operating-reserve demand curve. Elia has published them D+1 since October 2019
-  as information, not settlement: no battery has been paid them. Its settled
-  alpha adder tracks system imbalance, not loss-of-load probability. Running
-  alongside the market is a different claim from paying for scarcity.
+  *Belgium computes a continuous scarcity price* from an operating-reserve demand
+  curve. Elia has published these adders D+1 since October 2019, but they remain
+  unsettled; its settled imbalance adder, alpha, responds to system-imbalance
+  magnitude rather than loss-of-load probability.
   #v(1mm)
-  *France pays for the charging behaviour directly.* TURPE 7's injection-withdrawal
-  component is *optional* and *locational*: from 1 August 2026, for storage at
-  HTA, HTB 1 and HTB 2, and only in zones CRE has designated as having
-  predictable local constraints. Where it applies, distribution-connected
-  batteries receive up to €69/MWh to charge in midday solar hours and are
-  penalised for discharging at the wrong ones. Unlike Belgium's, this settles.
+  *France pays for the charging behaviour directly.* TURPE 7, in force since
+  August 2025, carries an *optional* and *locational* injection-withdrawal
+  component: from 1 August 2026, for storage at HTA, HTB 1 and HTB 2, in
+  CRE-designated constrained zones. Where it applies, batteries receive up to
+  €69/MWh to charge in midday solar hours and are penalised for discharging
+  outside them. Unlike Belgium's, this settles.
   #v(1mm)
   *GB applies neither instrument.* Scarcity reaches the battery only through
   cash-out. The
