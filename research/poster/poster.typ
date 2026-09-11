@@ -264,9 +264,9 @@ are excluded from every state-of-charge figure.
   #v(1.5mm)
   *Belgium computes a continuous scarcity price,* through adders derived from an
   operating-reserve demand curve. Elia has published them D+1 since October 2019
-  — but as a parallel calculation for information, not a settled payment: no
-  battery has been paid these adders. Designed and running alongside the market
-  is a different claim from a market that pays for scarcity.
+  as information, not settlement: no battery has been paid them. Its settled
+  alpha adder tracks system imbalance, not loss-of-load probability. Running
+  alongside the market is a different claim from paying for scarcity.
   #v(1mm)
   *France pays for the charging behaviour directly.* TURPE 7's injection-withdrawal
   component is *optional* and *locational*: from 1 August 2026, for storage at
