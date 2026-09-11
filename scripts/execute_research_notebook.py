@@ -6,12 +6,21 @@ Run from the repository root. This runner needs no kernel TCP ports.
 
 from pathlib import Path
 import argparse
+import os
 import sys
 import time
 
-import nbformat
-from IPython.terminal.interactiveshell import TerminalInteractiveShell
-from IPython.utils.capture import capture_output
+# A notebook that calls plt.show() without selecting a backend gets the platform
+# default, which on macOS is the interactive MacOSX backend: show() then blocks
+# forever waiting for a window nobody will close, and this runner hangs with no
+# error and no output. Notebook 09 did exactly that and could not be executed
+# headlessly at all. Pin a non-interactive default here; a notebook that sets
+# %matplotlib inline still overrides it and its figures are still captured.
+os.environ.setdefault("MPLBACKEND", "Agg")
+
+import nbformat  # noqa: E402  (must follow the backend pin above)
+from IPython.terminal.interactiveshell import TerminalInteractiveShell  # noqa: E402
+from IPython.utils.capture import capture_output  # noqa: E402
 
 
 def main():
