@@ -12,7 +12,9 @@ GB market data.
 ![Partial intraday hedges: cumulative net PnL and drawdown](research/notebooks/assets/equity_curve.png)
 
 <!-- partial-hedge-summary:start -->
-Five exit policies on the same 1,911 entries, 1 MWh each, through 2018-12-31. Cumulative net research PnL at fixed volume; shaded gaps mark missing coverage. [Notebook 02](research/notebooks/02_hybrid_execution_analysis.ipynb) prices the profit, exposure and tail-risk trade-off.
+Five exit policies on the same 1,911 entries, 1 MWh each, through 2018-12-31 — fixed volume, so this is edge per unit traded, not an equity curve. Shaded gaps are missing coverage.
+
+**Read the ordering as window-specific.** It comes from one period and one account inception. [Notebook 02a](research/notebooks/02a_hybrid_execution_analysis.ipynb) prices the profit/exposure/tail trade-off; [02b](research/notebooks/02b_start_date_sensitivity.ipynb) restarts the same signals from five monthly inceptions and the ranking moves — full imbalance wins four of five windows, October puts conditional TP/SL on top. At the original 2% sizing, a July start halts four of the five policies on the capital floor; under managed book risk none of them halt and full imbalance earns +8.8% instead of +485.9%. The sizing policy, not the exit policy, decides whether the account survives.
 <!-- partial-hedge-summary:end -->
 
 ![Battery dispatch in the DA market](research/notebooks/assets/bess_strategy_showcase.png)
@@ -26,7 +28,7 @@ src/          strategy machinery — LP dispatch, ML models, features, backtest
 fleet/        the GB battery fleet: who exists, what they did
 live/         live GB feeds, classification, settlement
 dashboard/    two Streamlit apps: backtest replay, live benchmark
-research/     the study — notebooks 01-10, appendix 11, robustness checks, A0 poster
+research/     the study — notebooks 01-10 (02 splits into 02a/02b), robustness, A0 poster
 docs/         architecture, data sources, specs
 scripts/      store builders and maintenance tooling
 tests/        run in CI on every push
@@ -86,7 +88,7 @@ main risks. Notebook 01 tests the signal and its account-level implementation.
 
 **Intraday execution — price the cost of reducing that exposure.** A partial
 unwind replaces some uncertain cashout exposure with an intraday exit and its
-crossing cost. Notebook 02 holds the entry signal and quantity fixed, comparing
+crossing cost. Notebook 02a holds the entry signal and quantity fixed, comparing
 0%, 25%, 50%, 75% and 100% closure. It measures profit retained, daily volatility,
 tail loss and drawdown: less residual MWh need not mean a smaller realised loss.
 The chart uses 1 MWh per entry across the full saved period. Funded-account sizing
@@ -121,7 +123,8 @@ the notebooks and architecture documentation.
 | | | |
 |---|---|---|
 | **01** | DA positioning | Model shootout, walk-forward calibration on a development period with an explicit stability check, execution sweep under liquidity and risk constraints, and a single scoring of the frozen configuration on a reserved retrospective 60-day evaluation split |
-| **02** | Partial intraday hedging | Identical entries, five exit mixes: full-period net PnL, volatility and tail losses, hedge-cost attribution, monthly stability and a stress-day explanation |
+| **02a** | Partial intraday hedging | Identical entries, five exit mixes: full-period net PnL, volatility and tail losses, hedge-cost attribution, monthly stability and a stress-day explanation |
+| **02b** | Start-date sensitivity | The same five policies restarted from five monthly account inceptions. The ranking moves and, at 2% sizing, four of five breach the capital floor — so 02a's ordering is a property of its window, not a recommendation |
 | **03** | BESS dispatch | PnL waterfall from DA benchmark through intraday improvement, execution friction, imbalance and degradation; price capture, rebalancing impact, and the DA/intraday capacity allocation frontier |
 
 **The fleet study — the same machinery turned on a different question:** does

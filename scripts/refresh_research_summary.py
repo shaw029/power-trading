@@ -37,14 +37,26 @@ def refresh(root: Path) -> None:
     for name, expected in checks.items():
         source = root / name
         if not source.exists() or hashlib.sha256(source.read_bytes()).hexdigest() != expected:
-            raise ValueError(f"Stale or missing {name}; execute notebook 02 before refreshing")
+            raise ValueError(f"Stale or missing {name}; execute notebook 02a before refreshing")
+    # The start-date caveat lives here, not hand-written into the README, because
+    # this block is regenerated: a caveat typed between the markers is silently
+    # overwritten on the next refresh, which is the one place it must not be.
     caption = (
         f"Five exit policies on the same {report['matched_signals']:,} entries, "
         f"{report['quantity_mwh_per_signal']:g} MWh each, through "
-        f"{report['end']}. Cumulative net research PnL at fixed volume; "
-        "shaded gaps mark missing coverage. "
-        "[Notebook 02](research/notebooks/02_hybrid_execution_analysis.ipynb) "
-        "prices the profit, exposure and tail-risk trade-off."
+        f"{report['end']} — fixed volume, so this is edge per unit traded, not an "
+        "equity curve. Shaded gaps are missing coverage.\n\n"
+        "**Read the ordering as window-specific.** It comes from one period and one "
+        "account inception. "
+        "[Notebook 02a](research/notebooks/02a_hybrid_execution_analysis.ipynb) "
+        "prices the profit/exposure/tail trade-off; "
+        "[02b](research/notebooks/02b_start_date_sensitivity.ipynb) restarts the same "
+        "signals from five monthly inceptions and the ranking moves — full imbalance "
+        "wins four of five windows, October puts conditional TP/SL on top. At the "
+        "original 2% sizing, a July start halts four of the five policies on the "
+        "capital floor; under managed book risk none of them halt and full imbalance "
+        "earns +8.8% instead of +485.9%. The sizing policy, not the exit policy, "
+        "decides whether the account survives."
     )
     readme = root / "README.md"
     content = readme.read_text()

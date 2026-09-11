@@ -84,11 +84,14 @@ settlement PnL is released after the delivery day ends plus the one-hour assumpt
 The legacy `max_drawdown_pct` stops new books at a floor relative to initial capital,
 while previously committed books still settle. It is not a trailing peak limit.
 
-The optional [book-risk study](EXECUTION_RISK_STUDY.md) reserves stress capacity
-for unsettled books and tests smaller aggregate allocations. The
-[start-date appendix](START_DATE_SENSITIVITY.md) restarts empty accounts without
-rebasing an existing PnL path. Both are retrospective implementation studies.
-Notebook 02's fixed-volume ledger does not simulate this capital process.
+An optional book-risk policy reserves stress capacity for unsettled books and tests
+smaller aggregate allocations; it is declared in `configs/execution_risk_study.yaml`
+and driven by `scripts/run_execution_risk_study.py`. `scripts/run_start_date_study.py`
+restarts empty accounts without rebasing an existing PnL path. Both are retrospective
+implementation studies, and
+[notebook 02b](../research/notebooks/02b_start_date_sensitivity.ipynb) runs and
+documents them. Notebook 02a's fixed-volume ledger does not simulate this capital
+process.
 
 ## 5. Phase 3: Physical Asset (BESS) Optimisation
 

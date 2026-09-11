@@ -30,7 +30,8 @@ best read in order, because each interrogates the one before it.
 | | | |
 |---|---|---|
 | **01** | Day-ahead positioning backtest | Virtual trading against imbalance. Baseline, model selection, walk-forward calibration, execution limits. |
-| **02** | Pricing the imbalance hedge | Identical signals and fixed MWh; five static exit mixes, profit/risk trade-offs, additive hedge costs, monthly stability and a stress-day explanation. |
+| **02a** | Pricing the imbalance hedge | Identical signals and fixed MWh; five static exit mixes, profit/risk trade-offs, additive hedge costs, monthly stability and a stress-day explanation. |
+| **02b** | Start-date sensitivity | **Qualifies 02a.** Restarts the same policies from five monthly inceptions: the ordering moves, and at the original sizing four of five halt on the capital floor. 02a's ranking holds for its window, not in general. |
 | **03** | BESS dispatch analysis | The battery strategy over 01's window. Much of this became the dashboard's benchmark pages. |
 | **04** | Alignment gap | **The research question.** How much profit-optimal battery behaviour coincides with what a resilient system needs, and what does closing the gap cost? |
 | **05** | Stress response study | Takes the question to the real fleet, measured against the operator's own scarcity instruments rather than a price proxy. |
@@ -40,12 +41,13 @@ best read in order, because each interrogates the one before it.
 | **09** | Model vs fleet | Reconciles 04 and 05, which answered different questions with different rulers and were never comparable. Puts both on one yardstick. |
 | **10** | Acceptances | **Corrects 05, 08 and 09.** They measure from Final Physical Notifications, which are plans; the Balancing Mechanism instructs units away from them, and for GB batteries the accepted volume is of the same order as the notified position. |
 
-**Implementation appendices:** [11 — start-date sensitivity](notebooks/11_start_date_sensitivity.ipynb)
-and the [funded-account book-risk study](../docs/EXECUTION_RISK_STUDY.md) address
-sizing and survival separately from notebook 02's fixed-volume payoff experiment.
-Notebook 02 saves only its README overview (`notebooks/assets/equity_curve.png`);
-its other charts and the three appendix-11 figures remain in committed notebook
-outputs, with no separate PNG copies. Study JSON/CSV ledgers live in ignored
+**02b is a qualification, not an appendix.** It sits beside 02a because 02a cannot
+be quoted without it: the same five policies restarted from five monthly inceptions
+change order, and at the original 2% sizing four of them halt. 02b also declares the
+funded-account book-risk policy and replays these exits under it — none of them halt
+under managed book risk. Notebook 02a saves only its README
+overview (`notebooks/assets/equity_curve.png`); its other charts and 02b's figures
+remain in committed notebook outputs, with no separate PNG copies. Study JSON/CSV ledgers live in ignored
 `artifacts/`; duplicated summaries are not exported. Poster exports from
 04–10 keep their existing workflow.
 
