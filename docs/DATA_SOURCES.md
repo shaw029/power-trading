@@ -67,9 +67,18 @@ Once the CSVs exist, change the relevant `*_source` keys in `configs/config.yaml
 | `demand_actual.csv` | `startTime`, `demand` |
 | `imbalance_price.csv` | `startTime`, `systemBuyPrice`, `systemSellPrice`, `netImbalanceVolume` |
 
+Market-index records with `volume = 0` are treated as missing prices, including
+records whose reported price is £0. A genuine £0 trade with positive volume is
+retained. Include `volume` in CSV exports when available; a price-only legacy CSV
+cannot distinguish these cases. Research comparisons disclose their common-price
+exclusions instead of turning missing observations into free executions.
+
 ## Caching
 
-All API sources download day-by-day and cache raw JSON under `data/raw/<DATASET>/`. Subsequent runs skip already-cached days. To force a re-download, delete the relevant directory:
+API sources cache day files under the configured raw-data root. Historical caches
+are reused; recent provisional Elexon/Nord Pool/fleet caches expire after 15
+minutes within a five-day window. Cache expiry is source-specific, not a promise
+that every feed republishes at the same frequency. To force a re-download, delete the relevant directory:
 
 ```bash
 rm -rf data/raw/NESO_NDFD/               # demand forecast (NESO_API)

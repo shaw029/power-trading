@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import logging
+from src.backtest.risk import BookRiskPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ def run_backtest(
     slippage: float = 2.00,
     sizing_prices: np.ndarray | None = None,
     settlement_publication_lag_h: float = 1.0,
+    book_risk_policy: BookRiskPolicy | None = None,
 ) -> tuple:
     """Run backtest for a Day-Ahead Auction vs Imbalance settlement strategy.
 
@@ -36,7 +38,7 @@ def run_backtest(
     if its total notional would exceed max_book_exposure_pct of that equity.
 
     The simulation halts at an auction boundary if the account has breached the
-    maximum drawdown floor:
+    loss floor relative to initial capital (not a trailing peak drawdown):
         floor = starting_capital × (1 − max_drawdown_pct)
 
     PnL per settlement period (in £, not per-MWh):
@@ -60,11 +62,12 @@ def run_backtest(
         predicted_spreads:    Raw model spread forecasts (£/MWh).
         baseline_hedge_ratio: Fraction of position hedged at execution (0–1).
         take_profit_pct:      Take-profit trigger as a fraction of predicted spread.
-        stop_loss_price_delta: Stop-loss threshold — max adverse price move (£/MWh) before the active slice exits.
+        stop_loss_price_delta: Adverse-move trigger (£/MWh); the adjusted-MID fill can exceed it.
         slippage:             Bid-ask crossing cost applied to intraday mid-price exits (£/MWh).
         sizing_prices:        Pre-auction reference prices; defaults to a fixed £50/MWh.
                               Cleared DA prices never determine the bid quantity.
         settlement_publication_lag_h: Assumed delay after the delivery day ends (1 hour).
+        book_risk_policy: Optional common stress budget and drawdown sizing policy.
 
     Returns:
         (net_pnl, trading_metrics)
@@ -127,11 +130,14 @@ def run_backtest(
     # `settled_capital` is equity observable at the auction being sized;
     # `pending_pnl` holds the book that is delivering but has not settled yet.
     settled_capital = starting_capital
-    pending_books: list[tuple[pd.Timestamp, float]] = []
+    settled_peak = starting_capital
+    pending_books: list[tuple[pd.Timestamp, float, float]] = []
+    risk_book_ledger = []
     net_pnl = np.zeros(n, dtype=float)
     position_mwh_arr = np.zeros(n, dtype=float)
     fee_paid_arr = np.zeros(n, dtype=float)
     halted_at = None
+    halt_details = None
 
     _active_tp_count = 0
     _active_sl_count = 0
@@ -162,20 +168,35 @@ def run_backtest(
                 - pd.Timedelta(days=1)
                 + pd.Timedelta(hours=10, minutes=30)
             ).tz_localize("Europe/London")
-            settled_capital += sum(pnl for available, pnl in pending_books if available <= auction)
+            for available, pnl, _ in sorted(pending_books):
+                if available <= auction:
+                    settled_capital += pnl
+                    settled_peak = max(settled_peak, settled_capital)
             pending_books = [
-                (available, pnl) for available, pnl in pending_books if available > auction
+                (available, pnl, stress)
+                for available, pnl, stress in pending_books
+                if available > auction
             ]
 
         # The halt reads the same observable equity as the sizing rule: a book
         # cannot be withheld on the strength of a settlement that has not landed.
         if settled_capital <= drawdown_floor:
             halted_at = int(idx[0])
+            halt_details = {
+                "auction_time": auction.isoformat() if timestamps is not None else None,
+                "first_unbid_delivery_time": (
+                    _ts[halted_at].isoformat() if timestamps is not None else None
+                ),
+                "settled_equity": float(settled_capital),
+                "booked_equity": float(current_capital),
+                "capital_floor": float(drawdown_floor),
+            }
             logger.warning(
-                "Max drawdown reached before the %s auction (capital £%.0f ≤ floor £%.0f) "
-                "— simulation halted",
-                book_id,
-                current_capital,
+                "Initial-capital loss floor reached at auction %s "
+                "(settled equity £%.0f ≤ floor £%.0f); no new books, "
+                "already committed books remain in PnL",
+                halt_details["auction_time"],
+                settled_capital,
                 drawdown_floor,
             )
             break
@@ -205,6 +226,37 @@ def run_backtest(
         if notional > budget > 0:
             scale = budget / notional
             sizes = {i: q * scale for i, q in sizes.items()}
+
+        committed_stress = 0.0
+        if book_risk_policy is not None:
+            # Charge all gross MWh against the same adverse-move scenario.
+            # No credit for expected netting or for which exit looks safer.
+            stress_per_mwh = (
+                book_risk_policy.stress_move_gbp_per_mwh + abs(cost_per_trade) + abs(slippage)
+            )
+            pending_stress = sum(stress for _, _, stress in pending_books)
+            loss_budget = book_risk_policy.new_book_budget(
+                auction_capital, settled_peak, pending_stress
+            )
+            requested_stress = sum(sizes.values()) * stress_per_mwh
+            risk_scale = min(1.0, loss_budget / requested_stress) if requested_stress > 0 else 0.0
+            sizes = {i: q * risk_scale for i, q in sizes.items()}
+            committed_stress = sum(sizes.values()) * stress_per_mwh
+            risk_book_ledger.append(
+                {
+                    "auction_time": auction.isoformat() if timestamps is not None else None,
+                    "delivery_day": str(book_id),
+                    "available_equity": float(auction_capital),
+                    "settled_peak": float(settled_peak),
+                    "drawdown_scale": book_risk_policy.scale(auction_capital, settled_peak),
+                    "pending_stress": float(pending_stress),
+                    "new_book_budget": float(loss_budget),
+                    "new_book_stress": float(committed_stress),
+                    "gross_mwh": float(sum(sizes.values())),
+                }
+            )
+            if committed_stress <= 0:
+                continue
 
         book_pnl = 0.0
         for i in tradable:
@@ -297,7 +349,7 @@ def run_backtest(
                 "Europe/London"
             )
             available += pd.Timedelta(hours=settlement_publication_lag_h)
-            pending_books.append((available, book_pnl))
+            pending_books.append((available, book_pnl, committed_stress))
 
     final_capital = starting_capital + float(np.sum(net_pnl))
     total_return_pct = (final_capital - starting_capital) / starting_capital
@@ -313,7 +365,8 @@ def run_backtest(
         ts = pd.DatetimeIndex(pd.to_datetime(timestamps, utc=True))
         market_date = ts.tz_convert("Europe/London").normalize()
         daily_pnl = pd.Series(net_pnl, index=market_date, name="net_pnl").groupby(level=0).sum()
-        # Percentage returns on the equity each book was sized against. Position
+        # Percentage returns on opening account equity, including booked PnL.
+        # This differs from settled equity available at the earlier auction. Position
         # size scales with equity, so cash P&L is not a stationary series: a £500
         # day early on and a £500 day at three times the capital are different
         # results, and a Sharpe built on pounds treats them as identical.
@@ -472,6 +525,8 @@ def run_backtest(
         "max_drawdown": max_drawdown,
         "max_drawdown_pct_peak": peak_dd_pct,
         "halted_at_period": halted_at,
+        "halt_details": halt_details,
+        "risk_book_ledger": risk_book_ledger,
         "signal_distribution": {
             "long": n_long,
             "short": n_short,
@@ -509,9 +564,16 @@ def run_backtest_from_dataframe(
     slippage: float = 2.00,
     sizing_prices: np.ndarray | None = None,
     settlement_publication_lag_h: float = 1.0,
+    book_risk_policy: BookRiskPolicy | None = None,
 ) -> tuple:
     """Convenience wrapper: run backtest from a DataFrame and attach per-period PnL."""
-    df = df.copy().sort_values(time_col).reset_index(drop=True)
+    order = df[time_col].argsort(kind="stable").to_numpy()
+    if sizing_prices is not None:
+        sizing_prices = np.asarray(sizing_prices, dtype=float)
+        if len(sizing_prices) != len(df):
+            raise ValueError("sizing_prices must contain one pre-auction reference per row")
+        sizing_prices = sizing_prices[order]
+    df = df.iloc[order].copy().reset_index(drop=True)
     timestamps = df[time_col].values if time_col in df.columns else None
     mid_prices = df[mid_price_col].values if mid_price_col and mid_price_col in df.columns else None
     predicted_spreads = (
@@ -537,6 +599,9 @@ def run_backtest_from_dataframe(
         take_profit_pct=take_profit_pct,
         stop_loss_price_delta=stop_loss_price_delta,
         slippage=slippage,
+        sizing_prices=sizing_prices,
+        settlement_publication_lag_h=settlement_publication_lag_h,
+        book_risk_policy=book_risk_policy,
     )
 
     df["pnl"] = net_pnl

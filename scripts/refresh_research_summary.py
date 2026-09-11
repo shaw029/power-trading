@@ -1,79 +1,65 @@
-"""Refresh selected-run metrics and notebook 02's execution-comparison image."""
+"""Refresh the compact README caption from notebook 02's verified report.
 
-import base64
+Run notebook 02 first. It exports its one README image directly; this script
+never scrapes notebook cell positions or reinstates the old account-sweep table.
+"""
+
+import hashlib
 import json
-import yaml
 from pathlib import Path
 
+START = "<!-- partial-hedge-summary:start -->"
+END = "<!-- partial-hedge-summary:end -->"
+IMAGE = "research/notebooks/assets/equity_curve.png"
 
-def main():
-    root = Path(__file__).resolve().parents[1]
+
+def refresh(root: Path) -> None:
     runs = root / "artifacts/da_positioning"
     best = json.loads((runs / "best_run.json").read_text())["best_run"]
-    path = runs / best / "virtual/trading"
-    metrics = json.loads((path / "metrics.json").read_text())
-    dev = metrics["trading_performance_by_split"]["development"]
-    report = json.loads((path / "holdout_report.json").read_text())
-    control = report["always_short_control"]
-    cfg = yaml.safe_load((root / "configs/config.example.yaml").read_text())
-    model_name = cfg["model"]["type"].replace("_", " ")
-    hybrid = json.loads((path / "hybrid_development_report.json").read_text())
-    hybrid_text = (
-        f"Notebook 02 selects a {hybrid['selected_ratio']:.0%} passive share on development only."
-        if hybrid["has_eligible_hybrid"]
-        else (
-            "Notebook 02 reports no eligible hybrid under its capital-floor constraint: "
-            "all hybrid candidates halt. This is a failed development calibration, "
-            "not an improved strategy."
-        )
+    path = runs / best / "virtual/trading/partial_hedge_report.json"
+    report = json.loads(path.read_text())
+    if (
+        report.get("schema_version") != 1
+        or report.get("study") != "fixed_volume_partial_hedges"
+        or report.get("run") != best
+        or report.get("image") != IMAGE
+        or report.get("account_simulation") is not False
+    ):
+        raise ValueError("Incompatible research report; execute notebook 02")
+    expected_inputs = {
+        f"artifacts/da_positioning/{best}/features/features.parquet",
+        f"artifacts/da_positioning/{best}/virtual/trading/signals.csv",
+        f"artifacts/da_positioning/{best}/virtual/trading/predictions.csv",
+    }
+    if set(report["input_sha256"]) != expected_inputs:
+        raise ValueError("Missing input provenance; execute notebook 02")
+    checks = {**report["input_sha256"], IMAGE: report["image_sha256"]}
+    for name, expected in checks.items():
+        source = root / name
+        if not source.exists() or hashlib.sha256(source.read_bytes()).hexdigest() != expected:
+            raise ValueError(f"Stale or missing {name}; execute notebook 02 before refreshing")
+    caption = (
+        f"Five exit policies on the same {report['matched_signals']:,} entries, "
+        f"{report['quantity_mwh_per_signal']:g} MWh each, through "
+        f"{report['end']}. Cumulative net research PnL at fixed volume; "
+        "shaded gaps mark missing coverage. "
+        "[Notebook 02](research/notebooks/02_hybrid_execution_analysis.ipynb) "
+        "prices the profit, exposure and tail-risk trade-off."
     )
-    text = f"""The canonical run is `{best}`. Model candidates are ranked on development MAE;
-signal settings are ranked on development Sharpe within the £1/MWh cost tier and
-one-trade-per-day floor. The selected model is {model_name}. The last 60
-market days are reserved from this selection, but were inspected in earlier
-research and are therefore a **retrospective evaluation split**, not a fresh sample.
-
-| | Development (90 days, selection) | Evaluation (60 days) |
-|---|---:|---:|
-| Executed trades | {dev['n_trades']:,} | {report['n_trades']:,} |
-| Net PnL | £{dev['total_pnl']:,.0f} | £{report['total_pnl']:,.0f} |
-| 95% conditional PnL interval | — | £{report['pnl_ci'][0]:,.0f} to £{report['pnl_ci'][1]:,.0f} |
-| Sharpe (daily account returns) | {dev['sharpe_ratio']:.2f} | {report['sharpe_ratio']:.2f} |
-| 95% conditional Sharpe interval | — | {report['sharpe_ci'][0]:.2f} to {report['sharpe_ci'][1]:.2f} |
-| Max cash drawdown | £{abs(dev['max_drawdown']):,.0f} | £{abs(report['max_drawdown']):,.0f} |
-| Evaluation volume / fees | — | {report['total_position_mwh']:,.0f} MWh / £{report['total_transaction_costs']:,.0f} |
-
-The intervals include zero and do not establish a reliable trading edge.
-[`score_holdout`](src/evaluation/holdout_report.py) uses 10,000 independent
-market-day bootstrap draws, seed 7, conditional on observed daily cash PnL and
-returns. It does not rerun compounding, capital halts or selection, or account for
-serial dependence. The always-short directional control on **model-selected
-periods** earns £{control['total_pnl']:,.0f} (Sharpe {control['sharpe_ratio']:.2f});
-it is not a model-free scheduling baseline.
-
-Quantities use a fixed pre-auction £50/MWh reference, and auction equity admits
-settlements only after the delivery day ends plus a one-hour publication
-assumption. Historical revised prices are not a point-in-time publication archive.
-{hybrid_text} Notebook 03 discloses missing-input imputation and excludes incomplete
-London dispatch days.
-
-"""
     readme = root / "README.md"
     content = readme.read_text()
-    start = content.index("### What the backtest actually shows")
-    body = content.index("\n\n", start) + 2
-    end = content.index("**Everything priced off MID", body)
-    readme.write_text(content[:body] + text + content[end:])
-    book = json.loads((root / "research/notebooks/02_hybrid_execution_analysis.ipynb").read_text())
-    for output in book["cells"][4].get("outputs", []):
-        if "image/png" in output.get("data", {}):
-            (root / "research/notebooks/assets/equity_curve.png").write_bytes(
-                base64.b64decode(output["data"]["image/png"])
-            )
-            break
-    else:
-        raise RuntimeError("Notebook 02 has no execution-comparison image; execute it first.")
-    print(f"Refreshed README and equity image from {best}")
+    if content.count(START) != 1 or content.count(END) != 1:
+        raise ValueError("README must contain exactly one research-caption marker pair")
+    start = content.index(START) + len(START)
+    end = content.index(END)
+    if end < start:
+        raise ValueError("README research-caption markers are reversed")
+    readme.write_text(content[:start] + "\n" + caption + "\n" + content[end:])
+
+
+def main() -> None:
+    refresh(Path(__file__).resolve().parents[1])
+    print("Verified notebook 02 inputs and overview image; refreshed compact README caption")
 
 
 if __name__ == "__main__":

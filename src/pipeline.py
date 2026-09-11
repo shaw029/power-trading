@@ -638,6 +638,13 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
     stop_loss_price_delta = (
         config.get("execution", {}).get("stop_loss_price_delta", 5.00) if config else 5.00
     )
+    # The signal cost hurdle already treats >=900 as a disabled-gate sentinel.
+    # Apply the same interpretation to fills: a finite 999 threshold otherwise
+    # still fires on an extreme price and charges an unbudgeted intraday exit.
+    if take_profit_pct >= _GATE_DISABLED:
+        take_profit_pct = float("inf")
+    if stop_loss_price_delta >= _GATE_DISABLED:
+        stop_loss_price_delta = float("inf")
     slippage = config.get("execution", {}).get("slippage", 2.00) if config else 2.00
     model_type = config["model"]["type"] if config else "xgboost"
     model_params = config["model"]["hyperparameters"] if config else None
@@ -765,8 +772,7 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
 
         pnl_series, trading_metrics = _backtest()
 
-        # Development and holdout are reported apart, and the holdout figure is
-        # the only one that has not been looked at while choosing anything. Every
+        # Development and retrospective evaluation are reported apart. Every
         # hyperparameter, signal setting and execution parameter in this run was
         # picked by reading development results, so quoting a single blended
         # curve as "out-of-sample" would smuggle the selection back in.

@@ -186,17 +186,15 @@ _VALIDATION_DEFAULTS = {
 }
 
 _EXECUTION_DEFAULTS = {
-    # Share of each position exited passively at MID; the rest runs the
-    # active TP/SL gate with imbalance as terminal fallback. The hedge-ratio
-    # sweep (notebook 02) is flat across 0.00-0.15 at the modelled friction;
-    # production takes the most-hedged point of that flat region as tail
-    # insurance rather than the corner.
+    # Legacy API defaults, retained for compatibility. The selected research
+    # configuration is explicit in config.example.yaml. Notebook 02 compares
+    # fixed-volume static hedges; it does not select this 15% fallback.
     "baseline_hedge_ratio": 0.15,
     "take_profit_pct": 0.90,
     "stop_loss_price_delta": 5.00,
     # Bid-ask crossing cost around MID (£/MWh): the spread paid on every
     # MWh traded in the continuous intraday market, in every strategy.
-    # £2 is a conservative spread-to-MID for GB half-hourly products.
+    # £2 is an illustrative assumption, not an observed executable spread.
     "slippage": 2.00,
 }
 

@@ -1,0 +1,14 @@
+# Research policy specified for this follow-up, after the historical sample was seen.
+# These are illustrative stress budgets, not fitted VaR estimates or loss guarantees.
+starting_capital: 50000.0
+reference_notional_per_trade: 0.02
+initial_capital_loss_floor_pct: 0.20
+fee_gbp_per_mwh: 1.0
+intraday_slippage_gbp_per_mwh: 2.0
+book_risk_policy:
+  daily_loss_budget_pct: 0.01
+  outstanding_loss_budget_pct: 0.02
+  stress_move_gbp_per_mwh: 50.0
+  reduce_at_drawdown: 0.05
+  minimum_at_drawdown: 0.15
+  minimum_scale: 0.25

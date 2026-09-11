@@ -3,13 +3,18 @@
 An end-to-end quantitative trading framework for the GB wholesale electricity
 market: day-ahead virtual positioning against imbalance, hybrid intraday
 execution, and battery dispatch optimised by LP with rolling-horizon
-re-optimisation — validated on a 2018 backtest and benchmarked live against the
+re-optimisation — studied on a 2018 backtest and benchmarked live against the
 real GB battery fleet.
 
 **[Live GB BESS benchmark →](https://power-trading-live-gb-bess.streamlit.app)** — the battery engine running on this week's
 GB market data.
 
-![Virtual strategy](research/notebooks/assets/equity_curve.png)
+![Partial intraday hedges: cumulative net PnL and drawdown](research/notebooks/assets/equity_curve.png)
+
+<!-- partial-hedge-summary:start -->
+Five exit policies on the same 1,911 entries, 1 MWh each, through 2018-12-31. Cumulative net research PnL at fixed volume; shaded gaps mark missing coverage. [Notebook 02](research/notebooks/02_hybrid_execution_analysis.ipynb) prices the profit, exposure and tail-risk trade-off.
+<!-- partial-hedge-summary:end -->
+
 ![Battery dispatch in the DA market](research/notebooks/assets/bess_strategy_showcase.png)
 
 ---
@@ -21,7 +26,7 @@ src/          strategy machinery — LP dispatch, ML models, features, backtest
 fleet/        the GB battery fleet: who exists, what they did
 live/         live GB feeds, classification, settlement
 dashboard/    two Streamlit apps: backtest replay, live benchmark
-research/     the study — notebooks 01-10, robustness checks, the A0 poster
+research/     the study — notebooks 01-10, appendix 11, robustness checks, A0 poster
 docs/         architecture, data sources, specs
 scripts/      store builders and maintenance tooling
 tests/        run in CI on every push
@@ -70,70 +75,39 @@ make poster                                               # compile the A0 board
 
 ## The strategies
 
-**Virtual** — ML-proxied residual-load mispricing against the EPEX day-ahead
-auction. Features pinned to the D-1 10:30 pre-auction vintage, with every lagged
-series offset far enough (48 h) that its source period closed before the auction
-the position was committed at — a property `build_features` asserts on the frame
-it writes rather than claiming in prose. Walk-forward validation on sliding
-200-day windows, with the **last 60 market days held out entirely** and never
-shown to any selection step. Exposure capped at the top-5 highest-conviction
-periods per direction per day. The selected configuration takes imbalance
-settlement as its exit, with the TP/SL gate off — so there is no passive slice
-to size, and hedge ratio and gate are one decision rather than two. Swept
-separately inside the gate-on archetype, passive share trades P&L against
-Sharpe rather than dominating: see notebook 02.
+**Day-ahead positioning — trade the DA–cashout basis.** Forecast the settlement
+spread before the auction: buy DA when expected cashout exceeds the auction
+price by the entry hurdle, or sell DA when the reverse holds. The selected linear
+model uses pre-auction demand/wind forecasts and lagged prices; walk-forward
+selection caps the schedule at 15 periods per direction per day. The canonical
+run carries the position to imbalance. PnL comes from the realised spread after
+fees; forecast error, correlated delivery periods and cashout spikes are the
+main risks. Notebook 01 tests the signal and its account-level implementation.
 
-**BESS** — Day-ahead schedule solved by LP (PuLP/HiGHS) against an ML price
-forecast, settling against the actual cleared price, so forecast quality drives
-PnL. Degradation is priced into the objective, not deducted afterwards. SOC
-carries across days. The intraday stage walks the day period by period: the
-current settlement period is priced at its **observed** MID, the still-unseen
-future at a hurdled DA proxy, and only the visible period is executed and locked
-before rolling forward — so new information genuinely arrives at each step and
-the day settles at ≈ 0 imbalance.
+**Intraday execution — price the cost of reducing that exposure.** A partial
+unwind replaces some uncertain cashout exposure with an intraday exit and its
+crossing cost. Notebook 02 holds the entry signal and quantity fixed, comparing
+0%, 25%, 50%, 75% and 100% closure. It measures profit retained, daily volatility,
+tail loss and drawdown: less residual MWh need not mean a smaller realised loss.
+The chart uses 1 MWh per entry across the full saved period. Funded-account sizing
+and capital limits are assessed separately in the implementation studies.
 
-The **market-allocation lever** (`da_commit_fraction`) partitions both power and
-the daily cycle budget between the auction and the intraday stage. Partitioning
-energy as well as power is what makes the reservation real; notebook 03 sweeps
-the frontier to find what the optimal constant split would have been.
+**BESS — optimise the physical asset across DA and intraday.** A linear programme
+chooses charge/discharge volumes against a DA price forecast, subject to power,
+SOC, efficiency and cycle constraints, with degradation inside the objective.
+The resulting DA commitment is settled at the cleared price. A rolling intraday
+solve adjusts physical dispatch and trades the deviation from that commitment;
+SOC and the remaining cycle budget carry forward. The `da_commit_fraction`
+parameter reserves both power and cycling capacity for intraday. Notebook 03
+attributes net PnL to the DA position, intraday deviations, execution costs,
+imbalance and degradation, and tests the allocation trade-off.
 
-### What the backtest actually shows
-
-The canonical run is `s4_n15_t30_vm00_tc10`. Model candidates are ranked on development MAE;
-signal settings are ranked on development Sharpe within the £1/MWh cost tier and
-one-trade-per-day floor. The selected model is linear regression. The last 60
-market days are reserved from this selection, but were inspected in earlier
-research and are therefore a **retrospective evaluation split**, not a fresh sample.
-
-| | Development (90 days, selection) | Evaluation (60 days) |
-|---|---:|---:|
-| Executed trades | 1,130 | 824 |
-| Net PnL | £113,700 | £44,542 |
-| 95% conditional PnL interval | — | £-24,358 to £112,361 |
-| Sharpe (daily account returns) | 5.01 | 4.42 |
-| 95% conditional Sharpe interval | — | -0.43 to 10.11 |
-| Max cash drawdown | £31,605 | £28,393 |
-| Evaluation volume / fees | — | 25,711 MWh / £25,711 |
-
-The intervals include zero and do not establish a reliable trading edge.
-[`score_holdout`](src/evaluation/holdout_report.py) uses 10,000 independent
-market-day bootstrap draws, seed 7, conditional on observed daily cash PnL and
-returns. It does not rerun compounding, capital halts or selection, or account for
-serial dependence. The always-short directional control on **model-selected
-periods** earns £-9,158 (Sharpe -3.06);
-it is not a model-free scheduling baseline.
-
-Quantities use a fixed pre-auction £50/MWh reference, and auction equity admits
-settlements only after the delivery day ends plus a one-hour publication
-assumption. Historical revised prices are not a point-in-time publication archive.
-Notebook 02 reports no eligible hybrid under its capital-floor constraint: all hybrid candidates halt. This is a failed development calibration, not an improved strategy. Notebook 03 discloses missing-input imputation and excludes incomplete
-London dispatch days.
-
-**Everything priced off MID is an idealised execution study.** The Market Index
-Price is a volume-weighted average of completed trades, not a quote anyone can
-hit, and one value per settlement period carries no path — so a stop is
-triggered and filled off the same number. See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The 2018 study uses a previously inspected retrospective evaluation split.
+Intraday prices are represented by MID, an aggregate traded-price index rather
+than an executable quote. Notebook 03 reveals one MID period at each step; the
+live benchmark uses realised full-day prices with perfect foresight. Their
+results answer different questions. Detailed assumptions and coverage are in
+the notebooks and architecture documentation.
 
 → Commercial model, asset state machine and PnL decomposition in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#5-phase-3-physical-asset-bess-optimisation).
@@ -147,7 +121,7 @@ triggered and filled off the same number. See
 | | | |
 |---|---|---|
 | **01** | DA positioning | Model shootout, walk-forward calibration on a development period with an explicit stability check, execution sweep under liquidity and risk constraints, and a single scoring of the frozen configuration on a reserved retrospective 60-day evaluation split |
-| **02** | Hybrid execution | Hedge-ratio sweep across the full 0–1 range, endpoints included, on the development split only, ranked by one stated criterion. Net PnL falls monotonically with passive share while Sharpe peaks near 0.40 — a real trade-off rather than the flat band previously claimed, and a peak too small (+0.25 Sharpe on 90 days) to justify the £7k of P&L it costs |
+| **02** | Partial intraday hedging | Identical entries, five exit mixes: full-period net PnL, volatility and tail losses, hedge-cost attribution, monthly stability and a stress-day explanation |
 | **03** | BESS dispatch | PnL waterfall from DA benchmark through intraday improvement, execution friction, imbalance and degradation; price capture, rebalancing impact, and the DA/intraday capacity allocation frontier |
 
 **The fleet study — the same machinery turned on a different question:** does
@@ -162,14 +136,7 @@ The finding: energy prices already secure most of a modelled battery's
 high-load alignment. Response during scarcity and readiness before scarcity
 emerge as distinct dimensions of battery behaviour.
 
-> **Residual load was recomputed in September 2026.** ITSDO is already net of
-> embedded solar, so the previous formula subtracted solar a second time. On the
-> poster window that moved the top-decile threshold from 23,343.6 MW to
-> 24,800.9 MW and replaced 81 of 288 top-decile half-hours. Figures derived from
-> that classification have been regenerated; see each notebook's own metrics
-> export for the current values.
-
-All ten notebooks, the robustness checks behind them and the A0 board:
+The notebooks, implementation appendices, robustness checks and A0 board:
 **[research/](research/)**
 
 ---
@@ -210,8 +177,8 @@ the research layer, plus a methodology page carrying scope and caveats.
 ## Roadmap
 
 - [x] **Phase 1 — DA positioning engine.** Development-selected forecasting model on residual-load mispricing, with signal gating, execution constraints and dynamic sizing.
-- [x] **Phase 2 — Intraday execution.** Hybrid passive-MID / active-TP-SL engine with configurable hedge ratio and per-period stop-loss cap.
-- [x] **Phase 3 — Physical asset optimisation.** LP day-ahead scheduling plus rolling-horizon intraday re-optimisation, SOC tracking, asymmetric efficiencies, priced degradation, and the market-allocation lever. Validated against the live GB benchmark and the real fleet.
+- [x] **Phase 2 — Intraday execution.** Configurable partial MID closure and conditional TP/SL proxy exits; matched-volume hedge research in notebook 02.
+- [x] **Phase 3 — Physical asset optimisation.** LP day-ahead scheduling plus rolling-horizon intraday re-optimisation, SOC tracking, asymmetric efficiencies, priced degradation, and the market-allocation lever. Used in the live GB benchmark and compared with observed fleet behaviour.
 - [ ] **Phase 4 — Stochastic optimisation and MID forecasting (planned).** Replace the constant `da_commit_fraction` with a two-stage scenario LP; replace the DA-price proxy for unseen periods with a genuine updating MID forecast; then reformulate the replan as a multi-stage stochastic programme, producing dispatch robust to forecast error rather than point-optimal against a single forecast.
 
 ---

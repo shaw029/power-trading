@@ -211,6 +211,73 @@ class TestPositionSizing:
 
 
 class TestDrawdownHalt:
+    def test_halt_reports_observable_equity_despite_pending_recovery(self, caplog):
+        # Day 1 settles a loss; day 2's committed book recovers above the floor.
+        # At the auction for day 3 only day 1 is observable, so it still halts.
+        ts = pd.date_range("2024-01-01T12:00:00Z", periods=4, freq="D")
+        pnl, metrics = run_backtest(
+            np.ones(4),
+            np.full(4, 50.0),
+            np.array([20.0, 80.0, 80.0, 80.0]),
+            np.full(4, 50.0),
+            timestamps=ts,
+            starting_capital=1000.0,
+            risk_pct=0.5,
+            cost_per_trade=0.0,
+        )
+        np.testing.assert_allclose(pnl, [-300.0, 300.0, 0.0, 0.0])
+        assert metrics["halt_details"] == {
+            "auction_time": "2024-01-02T10:30:00+00:00",
+            "first_unbid_delivery_time": "2024-01-03T12:00:00+00:00",
+            "settled_equity": 700.0,
+            "booked_equity": 1000.0,
+            "capital_floor": 800.0,
+        }
+        assert "settled equity £700 ≤ floor £800" in caplog.text
+
+    def test_dataframe_wrapper_respects_sizing_and_publication_lag(self):
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2024-01-01T12:00:00Z", periods=4, freq="D"),
+                "signal": 1,
+                "day_ahead_price": 50.0,
+                "system_sell_price": 20.0,
+                "system_buy_price": 50.0,
+            }
+        )
+        # 5 MWh per book; a 30-hour publication delay leaves the first loss
+        # unavailable until after the third book's auction.
+        result, metrics = run_backtest_from_dataframe(
+            df,
+            starting_capital=1000.0,
+            risk_pct=0.5,
+            cost_per_trade=0.0,
+            max_drawdown_pct=0.1,
+            sizing_prices=np.full(4, 100.0),
+            settlement_publication_lag_h=30.0,
+        )
+        np.testing.assert_allclose(result["pnl"], [-150.0, -150.0, -150.0, 0.0])
+        assert metrics["halted_at_period"] == 3
+
+    def test_dataframe_wrapper_sorts_reference_prices_with_their_rows(self):
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(["2024-01-02", "2024-01-01"], utc=True),
+                "signal": 1,
+                "day_ahead_price": 50.0,
+                "system_sell_price": 60.0,
+                "system_buy_price": 50.0,
+            }
+        )
+        result, _ = run_backtest_from_dataframe(
+            df,
+            starting_capital=1000.0,
+            risk_pct=0.5,
+            cost_per_trade=0.0,
+            sizing_prices=np.array([100.0, 50.0]),
+        )
+        np.testing.assert_allclose(result["pnl"], [100.0, 50.0])
+
     def test_simulation_halts_once_the_loss_has_actually_settled(self):
         # Day 1 loses the account through the floor. Day 2's book was bid at
         # 10:30 on day 1, while day 1 was still delivering, so the halt cannot

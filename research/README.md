@@ -4,7 +4,7 @@ Two things: the analysis, and the board that presents it.
 
 ```
 research/
-├── notebooks/    01 to 10, in dependency order
+├── notebooks/    01 to 10, plus implementation appendix 11
 │   ├── robustness/   scripts that check what the notebooks claim
 │   ├── figexport.py  print-resolution figure export, imported by 04-10
 │   └── build_digest.py
@@ -30,7 +30,7 @@ best read in order, because each interrogates the one before it.
 | | | |
 |---|---|---|
 | **01** | Day-ahead positioning backtest | Virtual trading against imbalance. Baseline, model selection, walk-forward calibration, execution limits. |
-| **02** | Hybrid execution hedge ratio | Holds 01's entry signals fixed and sweeps the execution layer alone. |
+| **02** | Pricing the imbalance hedge | Identical signals and fixed MWh; five static exit mixes, profit/risk trade-offs, additive hedge costs, monthly stability and a stress-day explanation. |
 | **03** | BESS dispatch analysis | The battery strategy over 01's window. Much of this became the dashboard's benchmark pages. |
 | **04** | Alignment gap | **The research question.** How much profit-optimal battery behaviour coincides with what a resilient system needs, and what does closing the gap cost? |
 | **05** | Stress response study | Takes the question to the real fleet, measured against the operator's own scarcity instruments rather than a price proxy. |
@@ -39,6 +39,15 @@ best read in order, because each interrogates the one before it.
 | **08** | Stress response, modern era | Re-cuts 05 on the post-break window, because 07 showed 05's window spans a structural break. |
 | **09** | Model vs fleet | Reconciles 04 and 05, which answered different questions with different rulers and were never comparable. Puts both on one yardstick. |
 | **10** | Acceptances | **Corrects 05, 08 and 09.** They measure from Final Physical Notifications, which are plans; the Balancing Mechanism instructs units away from them, and for GB batteries the accepted volume is of the same order as the notified position. |
+
+**Implementation appendices:** [11 — start-date sensitivity](notebooks/11_start_date_sensitivity.ipynb)
+and the [funded-account book-risk study](../docs/EXECUTION_RISK_STUDY.md) address
+sizing and survival separately from notebook 02's fixed-volume payoff experiment.
+Notebook 02 saves only its README overview (`notebooks/assets/equity_curve.png`);
+its other charts and the three appendix-11 figures remain in committed notebook
+outputs, with no separate PNG copies. Study JSON/CSV ledgers live in ignored
+`artifacts/`; duplicated summaries are not exported. Poster exports from
+04–10 keep their existing workflow.
 
 04 asks, 05 measures, 06 supplies the denominator, 07 challenges, 08 re-measures,
 09 reconciles, 10 corrects.
