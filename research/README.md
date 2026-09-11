@@ -4,7 +4,7 @@ Two things: the analysis, and the board that presents it.
 
 ```
 research/
-├── notebooks/    01 to 10, plus implementation appendix 11
+├── notebooks/    01 to 10, with 02 split into 02a and its qualifier 02b
 │   ├── robustness/   scripts that check what the notebooks claim
 │   ├── figexport.py  print-resolution figure export, imported by 04-10
 │   └── build_digest.py

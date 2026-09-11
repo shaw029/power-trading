@@ -59,13 +59,31 @@ Once the CSVs exist, change the relevant `*_source` keys in `configs/config.yaml
 
 | CSV file | Required columns |
 |---|---|
-| `neso_ndfd.csv` | `TARGETDATE`, `DELIVERYTIME`, `FORECASTDEMAND`, `PUBLISHTIME` |
+| `neso_ndfd.csv` | `TARGETDATE`, `CP_ST_TIME`, `FORECASTDEMAND`, `PUBLISHTIME` (`DELIVERYTIME` is accepted as a fallback, but only `TARGETDATE` + `CP_ST_TIME` resolves cardinal points to London wall-clock delivery instants) |
 | `wind_forecast.csv` | `startTime`, `publishTime`, `generation` |
 | `generation_actual.csv` | `startTime`, `fuelType`, `generation` |
 | `day_ahead_price.csv` | `time`, `value` |
 | `market_index_price.csv` | `startTime`, `dataProvider`, `price` |
 | `demand_actual.csv` | `startTime`, `demand` |
 | `imbalance_price.csv` | `startTime`, `systemBuyPrice`, `systemSellPrice`, `netImbalanceVolume` |
+
+The NESO demand forecast is a **cardinal-point** series, not a half-hourly curve.
+NDFD publishes roughly a dozen points per market day — the overnight trough, the
+morning rise, the evening peak — each as a `TARGETDATE` with an `CP_ST_TIME` HHMM
+London clock. The half-hourly `demand_fc_*` features, and `auction_residual_load`
+built from them, are therefore **reconstructed by time interpolation between those
+published points**, not observed at 30-minute resolution. Holding the last point
+flat instead would put a step of several GW between the 04:30 trough and the
+morning peak; interpolation recovers the shape the cardinal points were chosen to
+describe, but it remains a reconstruction and any claim resting on intra-point
+demand detail is a claim about that reconstruction.
+
+Interpolation is confined to a single market day. Each `fc_da_*` column takes, per
+delivery period, the latest publication eligible at that period's own cutoff, so
+cardinal points on opposite sides of midnight can carry different information
+vintages; interpolating across the boundary would let a later publication move an
+earlier day's already-frozen value. Grouping by London market day keeps each
+interpolation inside one auction's information set.
 
 Market-index records with `volume = 0` are treated as missing prices, including
 records whose reported price is £0. A genuine £0 trade with positive volume is

@@ -241,16 +241,18 @@ power-trading/
 │               ├── pnl.csv         # Daily BESS PnL decomposition
 │               └── metrics.json
 ├── src/                            # Strategy machinery
-│   ├── data/                       # download.py, preprocess.py
-│   ├── evaluation/                 # splitter.py (walk-forward)
+│   ├── data/                       # download.py, preprocess.py, market_calendar.py
+│   ├── evaluation/                 # splitter.py, holdout_report.py, hedging.py,
+│   │                               #   start_dates.py
 │   ├── features/                   # build_features.py
 │   ├── models/                     # train.py, signal.py
-│   ├── backtest/                   # engine.py
+│   ├── backtest/                   # engine.py, risk.py (book stress budgets)
 │   ├── bess/                       # BESS strategy modules
 │   │   ├── bess_asset.py           # BESSAsset state-machine dataclass
 │   │   ├── da_optimizer.py         # LP Day-Ahead schedule (PuLP/HiGHS)
-│   │   └── intraday_manager.py     # Rolling-horizon intraday re-optimisation engine
-│   ├── utils/                      # config.py
+│   │   ├── intraday_manager.py     # Rolling-horizon intraday re-optimisation engine
+│   │   └── lp_common.py            # Shared LP helpers: mutual exclusion, validation
+│   ├── utils/                      # config.py, provenance.py, raw_cache.py
 │   └── pipeline.py                 # End-to-end orchestrator
 ├── fleet/                          # The GB battery fleet: who exists, what they did
 │   ├── population.py               # The population parameter
@@ -276,7 +278,8 @@ power-trading/
 │   ├── notebooks/                  # 01-10 (02 is 02a/02b), robustness/, tooling
 │   └── poster/                     # A0 layout source, tracked inputs, build.sh
 ├── docs/                           # This file, ARCHITECTURE, DATA_*, specs/
-├── scripts/                        # Store builders and maintenance tooling
+├── scripts/                        # Store builders, maintenance tooling, and the
+│                                   #   study drivers notebook 02b imports
 ├── tests/
 ├── main.py                         # CLI entry point
 └── requirements.txt
