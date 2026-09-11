@@ -1,6 +1,6 @@
 """Account restart sensitivity with frozen signals and coverage-selected horizons.
 
-Writes separate artifacts; does not change notebook 02 or the README showcase.
+Writes separate artifacts; does not change notebook 02a or the README showcase.
 """
 
 from pathlib import Path

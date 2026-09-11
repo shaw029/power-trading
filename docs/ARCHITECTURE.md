@@ -28,8 +28,8 @@ Three separate experiments use the same framework:
 | Study | Quantity and exit | What it measures |
 |---|---|---|
 | Notebook 01 | Auction-equity sizing; selected cashout exit | Signal performance under the specified account rules |
-| Notebook 02 | Fixed 1 MWh per signal; 0/25/50/75/100% intraday closure, TP/SL off | Cost and risk trade-off of the exit mix on matched observations |
-| Implementation appendices | Account restarts and optional book stress budgets | Capital survival and path dependence |
+| Notebook 02a | Fixed 1 MWh per signal; 0/25/50/75/100% intraday closure, TP/SL off | Cost and risk trade-off of the exit mix on matched observations |
+| Notebook 02b | Account restarts and optional book stress budgets | Capital survival and path dependence |
 
 For a hedge share `h`, the engine can close `h × MWh` at MID, adjusted for crossing
 cost. Its remaining slice can use conditional TP/SL proxy exits or settle at SSP
@@ -38,7 +38,7 @@ and forecast inputs are supplied. The generic API retains its legacy 15% hedge
 and active-gate defaults; these are not selected production parameters. Use the
 explicit example config for the canonical study.
 
-Notebook 02 isolates pure static hedges. It charges £1 per entry MWh and £2 per
+Notebook 02a isolates pure static hedges. It charges £1 per entry MWh and £2 per
 intraday MWh, uses one shared complete-price mask, and attributes hedge PnL as
 `h × signed_MWh × (MID − cashout) − h × MWh × crossing_cost`. With fixed volume,
 net PnL is linear in `h`; an interior hedge choice requires a risk preference or

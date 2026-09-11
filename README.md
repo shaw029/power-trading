@@ -9,7 +9,7 @@ real GB battery fleet.
 **[Live GB BESS benchmark →](https://power-trading-live-gb-bess.streamlit.app)** — the battery engine running on this week's
 GB market data.
 
-![Partial intraday hedges: cumulative net PnL and drawdown](research/notebooks/assets/equity_curve.png)
+![Day-ahead entry compared across imbalance and intraday exits: cumulative net PnL and drawdown](research/notebooks/assets/equity_curve.png)
 
 <!-- partial-hedge-summary:start -->
 Five exit policies on the same 1,911 entries, 1 MWh each, through 2018-12-31 — fixed volume, so this is edge per unit traded, not an equity curve. Shaded gaps are missing coverage.
@@ -180,7 +180,7 @@ the research layer, plus a methodology page carrying scope and caveats.
 ## Roadmap
 
 - [x] **Phase 1 — DA positioning engine.** Development-selected forecasting model on residual-load mispricing, with signal gating, execution constraints and dynamic sizing.
-- [x] **Phase 2 — Intraday execution.** Configurable partial MID closure and conditional TP/SL proxy exits; matched-volume hedge research in notebook 02.
+- [x] **Phase 2 — Intraday execution.** Configurable partial MID closure and conditional TP/SL proxy exits; matched-volume hedge research in notebook 02a.
 - [x] **Phase 3 — Physical asset optimisation.** LP day-ahead scheduling plus rolling-horizon intraday re-optimisation, SOC tracking, asymmetric efficiencies, priced degradation, and the market-allocation lever. Used in the live GB benchmark and compared with observed fleet behaviour.
 - [ ] **Phase 4 — Stochastic optimisation and MID forecasting (planned).** Replace the constant `da_commit_fraction` with a two-stage scenario LP; replace the DA-price proxy for unseen periods with a genuine updating MID forecast; then reformulate the replan as a multi-stage stochastic programme, producing dispatch robust to forecast error rather than point-optimal against a single forecast.
 

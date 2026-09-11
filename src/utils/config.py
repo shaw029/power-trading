@@ -187,7 +187,7 @@ _VALIDATION_DEFAULTS = {
 
 _EXECUTION_DEFAULTS = {
     # Legacy API defaults, retained for compatibility. The selected research
-    # configuration is explicit in config.example.yaml. Notebook 02 compares
+    # configuration is explicit in config.example.yaml. Notebook 02a compares
     # fixed-volume static hedges; it does not select this 15% fallback.
     "baseline_hedge_ratio": 0.15,
     "take_profit_pct": 0.90,

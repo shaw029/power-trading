@@ -155,7 +155,7 @@ The pipeline uses values at or above 900 as disabled-gate sentinels. For direct
 engine calls, pass infinite TP/SL thresholds to disable those triggers, or omit
 MID/forecast inputs for a pure cashout baseline. A hedge share of zero alone still
 permits conditional exits when MID and forecasts are supplied with finite gates.
-Notebook 02 explicitly disables TP/SL and compares static hedge shares at fixed MWh.
+Notebook 02a explicitly disables TP/SL and compares static hedge shares at fixed MWh.
 
 | Key | Meaning |
 |---|---|
@@ -165,7 +165,7 @@ Notebook 02 explicitly disables TP/SL and compares static hedge shares at fixed 
 | `slippage` | Crossing cost per intraday MWh; paid in addition to the entry fee |
 
 Generic API fallbacks remain 0.15, 0.90, 5 and 2 respectively for compatibility.
-The 15% value is not a production hedge selected by notebook 02. The account loss
+The 15% value is not a production hedge selected by notebook 02a. The account loss
 floor and optional book-risk budget are separate from these exit thresholds.
 
 ### BESS Config
@@ -273,7 +273,7 @@ power-trading/
 │   ├── live_app.py                 # Live GB benchmark (deployed)
 │   └── charts.py                   # Plotly chart builders, shared by both
 ├── research/                       # The study and the board
-│   ├── notebooks/                  # 01-10, plus robustness/ and their tooling
+│   ├── notebooks/                  # 01-10 (02 is 02a/02b), robustness/, tooling
 │   └── poster/                     # A0 layout source, tracked inputs, build.sh
 ├── docs/                           # This file, ARCHITECTURE, DATA_*, specs/
 ├── scripts/                        # Store builders and maintenance tooling

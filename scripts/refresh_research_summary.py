@@ -1,6 +1,6 @@
-"""Refresh the compact README caption from notebook 02's verified report.
+"""Refresh the compact README caption from notebook 02a's verified report.
 
-Run notebook 02 first. It exports its one README image directly; this script
+Run notebook 02a first. It exports its one README image directly; this script
 never scrapes notebook cell positions or reinstates the old account-sweep table.
 """
 
@@ -25,14 +25,14 @@ def refresh(root: Path) -> None:
         or report.get("image") != IMAGE
         or report.get("account_simulation") is not False
     ):
-        raise ValueError("Incompatible research report; execute notebook 02")
+        raise ValueError("Incompatible research report; execute notebook 02a")
     expected_inputs = {
         f"artifacts/da_positioning/{best}/features/features.parquet",
         f"artifacts/da_positioning/{best}/virtual/trading/signals.csv",
         f"artifacts/da_positioning/{best}/virtual/trading/predictions.csv",
     }
     if set(report["input_sha256"]) != expected_inputs:
-        raise ValueError("Missing input provenance; execute notebook 02")
+        raise ValueError("Missing input provenance; execute notebook 02a")
     checks = {**report["input_sha256"], IMAGE: report["image_sha256"]}
     for name, expected in checks.items():
         source = root / name
@@ -71,7 +71,7 @@ def refresh(root: Path) -> None:
 
 def main() -> None:
     refresh(Path(__file__).resolve().parents[1])
-    print("Verified notebook 02 inputs and overview image; refreshed compact README caption")
+    print("Verified notebook 02a inputs and overview image; refreshed compact README caption")
 
 
 if __name__ == "__main__":
