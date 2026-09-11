@@ -7,8 +7,19 @@ This project uses a Conda environment for all development and testing.
 ```bash
 conda create -n quantenv python=3.12
 conda activate quantenv
-pip install -r requirements.txt
+
+# Everything below assumes the research install, not the dashboard one.
+# requirements.txt holds only what dashboard/live_app.py imports, because it is
+# what Streamlit Cloud installs and the ML stack breaks that build.
+pip install -r requirements-ml.txt
+
+# `make check` additionally needs the tooling, which is not in either file:
+pip install black flake8 mypy pandas-stubs types-PyYAML types-requests
 ```
+
+Installing `requirements.txt` alone gives a working dashboard and a test suite
+that cannot even be collected: `pytest`, `scikit-learn`, `xgboost`, `shap`,
+`joblib`, `seaborn` and `openpyxl` all live in `requirements-ml.txt`.
 
 ## Running Tests
 
@@ -108,48 +119,54 @@ strategy_type: "virtual"   # "virtual" (default) | "bess"
 ```
 
 - **`virtual`** — ML-driven DA positioning with hybrid intraday execution (Phases 1 & 2).
-- **`bess`** — Physical battery dispatch: LP Day-Ahead scheduling and a rolling-horizon intraday re-optimisation that walks the day period by period, trading each quarter at its observed MID and pricing the still-unseen future from a hurdled DA proxy (Phase 3).
+- **`bess`** — Physical battery dispatch: LP Day-Ahead scheduling and a rolling-horizon intraday re-optimisation that walks the day period by period, using each configured period’s MID proxy and pricing the still-unseen future from a hurdled DA proxy (Phase 3).
 
 ### Signal Config
 
-The `signal` block controls trade signal generation and cost assumptions:
+The committed `config.example.yaml` contains the selected research settings:
 
 ```yaml
 signal:
-  threshold: 2.0         # minimum edge required to fire (£/MWh)
-  top_n: 5               # max high-conviction trades retained per direction per market day
-  vol_multiplier: 1.0    # gate = max(threshold, vol_multiplier × rolling_vol)
-  vol_window: 336        # rolling std lookback in half-hour periods (336 = 7 days)
-  transaction_cost: 1.0  # cost applied per trade (£/MWh of position)
+  threshold: 3.0         # minimum edge above the cost buffer (£/MWh)
+  top_n: 15             # maximum retained per direction per London market day
+  vol_multiplier: 0.0   # selected study uses a constant entry hurdle
+  vol_window: 336       # rolling-volatility lookback in half-hour periods
+  transaction_cost: 1.0 # fee per entry MWh
 ```
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `threshold` | float | 5.0 | Minimum predicted edge (£/MWh) required to open a position. `config.example.yaml` uses 2.0 — a calibrated starting value for 2018 data; the code default is 5.0. |
-| `top_n` | int | 5 | Max high-conviction trades retained per direction per market day |
-| `vol_multiplier` | float | 1.0 | Multiplier applied to rolling volatility for dynamic gating |
-| `vol_window` | int | 336 | Rolling standard-deviation lookback in half-hour periods |
-| `transaction_cost` | float | 1.0 | Cost deducted per trade in £/MWh of position size |
+The gate is `execution_buffer + max(threshold, vol_multiplier × rolling_vol)`.
+For the selected cashout configuration the buffer is £1/MWh, so the entry hurdle
+is £4/MWh. Generic loader fallbacks are threshold 5, top-N 5, volatility multiplier
+1, window 336 and transaction cost 0; these are API defaults, not calibrated choices.
 
 ### Execution Config (Virtual)
 
-The `execution` block controls how DA positions are managed during the intraday window:
+The example config carries the selected position to cashout:
 
 ```yaml
 execution:
-  baseline_hedge_ratio: 0.15  # fraction of position hedged passively at MID (0.0–1.0)
-  take_profit_pct: 0.90        # take-profit trigger as fraction of predicted spread
-  stop_loss_price_delta: 5.00  # per-period stop-loss cap in £/MWh
-  slippage: 2.00               # execution slippage / spread-to-MID cost in £/MWh
+  baseline_hedge_ratio: 0.0
+  take_profit_pct: 999.0
+  stop_loss_price_delta: 999.0
+  slippage: 2.0
 ```
 
-Execution archetype is controlled numerically by `baseline_hedge_ratio`: set `1.0` for a full passive hedge (all volume exits at MID), or `0.0` for imbalance-only settlement (Phase 1 behaviour). The default `0.15` runs the hybrid two-slice engine at the production ratio selected in notebook 02 (the risk-adjusted criterion is flat over 0.00–0.15; production takes the upper edge of the band).
+The pipeline uses values at or above 900 as disabled-gate sentinels. For direct
+engine calls, pass infinite TP/SL thresholds to disable those triggers, or omit
+MID/forecast inputs for a pure cashout baseline. A hedge share of zero alone still
+permits conditional exits when MID and forecasts are supplied with finite gates.
+Notebook 02a explicitly disables TP/SL and compares static hedge shares at fixed MWh.
 
-| Key | Description |
+| Key | Meaning |
 |---|---|
-| `baseline_hedge_ratio` | Share of each position passively exited at the Market Index Price. Must be between 0 and 1 |
-| `take_profit_pct` | Fraction of predicted spread at which the active slice locks in profit |
-| `stop_loss_price_delta` | Maximum adverse price move (£/MWh) before the active slice is stopped out |
+| `baseline_hedge_ratio` | Fraction closed at the MID proxy, in [0, 1] |
+| `take_profit_pct` | TP trigger as a fraction of forecast spread for the remaining slice |
+| `stop_loss_price_delta` | Adverse-move trigger in £/MWh; exit occurs at adjusted MID and can exceed the threshold |
+| `slippage` | Crossing cost per intraday MWh; paid in addition to the entry fee |
+
+Generic API fallbacks remain 0.15, 0.90, 5 and 2 respectively for compatibility.
+The 15% value is not a production hedge selected by notebook 02a. The account loss
+floor and optional book-risk budget are separate from these exit thresholds.
 
 ### BESS Config
 
@@ -209,7 +226,7 @@ power-trading/
 │       │   └── features.parquet    # Engineered features (shared between modes)
 │       ├── virtual/
 │       │   ├── model/
-│       │   │   ├── model.joblib    # Spread-prediction XGBoost model
+│       │   │   ├── model.joblib    # Selected spread-prediction model
 │       │   │   └── metadata.json
 │       │   └── trading/
 │       │       ├── predictions.csv # actual_spread, predicted_spread
@@ -218,22 +235,24 @@ power-trading/
 │       │       └── metrics.json
 │       └── bess/
 │           ├── model/
-│           │   ├── model.joblib    # DA price-prediction XGBoost model
+│           │   ├── model.joblib    # Configured DA price-prediction model
 │           │   └── metadata.json
 │           └── trading/
 │               ├── pnl.csv         # Daily BESS PnL decomposition
 │               └── metrics.json
 ├── src/                            # Strategy machinery
-│   ├── data/                       # download.py, preprocess.py
-│   ├── evaluation/                 # splitter.py (walk-forward)
+│   ├── data/                       # download.py, preprocess.py, market_calendar.py
+│   ├── evaluation/                 # splitter.py, holdout_report.py, hedging.py,
+│   │                               #   start_dates.py
 │   ├── features/                   # build_features.py
 │   ├── models/                     # train.py, signal.py
-│   ├── backtest/                   # engine.py
+│   ├── backtest/                   # engine.py, risk.py (book stress budgets)
 │   ├── bess/                       # BESS strategy modules
 │   │   ├── bess_asset.py           # BESSAsset state-machine dataclass
 │   │   ├── da_optimizer.py         # LP Day-Ahead schedule (PuLP/HiGHS)
-│   │   └── intraday_manager.py     # Rolling-horizon intraday re-optimisation engine
-│   ├── utils/                      # config.py
+│   │   ├── intraday_manager.py     # Rolling-horizon intraday re-optimisation engine
+│   │   └── lp_common.py            # Shared LP helpers: mutual exclusion, validation
+│   ├── utils/                      # config.py, provenance.py, raw_cache.py
 │   └── pipeline.py                 # End-to-end orchestrator
 ├── fleet/                          # The GB battery fleet: who exists, what they did
 │   ├── population.py               # The population parameter
@@ -256,10 +275,11 @@ power-trading/
 │   ├── live_app.py                 # Live GB benchmark (deployed)
 │   └── charts.py                   # Plotly chart builders, shared by both
 ├── research/                       # The study and the board
-│   ├── notebooks/                  # 01-10, plus robustness/ and their tooling
+│   ├── notebooks/                  # 01-10 (02 is 02a/02b), robustness/, tooling
 │   └── poster/                     # A0 layout source, tracked inputs, build.sh
 ├── docs/                           # This file, ARCHITECTURE, DATA_*, specs/
-├── scripts/                        # Store builders and maintenance tooling
+├── scripts/                        # Store builders, maintenance tooling, and the
+│                                   #   study drivers notebook 02b imports
 ├── tests/
 ├── main.py                         # CLI entry point
 └── requirements.txt
@@ -359,3 +379,16 @@ Launch configs are pre-configured in `.vscode/launch.json` (`⌘⇧D` to open):
 - **Virtual: Train & Backtest** — retrain model and run backtest on already-built features. Fastest for tuning hyperparameters or signal thresholds.
 - **Static Analysis** — runs mypy + flake8 in parallel
 - **Run All Tests** — pytest with verbose output
+
+## Research outputs
+
+Notebook outputs are committed so the analysis is readable without the local
+archive. Only the two root-README charts are exported into `research/notebooks/assets/`:
+`equity_curve.png` from 02 and `bess_strategy_showcase.png` from 03. Appendix 11
+renders figures inline without writing extra image files. The study scripts save
+machine-readable results under ignored `artifacts/`; the start-date result table
+is already in `report.json`, so there is no duplicate `summary.csv` export.
+
+The poster retains the assets actually placed by its build; its intermediate
+exports and the optional notebook digest remain ignored. See `research/README.md`
+and `research/poster/README.md` for those separate publication workflows.

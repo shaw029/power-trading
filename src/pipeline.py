@@ -15,6 +15,7 @@ The entry point is ``main.py``, which supplies the config and the mode. Calling
 ``configs/config.yaml`` holds.
 """
 
+from src.data.market_calendar import complete_resample
 import pandas as pd
 import numpy as np
 import logging
@@ -47,7 +48,7 @@ from src.models.train import train_model
 from src.models.signal import (
     generate_signal,
     build_daily_schedule,
-    compute_penalty_buffer,
+    compute_execution_buffer,
     compute_volatility_threshold,
 )
 from src.backtest.engine import run_backtest
@@ -77,6 +78,10 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# A take-profit or stop-loss at or above this is a switch in the "off" position:
+# no reachable price triggers it, so the position rides to imbalance settlement.
+_GATE_DISABLED = 900.0
 
 
 def setup_experiment_paths(config: dict | None = None, mode: str | None = None) -> dict:
@@ -211,6 +216,14 @@ def build_features_pipeline(config, features_save_path=None):
 
         # Step 3: Build features
         logger.info("Step 3: Building features")
+        # Data-period end is exclusive; downloader margins are only for source context.
+        time = pd.to_datetime(processed_df["time"], utc=True)
+        in_period = pd.Series(False, index=processed_df.index)
+        for period in periods:
+            in_period |= (time >= pd.Timestamp(str(period["start"]), tz="Europe/London")) & (
+                time < pd.Timestamp(str(period["end"]), tz="Europe/London")
+            )
+        processed_df = processed_df[in_period].reset_index(drop=True)
         features_df = build_features(processed_df, save_path=features_save_path)
 
         logger.info(f"Features pipeline completed successfully. Final shape: {features_df.shape}")
@@ -264,9 +277,17 @@ def save_outputs(
     signals_df["direction"] = signals_df["direction"].map({1: "BUY", -1: "SELL", 0: "NEUTRAL"})
 
     paths["trading_dir"].mkdir(parents=True, exist_ok=True)
-    predictions_df[["time", "actual_spread", "predicted_spread"]].to_csv(
-        paths["predictions_file"], index=False
-    )
+    # Provenance travels with the prediction: which fold produced it, where that
+    # fold's training data ended, and whether the row belongs to the development
+    # period or the untouched holdout. Without the split column a downstream
+    # notebook cannot tell the two apart, and tuning anything on the blended
+    # series spends the holdout on the search it exists to be independent of.
+    _pred_cols = [
+        c
+        for c in ("time", "actual_spread", "predicted_spread", "fold_id", "train_end", "split")
+        if c in predictions_df.columns
+    ]
+    predictions_df[_pred_cols].to_csv(paths["predictions_file"], index=False)
     logger.info(f"Predictions saved to {paths['predictions_file']}")
 
     signals_df.to_csv(paths["signals_file"], index=False)
@@ -276,12 +297,27 @@ def save_outputs(
     logger.info(f"PnL saved to {paths['pnl_file']}")
 
 
-def save_metrics(model_metrics: dict, trading_metrics: dict, paths: dict):
+def save_metrics(
+    model_metrics: dict,
+    trading_metrics: dict,
+    paths: dict,
+    split_metrics: dict | None = None,
+):
+    """Persist model and trading metrics for one run.
+
+    ``split_metrics`` carries the development and holdout results separately.
+    They are saved alongside the blended figures rather than instead of them,
+    because a consumer that ranks runs must use ``development`` — the holdout
+    exists to be scored once, by the winner, and any selection that reads it has
+    spent it.
+    """
     metrics = {
         "timestamp": datetime.now().isoformat(),
         "model_performance": model_metrics,
         "trading_performance": trading_metrics,
     }
+    if split_metrics:
+        metrics["trading_performance_by_split"] = split_metrics
     paths["trading_dir"].mkdir(parents=True, exist_ok=True)
     with open(paths["metrics_file"], "w") as f:
         json.dump(metrics, f, indent=2, default=str)
@@ -297,11 +333,18 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
 
     net = results_df["net_pnl"]
     avg_daily = float(net.mean())
-    std_daily = float(net.std(ddof=1)) if len(net) > 1 else 0.0
-    sharpe = (avg_daily / std_daily) * np.sqrt(365) if std_daily > 0 else 0.0
+    daily = (
+        pd.Series(net.to_numpy(), index=pd.to_datetime(results_df["date"]))
+        .sort_index()
+        .asfreq("D", fill_value=0)
+    )
+    opening_equity = 50_000.0 + daily.cumsum().shift(1, fill_value=0)
+    daily_returns = daily / opening_equity
+    std_daily = float(daily_returns.std(ddof=1)) if len(daily) > 1 else 0.0
+    sharpe = float(daily_returns.mean()) / std_daily * np.sqrt(365) if std_daily > 0 else 0.0
 
     cumulative = net.cumsum()
-    max_drawdown = float((cumulative - cumulative.cummax()).min())
+    max_drawdown = float((cumulative - cumulative.cummax().clip(lower=0)).min())
 
     bess_cfg = config["bess"]
     total_degradation = float(results_df["degradation_cost"].sum())
@@ -333,33 +376,11 @@ def save_bess_outputs(results_df: pd.DataFrame, config: dict, paths: dict):
     logger.info(f"BESS metrics saved to {trading_dir / 'metrics.json'}")
 
 
-def _resample_forecast(
-    raw_forecast: list[float],
-    source_resolution_h: float,
-    target_resolution_h: float,
-    n_target: int,
-) -> list[float] | None:
-    ratio = target_resolution_h / source_resolution_h
-    int_ratio = round(ratio)
-    if abs(int_ratio - ratio) > 1e-9 or int_ratio < 1:
-        return None
-
-    n_needed = n_target * int_ratio
-    if len(raw_forecast) < n_needed:
-        return None
-
-    if int_ratio == 1:
-        return raw_forecast[:n_target]
-
-    return [sum(raw_forecast[i : i + int_ratio]) / int_ratio for i in range(0, n_needed, int_ratio)]
-
-
 def _run_bess_pipeline(config: dict) -> dict:
     from src.bess.bess_asset import BESSAsset
     from src.bess.da_optimizer import optimize_da_schedule
     from src.bess.intraday_manager import run_intraday_session
-    from src.bess.price_forecast import ml_da_forecast
-    from src.models.train import train_da_price_model, _FEATURE_COLS
+    from src.models.train import train_da_price_model
 
     bess_cfg = config["bess"]
     paths = setup_experiment_paths(config, mode="bess")
@@ -389,6 +410,7 @@ def _run_bess_pipeline(config: dict) -> dict:
         wf_train_days=val_cfg.get("train_days", 200),
         wf_test_days=val_cfg.get("test_days", 30),
         wf_step_days=val_cfg.get("step_days", 30),
+        holdout_days=val_cfg.get("holdout_days", 0),
     )
 
     save_model(
@@ -403,18 +425,49 @@ def _run_bess_pipeline(config: dict) -> dict:
         paths,
     )
 
-    # Step 3: Determine out-of-sample dates and load features for forecasting
-    oos_times = pd.to_datetime(da_predictions_df["time"], utc=True)
-    oos_dates = set(oos_times.dt.tz_convert("Europe/London").dt.date)
+    # Step 3: Take the walk-forward predictions themselves, indexed by delivery
+    # period.
+    #
+    # These are the only genuinely out-of-sample DA forecasts in the run: each
+    # was produced by the fold whose training window ended before its delivery
+    # date. Re-predicting these dates with `da_model` — the *last* fitted fold —
+    # scores 5,746 of 7,182 periods with a model that trained on them, because
+    # the final fold's training window (2018-05-02 to 2018-11-18) swallows four
+    # of the five test folds. Filtering to dates that were once called OOS does
+    # not make a later model's predictions OOS.
+    da_predictions_df = da_predictions_df.copy()
+    da_predictions_df["time"] = pd.to_datetime(da_predictions_df["time"], utc=True)
+    oos_forecast = (
+        da_predictions_df.set_index("time")["predicted_da_price"].sort_index().astype(float)
+    )
+    if oos_forecast.empty:
+        raise RuntimeError(
+            "DA price model produced no out-of-sample predictions, so there is "
+            "nothing to dispatch against. Check the walk-forward window fits "
+            "inside the feature date range."
+        )
 
-    features_df = pd.read_parquet(paths["features_file"])
-    features_df["time"] = pd.to_datetime(features_df["time"], utc=True)
-    features_df["_london_date"] = features_df["time"].dt.tz_convert("Europe/London").dt.date
-    feature_cols = [c for c in _FEATURE_COLS if c in features_df.columns]
+    oos_dates = set(oos_forecast.index.tz_convert("Europe/London").date)
 
-    # Step 4: Load price data for BESS simulation — use the same date range as features
-    feat_start = features_df["time"].min().strftime("%Y-%m-%d")
-    feat_end = (features_df["time"].max() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    if "fold_id" in da_predictions_df.columns:
+        logger.info(
+            "BESS pipeline: dispatching on %d fold-specific forecasts across %d folds",
+            len(oos_forecast),
+            da_predictions_df["fold_id"].nunique(),
+        )
+
+    # Step 4: Load price data for the days actually being dispatched.
+    #
+    # This window comes from the forecast, not from the features frame. Bounding
+    # it by the features meant fetching prices for every row the parquet happened
+    # to contain — and a features file can legitimately span far more than the
+    # configured study window, because two cache readers used to ignore their
+    # date arguments and return everything on disk. A 2018 run then asked
+    # ENTSO-E for day-ahead prices through 2026, which for GB do not exist
+    # post-Brexit: thousands of failing requests, one per day, before the run
+    # could reach the dispatch loop.
+    feat_start = oos_forecast.index.min().strftime("%Y-%m-%d")
+    feat_end = (oos_forecast.index.max() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     logger.info("BESS pipeline: loading and processing price data (%s → %s)", feat_start, feat_end)
     da_processed = process_day_ahead_price(
         fetch_day_ahead_price(start_date=feat_start, end_date=feat_end)
@@ -426,12 +479,13 @@ def _run_bess_pipeline(config: dict) -> dict:
     duration_h = bess_cfg.get("resolution_h", 1.0)
     resample_freq = f"{int(duration_h * 60)}min"
 
-    prices = (
-        da_processed.resample(resample_freq)
-        .mean()
-        .join(mid_processed.resample(resample_freq).mean())
-        .dropna()
-    )
+    # Persist the native settlement inputs as well as the forecasts. Consumers
+    # must not substitute the feature merge's filled price columns for raw coverage.
+    native_prices = da_processed.join(mid_processed, how="outer").sort_index()
+    native_prices.index.name = "time"
+    paths["trading_dir"].mkdir(parents=True, exist_ok=True)
+    native_prices.to_csv(paths["trading_dir"] / "dispatch_prices.csv")
+    prices = complete_resample(native_prices, resample_freq).dropna()
 
     asset = BESSAsset(
         capacity_mwh=bess_cfg["capacity_mwh"],
@@ -445,45 +499,50 @@ def _run_bess_pipeline(config: dict) -> dict:
     )
 
     # Step 5: Daily BESS simulation using ML forecasts
-    periods_per_day = int(24 / duration_h)
-    dst_delta = int(1 / duration_h)
-    valid_period_counts = {
-        periods_per_day - dst_delta,
-        periods_per_day,
-        periods_per_day + dst_delta,
-    }
-
-    sorted_times = features_df["time"].sort_values()
-    deltas_h = sorted_times.diff().dropna().dt.total_seconds() / 3600
-    mode_result = deltas_h.mode()
-    if mode_result.empty:
-        logger.warning("Cannot determine source resolution: not enough data rows")
-        return results
-    source_resolution_h = mode_result.iloc[0]
+    # Forecast onto the dispatch grid once, by timestamp. The prediction series
+    # is half-hourly and the battery runs hourly, so the two are aligned by the
+    # clock rather than by position — pairing arrays by index silently shifts
+    # every later period of a day by one slot as soon as a single settlement
+    # period is missing upstream, which happens on 16 days of the 2018 sample.
+    forecast_grid = complete_resample(oos_forecast, resample_freq)
 
     daily_results = []
+    skipped: dict[str, int] = {}
     prev_soc_pct: float | None = None
-    for date, day_df in prices.groupby(prices.index.date):
-        n_periods = len(day_df)
-        if n_periods not in valid_period_counts:
-            continue
-        if date not in oos_dates:
+
+    # Group by the *London* market date. The battery's day, the auction's day and
+    # the feature vintage are all GB market days; grouping prices by UTC date
+    # instead put the 1 August book on a window starting 31 July 23:00 UTC and
+    # paired it with London-dated features, so through BST the two were an hour
+    # apart. It also made the 23/24/25-period tolerance meaningless: a UTC day
+    # always has exactly 24 hours, so that check could never see a DST day — it
+    # only ever waved through days with data missing.
+    london_date = prices.index.tz_convert("Europe/London").normalize()
+    for date, day_df in prices.groupby(london_date):
+        market_date = date.date()
+        if market_date not in oos_dates:
             continue
 
-        day_features = features_df[features_df["_london_date"] == date].sort_values("time")
-        X_day = day_features[feature_cols].dropna()
-        if X_day.empty:
-            continue
-
-        raw_forecast = ml_da_forecast(da_model, X_day)
-        forecast = _resample_forecast(
-            raw_forecast,
-            source_resolution_h,
-            duration_h,
-            n_periods,
+        # A GB market day is 23, 24 or 25 hours long depending on where it sits
+        # relative to the clock change; anything else is missing data, not DST.
+        # The next boundary is the next *calendar* midnight, so it is found in
+        # wall-clock terms and re-localised — adding 24 absolute hours would land
+        # at 01:00 on a spring-forward day and demand an hour that never existed.
+        next_midnight = (date.tz_localize(None) + pd.Timedelta(days=1)).tz_localize(
+            "Europe/London", ambiguous=True, nonexistent="shift_forward"
         )
-        if forecast is None:
+        expected = pd.date_range(
+            start=date, end=next_midnight, freq=resample_freq, inclusive="left"
+        ).tz_convert("UTC")
+        if not day_df.index.tz_convert("UTC").equals(expected):
+            skipped["incomplete_day"] = skipped.get("incomplete_day", 0) + 1
             continue
+
+        forecast_day = forecast_grid.reindex(expected)
+        if forecast_day.isna().any():
+            skipped["incomplete_forecast"] = skipped.get("incomplete_forecast", 0) + 1
+            continue
+        forecast = forecast_day.tolist()
 
         carry_soc = prev_soc_pct if prev_soc_pct is not None else bess_cfg["initial_soc_pct"]
         asset.reset(soc_pct=carry_soc)
@@ -505,7 +564,7 @@ def _run_bess_pipeline(config: dict) -> dict:
         prev_soc_pct = asset.soc_pct
         daily_results.append(
             {
-                "date": date,
+                "date": market_date,
                 "da_revenue": result["benchmark_da_revenue"],
                 "intraday_pnl": result["intraday_da_improvement"],
                 "execution_costs_paid": result["execution_costs_paid"],
@@ -516,6 +575,41 @@ def _run_bess_pipeline(config: dict) -> dict:
                 ),
                 "net_pnl": result["net_pnl"],
             }
+        )
+
+    # Persist the forecast the dispatch actually ran on, with its provenance.
+    # Without this artifact every downstream consumer has to re-derive a forecast
+    # from the saved final estimator — which is the leak this pipeline was fixed
+    # to remove, reintroduced one notebook at a time.
+    forecast_out = da_predictions_df.copy()
+    forecast_out = forecast_out[
+        [
+            c
+            for c in (
+                "time",
+                "actual_da_price",
+                "predicted_da_price",
+                "feature_imputed",
+                "fold_id",
+                "train_end",
+                "split",
+            )
+            if c in forecast_out.columns
+        ]
+    ]
+    paths["trading_dir"].mkdir(parents=True, exist_ok=True)
+    forecast_out.to_csv(paths["trading_dir"] / "da_forecast.csv", index=False)
+    logger.info(
+        "BESS DA forecast saved to %s (%d rows)",
+        paths["trading_dir"] / "da_forecast.csv",
+        len(forecast_out),
+    )
+
+    if skipped:
+        logger.warning(
+            "BESS simulation skipped %d day(s) for incomplete coverage: %s",
+            sum(skipped.values()),
+            skipped,
         )
 
     results_df = pd.DataFrame(daily_results)
@@ -544,6 +638,13 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
     stop_loss_price_delta = (
         config.get("execution", {}).get("stop_loss_price_delta", 5.00) if config else 5.00
     )
+    # The signal cost hurdle already treats >=900 as a disabled-gate sentinel.
+    # Apply the same interpretation to fills: a finite 999 threshold otherwise
+    # still fires on an extreme price and charges an unbudgeted intraday exit.
+    if take_profit_pct >= _GATE_DISABLED:
+        take_profit_pct = float("inf")
+    if stop_loss_price_delta >= _GATE_DISABLED:
+        stop_loss_price_delta = float("inf")
     slippage = config.get("execution", {}).get("slippage", 2.00) if config else 2.00
     model_type = config["model"]["type"] if config else "xgboost"
     model_params = config["model"]["hyperparameters"] if config else None
@@ -551,6 +652,7 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
     wf_train_days = config["validation"]["train_days"] if config else 200
     wf_test_days = config["validation"]["test_days"] if config else 30
     wf_step_days = config["validation"]["step_days"] if config else 30
+    holdout_days = config["validation"].get("holdout_days", 0) if config else 0
 
     paths = setup_experiment_paths(config, mode="virtual")
 
@@ -573,33 +675,65 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
             build_features_pipeline(config, features_save_path=paths["features_file"])
 
         logger.info("Training model")
-        model, predictions_df, X_test = train_model(
-            features_path=str(paths["features_file"]),
-            model_type=model_type,
-            model_params=model_params,
-            validation_type=val_type,
-            wf_train_days=wf_train_days,
-            wf_test_days=wf_test_days,
-            wf_step_days=wf_step_days,
-        )
+        from src.utils.provenance import fingerprint
+        from pathlib import Path
+
+        cache_dir = (config or {}).get("training_cache_dir")
+        cached_fit = None
+        if cache_dir:
+            cache_key = fingerprint(
+                Path(__file__).resolve().parents[1],
+                {
+                    "model": (config or {}).get("model"),
+                    "validation": (config or {}).get("validation"),
+                },
+                features=paths["features_file"],
+            )
+            cached_fit = Path(cache_dir) / f"{cache_key}.joblib"
+        if cached_fit is not None and cached_fit.exists():
+            model, predictions_df, X_test = joblib.load(cached_fit)
+        else:
+            model, predictions_df, X_test = train_model(
+                features_path=str(paths["features_file"]),
+                model_type=model_type,
+                model_params=model_params,
+                validation_type=val_type,
+                wf_train_days=wf_train_days,
+                wf_test_days=wf_test_days,
+                wf_step_days=wf_step_days,
+                holdout_days=holdout_days,
+                evaluate_holdout=(config or {}).get("validation", {}).get("evaluate_holdout", True),
+            )
+            if cached_fit is not None:
+                cached_fit.parent.mkdir(parents=True, exist_ok=True)
+                joblib.dump((model, predictions_df, X_test), cached_fit)
 
         results["model"] = model
         results["predictions_df"] = predictions_df
         results["X_test"] = X_test
 
         logger.info("Generating trading signals")
-        penalty_buffer = compute_penalty_buffer(
-            system_buy_price=predictions_df["system_buy_price"].values,
-            system_sell_price=predictions_df["system_sell_price"].values,
+        # Slippage belongs in the hurdle only when the position can actually be
+        # closed intraday. With no passive slice and the TP/SL gate wide open,
+        # every position rides to imbalance cash-out and never crosses a spread,
+        # so charging it a spread-crossing cost would gate out trades that never
+        # pay one. Deriving the buffer from the execution settings keeps the
+        # signal gate and the execution model describing the same strategy.
+        exits_intraday = baseline_hedge_ratio > 0.0 or (
+            take_profit_pct < _GATE_DISABLED or stop_loss_price_delta < _GATE_DISABLED
+        )
+        execution_buffer = compute_execution_buffer(
+            transaction_cost=transaction_cost,
+            slippage=slippage if exits_intraday else 0.0,
         )
         vol_threshold = compute_volatility_threshold(
-            system_buy_price=predictions_df["system_buy_price"].values,
-            system_sell_price=predictions_df["system_sell_price"].values,
+            system_price=predictions_df["system_buy_price"].values,
+            day_ahead_price=predictions_df["day_ahead_price"].values,
             window=vol_window,
         )
         raw_signals = generate_signal(
             predicted_spread=predictions_df["predicted_spread"].values,
-            penalty_buffer=penalty_buffer,
+            execution_buffer=execution_buffer,
             threshold=signal_threshold,
             vol_threshold=vol_threshold,
             vol_multiplier=vol_multiplier,
@@ -615,20 +749,49 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
         results["schedule_df"] = schedule_df
 
         logger.info("Running backtest")
-        pnl_series, trading_metrics = run_backtest(
-            signals=signals,
-            da_prices=predictions_df["day_ahead_price"].values,
-            system_sell_price=predictions_df["system_sell_price"].values,
-            system_buy_price=predictions_df["system_buy_price"].values,
-            timestamps=predictions_df["time"].values,
-            cost_per_trade=transaction_cost,
-            mid_prices=predictions_df["mid_price"].values,
-            predicted_spreads=predictions_df["predicted_spread"].values,
-            baseline_hedge_ratio=baseline_hedge_ratio,
-            take_profit_pct=take_profit_pct,
-            stop_loss_price_delta=stop_loss_price_delta,
-            slippage=slippage,
-        )
+
+        def _backtest(mask=None):
+            sub = predictions_df if mask is None else predictions_df[mask]
+            sig = signals if mask is None else signals[mask.values]
+            if len(sub) == 0:
+                return None, None
+            return run_backtest(
+                signals=sig,
+                da_prices=sub["day_ahead_price"].values,
+                system_sell_price=sub["system_sell_price"].values,
+                system_buy_price=sub["system_buy_price"].values,
+                timestamps=sub["time"].values,
+                cost_per_trade=transaction_cost,
+                mid_prices=sub["mid_price"].values,
+                predicted_spreads=sub["predicted_spread"].values,
+                baseline_hedge_ratio=baseline_hedge_ratio,
+                take_profit_pct=take_profit_pct,
+                stop_loss_price_delta=stop_loss_price_delta,
+                slippage=slippage,
+            )
+
+        pnl_series, trading_metrics = _backtest()
+
+        # Development and retrospective evaluation are reported apart. Every
+        # hyperparameter, signal setting and execution parameter in this run was
+        # picked by reading development results, so quoting a single blended
+        # curve as "out-of-sample" would smuggle the selection back in.
+        split_results: dict = {}
+        if "split" in predictions_df.columns:
+            for split_name in ("development", "holdout"):
+                mask = predictions_df["split"] == split_name
+                if not mask.any():
+                    continue
+                _, split_metrics = _backtest(mask)
+                results[f"trading_metrics_{split_name}"] = split_metrics
+                split_results[split_name] = split_metrics
+                logger.info(
+                    "  %-12s %d trades | PnL £%s | Sharpe %.3f",
+                    split_name + ":",
+                    split_metrics["n_trades"],
+                    f"{split_metrics['total_pnl']:,.0f}",
+                    split_metrics["sharpe_ratio"],
+                )
 
         results["pnl_series"] = pnl_series
         results["trading_metrics"] = trading_metrics
@@ -647,11 +810,33 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
         predicted = predictions_df["predicted_spread"].values
         directional_accuracy = float(np.mean(np.sign(actual) == np.sign(predicted)))
 
+        # Forecast accuracy per split. The blended `mae` below spans development
+        # AND holdout, so ranking candidates on it reads the holdout during
+        # hyperparameter selection — the split has to exist here, not only on the
+        # trading metrics, or notebook 01's model tournament cannot avoid it.
+        by_split: dict = {}
+        if "split" in predictions_df.columns:
+            for name, part in predictions_df.groupby("split"):
+                by_split[str(name)] = {
+                    "mae": float(
+                        mean_absolute_error(part["actual_spread"], part["predicted_spread"])
+                    ),
+                    "rmse": float(
+                        np.sqrt(mean_squared_error(part["actual_spread"], part["predicted_spread"]))
+                    ),
+                    "directional_accuracy": float(
+                        np.mean(np.sign(part["actual_spread"]) == np.sign(part["predicted_spread"]))
+                    ),
+                    "n_rows": int(len(part)),
+                }
+
         ts = predictions_df["time"].values
         model_metrics = {
             "mae": mae,
             "rmse": rmse,
             "directional_accuracy": directional_accuracy,
+            # Blended figures above are exploratory only; select on this.
+            "by_split": by_split,
             "test_period_start": str(pd.to_datetime(ts[0], utc=True)),
             "test_period_end": str(pd.to_datetime(ts[-1], utc=True)),
             "test_n_periods": int(len(predictions_df)),
@@ -674,7 +859,7 @@ def _run_virtual_pipeline(config: dict | None = None, skip_features: bool = Fals
             )
 
             save_outputs(predictions_df, signals, pnl_series, paths)
-            save_metrics(model_metrics, trading_metrics, paths)
+            save_metrics(model_metrics, trading_metrics, paths, split_results)
 
         logger.info("Virtual pipeline completed successfully")
         print_pipeline_results(results)

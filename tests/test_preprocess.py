@@ -277,9 +277,9 @@ class TestProcessDayAheadPrice:
         return pd.DataFrame({"time": times, "value": [50.0] * n_hours})
 
     def test_hourly_expanded_to_30min(self):
-        # 2 hourly points at 00:00 and 01:00 → resample produces 00:00, 00:30, 01:00 = 3 slots
+        # Each hourly product covers both its settlement periods, including the final :30.
         result = process_day_ahead_price(self._make_hourly(2))
-        assert len(result) == 3
+        assert len(result) == 4
 
     def test_output_column(self):
         result = process_day_ahead_price(self._make_hourly(2))
@@ -645,3 +645,57 @@ class TestProcessLolpdrm:
         original_cols = list(df.columns)
         process_lolpdrm(df)
         assert list(df.columns) == original_cols
+
+
+class TestMarketIndexZeroVolume:
+    """A zero-volume settlement period has no price, and £0 is not one.
+
+    Elexon reports ``price: 0.0`` with ``volume: 0.0`` when no qualifying trade
+    happened. Read literally that becomes a phantom £0 in a series that prices
+    take-profit/stop-loss exits and settles BESS intraday deviations — a
+    catastrophic-looking move that trips the stop and fills at a price that
+    never existed.
+    """
+
+    def _raw(self, rows):
+        return pd.DataFrame(
+            [
+                {
+                    "dataProvider": "APXMIDP",
+                    "startTime": t,
+                    "price": p,
+                    "volume": v,
+                }
+                for t, p, v in rows
+            ]
+        )
+
+    def test_zero_volume_becomes_nan_not_zero(self):
+        df = process_market_index_price(
+            self._raw(
+                [
+                    ("2018-11-29T22:30:00Z", 56.64, 1500.65),
+                    ("2018-11-29T23:00:00Z", 0.0, 0.0),
+                    ("2018-11-29T23:30:00Z", 0.0, 0.0),
+                ]
+            )
+        )
+        assert df["mid_price"].iloc[0] == pytest.approx(56.64)
+        assert df["mid_price"].iloc[1:].isna().all()
+        assert not (df["mid_price"] == 0).any()
+
+    def test_a_genuine_zero_print_with_real_volume_is_kept(self):
+        # Three such records exist in the 2018 feed; the test is on volume, not
+        # on the price happening to be zero.
+        df = process_market_index_price(self._raw([("2018-06-01T12:00:00Z", 0.0, 950.0)]))
+        assert df["mid_price"].iloc[0] == pytest.approx(0.0)
+
+    def test_negative_prices_survive(self):
+        # GB half-hours do clear below zero; that is a price, not a gap.
+        df = process_market_index_price(self._raw([("2018-06-01T13:00:00Z", -102.92, 780.0)]))
+        assert df["mid_price"].iloc[0] == pytest.approx(-102.92)
+
+    def test_feed_without_a_volume_column_still_processes(self):
+        raw = self._raw([("2018-06-01T14:00:00Z", 44.0, 100.0)]).drop(columns=["volume"])
+        df = process_market_index_price(raw)
+        assert df["mid_price"].iloc[0] == pytest.approx(44.0)

@@ -25,8 +25,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.bess.bess_asset import BESSAsset  # noqa: E402
 from src.bess.da_optimizer import optimize_da_schedule  # noqa: E402
 from src.bess.intraday_manager import run_intraday_session  # noqa: E402
-from src.features.build_features import build_features  # noqa: E402
-from src.models.train import train_da_price_model, _FEATURE_COLS  # noqa: E402
+from src.data.market_calendar import complete_resample, market_day_grid  # noqa: E402
+
 from dashboard.charts import (  # noqa: E402
     chart_da_commitment_shape,
     chart_daily_attribution,
@@ -41,11 +41,6 @@ st.set_page_config(page_title="Power Trading Dashboard", layout="wide")
 PROCESSED_DATA = Path(
     os.environ.get("PT_PROCESSED_DATA", PROJECT_ROOT / "data/processed/processed_data.parquet")
 )
-FEATURES_CACHE = Path(
-    os.environ.get(
-        "PT_FEATURES", PROJECT_ROOT / "artifacts/da_positioning/xgb_wf_v1/features/features.parquet"
-    )
-)
 CONFIG_PATH = PROJECT_ROOT / "configs" / "config.yaml"
 CONFIG_FALLBACK_PATH = PROJECT_ROOT / "configs" / "config.example.yaml"
 
@@ -59,49 +54,54 @@ def _load_config() -> dict:
 # ── Data loading (cached) ────────────────────────────────────────────────────
 
 
-@st.cache_data
+@st.cache_data(ttl=900)
 def load_prices() -> pd.DataFrame:
-    df = pd.read_parquet(PROCESSED_DATA)
+    import json
+
+    if os.environ.get("PT_PROCESSED_DATA"):
+        df = pd.read_parquet(PROCESSED_DATA)
+    else:
+        manifest = PROJECT_ROOT / "artifacts/da_positioning/best_run.json"
+        run = json.loads(manifest.read_text())["best_run"]
+        df = pd.read_csv(
+            PROJECT_ROOT / "artifacts/da_positioning" / run / "bess/trading/dispatch_prices.csv"
+        )
     df["time"] = pd.to_datetime(df["time"], utc=True)
     df = df.set_index("time").sort_index()
     return df
 
 
-@st.cache_data(show_spinner="Training the DA price model (one-time per session)…")
+@st.cache_data(show_spinner="Loading the selected fold forecasts…", ttl=900)
 def load_da_price_forecast(model_cfg: dict, val_cfg: dict) -> pd.Series:
     """The exact day-ahead price forecast the BESS pipeline schedules against.
 
-    Mirrors pipeline._run_bess_pipeline: walk-forward training fixes which dates
-    are out-of-sample, then the *last* fitted fold (``da_model``) predicts every
-    OOS day's features. Built once and cached; returns a UTC-indexed series at
-    the source resolution covering only out-of-sample dates.
+    Reads the selected run's persisted fold forecasts. Missing artifacts fail
+    explicitly rather than rebuilding from a potentially stale processed cache.
     """
-    if not FEATURES_CACHE.exists():
-        FEATURES_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        raw = pd.read_parquet(PROCESSED_DATA)
-        build_features(raw, save_path=FEATURES_CACHE)
+    import json
 
-    da_model, predictions_df, _ = train_da_price_model(
-        features_path=str(FEATURES_CACHE),
-        model_type=model_cfg.get("type", "xgboost"),
-        model_params=model_cfg.get("hyperparameters"),
-        validation_type=val_cfg.get("type", "walk_forward"),
-        wf_train_days=val_cfg.get("train_days", 200),
-        wf_test_days=val_cfg.get("test_days", 30),
-        wf_step_days=val_cfg.get("step_days", 30),
+    manifest = PROJECT_ROOT / "artifacts/da_positioning/best_run.json"
+    if not manifest.exists():
+        raise FileNotFoundError(
+            "Run notebook 01, then the BESS pipeline, before opening the replay."
+        )
+    run = json.loads(manifest.read_text())["best_run"]
+    artifact = PROJECT_ROOT / "artifacts/da_positioning" / run / "bess/trading/da_forecast.csv"
+    if not artifact.exists():
+        raise FileNotFoundError(f"Missing fold forecast: {artifact}. Run main.py --mode bess.")
+    predictions_df = pd.read_csv(artifact)
+
+    # The walk-forward predictions *are* the forecast. Keeping only the dates
+    # they cover and then re-scoring those dates with `da_model` — the single
+    # last-fitted estimator — hands most of the window to a model that trained
+    # on it. This is a replay of a backtest, so it has to replay the fold that
+    # actually produced each prediction.
+    forecast = (
+        predictions_df.assign(time=pd.to_datetime(predictions_df["time"], utc=True))
+        .set_index("time")["predicted_da_price"]
+        .astype(float)
+        .sort_index()
     )
-
-    oos_dates = set(
-        pd.to_datetime(predictions_df["time"], utc=True).dt.tz_convert("Europe/London").dt.date
-    )
-    features_df = pd.read_parquet(FEATURES_CACHE)
-    features_df["time"] = pd.to_datetime(features_df["time"], utc=True)
-    london_date = features_df["time"].dt.tz_convert("Europe/London").dt.date
-    feature_cols = [c for c in _FEATURE_COLS if c in features_df.columns]
-
-    oos_rows = features_df[london_date.isin(oos_dates)]
-    X = oos_rows[feature_cols].dropna()
-    forecast = pd.Series(da_model.predict(X), index=oos_rows.loc[X.index, "time"]).sort_index()
     forecast.index.name = "time"
     return forecast
 
@@ -123,7 +123,7 @@ def _slice_month(df: pd.DataFrame, period: pd.Period) -> pd.DataFrame:
 # ── BESS simulation ──────────────────────────────────────────────────────────
 
 
-@st.cache_data(show_spinner="Running BESS dispatch over the out-of-sample period…")
+@st.cache_data(show_spinner="Running BESS research replay…", ttl=900)
 def run_bess_simulation(
     capacity_mwh: float,
     power_mw: float,
@@ -156,17 +156,12 @@ def run_bess_simulation(
     cfg = _load_config()
     da_forecast = load_da_price_forecast(cfg.get("model", {}), cfg.get("validation", {}))
 
-    combined = prices[
-        ["day_ahead_price", "mid_price", "system_buy_price", "system_sell_price"]
-    ].copy()
+    combined = prices[["day_ahead_price", "mid_price"]].copy()
     combined["da_price_pred"] = da_forecast.reindex(combined.index)
 
     resample_freq = f"{int(resolution_h * 3600)}s"
-    periods_per_day = int(24 / resolution_h)
-    hourly = (
-        combined.resample(resample_freq)
-        .mean()
-        .dropna(subset=["day_ahead_price", "mid_price", "system_buy_price", "system_sell_price"])
+    hourly = complete_resample(combined, resample_freq).dropna(
+        subset=["day_ahead_price", "mid_price"]
     )
 
     asset_kwargs = {
@@ -199,18 +194,11 @@ def run_bess_simulation(
     all_dispatch_logs = []
     all_da_schedules = []
 
-    dst_delta = int(1 / resolution_h)
-    valid_period_counts = {
-        periods_per_day - dst_delta,
-        periods_per_day,
-        periods_per_day + dst_delta,
-    }
-
     asset = BESSAsset(**asset_kwargs)
     prev_soc_pct: float | None = None
 
-    for date, day_df in hourly.groupby(hourly.index.date):
-        if len(day_df) not in valid_period_counts:
+    for date, day_df in hourly.groupby(hourly.index.tz_convert("Europe/London").date):
+        if not day_df.index.equals(market_day_grid(date, resample_freq)):
             continue
 
         forecast = day_df["da_price_pred"].tolist()

@@ -120,7 +120,7 @@ def test_curated_membership_does_not_admit_a_unit(patched_sources):
     assert not units.loc["E_CHP-1", "is_battery"]
 
 
-def test_the_rule_recovers_every_curated_bm_unit_unaided():
+def test_the_rule_recovers_every_curated_bm_unit_unaided(monkeypatch):
     """The claim notebook 06 prints, held as a test.
 
     Dropping the curated shortcut from the classifier is only safe while the
@@ -130,6 +130,16 @@ def test_the_rule_recovers_every_curated_bm_unit_unaided():
     """
     from fleet import curated
 
+    # This is an archive integration check, unlike the mocked classifier tests.
+    # Pin the reviewed snapshot; never make CI fetch an evolving live register.
+    import datetime as dt
+    from pathlib import Path
+
+    snapshot = dt.date(2026, 9, 9)
+    feeds = ("BMU_REFERENCE", "CM_CMU", "TEC_REGISTER", "EMBEDDED_REGISTER", "EAC_BATTERY_UNITS")
+    if not all(Path(census._cache_path(feed, snapshot)).exists() for feed in feeds):
+        pytest.skip("Archive integration check requires the 2026-09-09 register cache")
+    monkeypatch.setattr(census, "SNAPSHOT", snapshot)
     units = census.battery_bmus().set_index("elexonBmUnit")
     listed = [b for b in curated.bmu_to_site() if b in units.index]
     assert listed, "no curated BM Unit present in the reference data"

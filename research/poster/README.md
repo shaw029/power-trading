@@ -28,10 +28,34 @@ the bold lines leaves with the whole argument; a judge who reads everything stil
 finds the caveats. Material that exists to defend rather than to inform sits
 behind the QR.
 
-No number on the board is typed by hand. Every figure and metric is read from
+**No computed number on the board is typed by hand.** Every result is read from
 `assets/`, written by the notebook that computes it, so the board cannot drift
 from the analysis: change an analysis, re-run its notebook, and the board moves
 with it.
+
+Exactly two literals remain in `poster.typ`, and neither is a result:
+
+- `£2/MWh`, the modelled execution cost — an *input* stated in the Method note,
+  and set in `configs/config.example.yaml`.
+- `€69/MWh`, the French TURPE 7 charging bonus — an external figure cited from
+  CRE, not something any notebook computes.
+
+That distinction is the whole point of the rule, and it was not always kept. The
+September 2026 audit found five *results* sitting in the source as literals,
+reading identically to the generated references beside them: the 2,075 scarcity
+half-hours, the fleet's 87% net-discharging share, `+0.060 MW per MW online`,
+the `£50/MW/day` system-value figure and its `(£38 to £62)` bounds. Two had gone
+stale — the embedded-solar correction to residual load moved the system-value
+figure to £80/MW/day, and it rendered beside a `(£3.5 to £9.0)` interval that no
+longer contained its own point estimate. All five are now exported keys
+(`n5.n_lolp`, `n5.lolp_discharge_share`, `n5.lolp_response`,
+`n4.cost_full_align`, `n4.cost_all_ci`).
+
+One trap worth recording, because the fix is not obvious: `nb05` already
+exported `discharge_share` and `response`, which look like the keys the fleet
+sentence wants. They are not. Those describe the **DRM < 1 GW** subset (n = 39);
+the sentence is about the **LoLP ≥ 1e-4** set (n = 2,075). Substituting them
+would have swapped the population while looking like a tidy-up.
 
 ## Structure
 
@@ -57,8 +81,9 @@ and a board whose inputs are missing is a layout file nobody can render.
 So `build.sh` publishes the subset the board actually places into `assets/`, and
 that subset is tracked — 16 files, 456 KB:
 
-- `nb{04,05,06,07,08,09,10}_metrics.json` and `stats_metrics.json` — every number
-  on the board, written by the notebook that computes it. Nothing is typed by hand.
+- `nb{04,05,06,07,08,09,10}_metrics.json` and `stats_metrics.json` — the
+  generated numbers on the board, written by the notebook that computes each.
+  See the caveat above for the literals that are not yet among them.
 - eight `*.svg` panels, vectors so they stay sharp at a metre wide.
 
 The set is derived by parsing the `.typ` sources rather than listed anywhere, so

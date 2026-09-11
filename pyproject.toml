@@ -40,6 +40,12 @@ module = [
     "streamlit.*",
     "qrcode",
     "qrcode.*",
+    # Notebook-runner dependencies. scripts/execute_research_notebook.py needs
+    # them, but CI installs requirements-ml.txt and never executes a notebook,
+    # so pulling a Jupyter stack into CI purely to satisfy the type checker
+    # would be the wrong trade.
+    "nbformat",
+    "IPython.*",
 ]
 ignore_missing_imports = true
 

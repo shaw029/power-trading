@@ -142,7 +142,7 @@ class TestShortTrade:
         pnl, _ = run_backtest(
             sigs, da, ssp, sbp, starting_capital=50_000, risk_pct=0.02, cost_per_trade=0.0
         )
-        position = 50_000 * 0.02 / 80.0
+        position = 50_000 * 0.02 / 50.0
         expected = position * (80.0 - 60.0)
         assert pnl[0] == pytest.approx(expected, rel=1e-6)
 
@@ -165,26 +165,40 @@ class TestPositionSizing:
         )
         assert abs(pnl_large[0]) > abs(pnl_small[0])
 
-    def test_near_zero_da_price_floored_at_10(self):
+    def test_near_zero_reference_price_floored_at_10(self):
         """DA price < 10 should be treated as 10 (floor guard)."""
         sigs = np.array([1])
         da = np.array([1.0])  # would give huge position without floor
         ssp = np.array([70.0])
         sbp = np.array([75.0])
         pnl, _ = run_backtest(
-            sigs, da, ssp, sbp, starting_capital=50_000, risk_pct=0.02, cost_per_trade=0.0
+            sigs,
+            da,
+            ssp,
+            sbp,
+            starting_capital=50_000,
+            risk_pct=0.02,
+            cost_per_trade=0.0,
+            sizing_prices=da,
         )
         # With floor=10: position = 50000*0.02/10 = 100 MWh
         expected = 100.0 * (70.0 - 1.0)
         assert pnl[0] == pytest.approx(expected, rel=1e-6)
 
-    def test_negative_da_price_uses_abs_floor(self):
+    def test_negative_reference_price_uses_abs_floor(self):
         sigs = np.array([1])
         da = np.array([-5.0])  # negative price; abs(-5)=5 < 10 → floor at 10
         ssp = np.array([0.0])
         sbp = np.array([5.0])
         pnl, _ = run_backtest(
-            sigs, da, ssp, sbp, starting_capital=50_000, risk_pct=0.02, cost_per_trade=0.0
+            sigs,
+            da,
+            ssp,
+            sbp,
+            starting_capital=50_000,
+            risk_pct=0.02,
+            cost_per_trade=0.0,
+            sizing_prices=da,
         )
         position = 50_000 * 0.02 / 10.0
         expected = position * (0.0 - (-5.0))
@@ -197,24 +211,125 @@ class TestPositionSizing:
 
 
 class TestDrawdownHalt:
-    def test_simulation_halts_when_drawdown_breached(self):
-        # Start with 1000; max_drawdown_pct=0.1 → floor=900
-        # Each losing trade loses >100 so the first trade should halt
-        sigs = np.array([1, 1, 1])  # 3 long signals
+    def test_halt_reports_observable_equity_despite_pending_recovery(self, caplog):
+        # Day 1 settles a loss; day 2's committed book recovers above the floor.
+        # At the auction for day 3 only day 1 is observable, so it still halts.
+        ts = pd.date_range("2024-01-01T12:00:00Z", periods=4, freq="D")
+        pnl, metrics = run_backtest(
+            np.ones(4),
+            np.full(4, 50.0),
+            np.array([20.0, 80.0, 80.0, 80.0]),
+            np.full(4, 50.0),
+            timestamps=ts,
+            starting_capital=1000.0,
+            risk_pct=0.5,
+            cost_per_trade=0.0,
+        )
+        np.testing.assert_allclose(pnl, [-300.0, 300.0, 0.0, 0.0])
+        assert metrics["halt_details"] == {
+            "auction_time": "2024-01-02T10:30:00+00:00",
+            "first_unbid_delivery_time": "2024-01-03T12:00:00+00:00",
+            "settled_equity": 700.0,
+            "booked_equity": 1000.0,
+            "capital_floor": 800.0,
+        }
+        assert "settled equity £700 ≤ floor £800" in caplog.text
+
+    def test_dataframe_wrapper_respects_sizing_and_publication_lag(self):
+        df = pd.DataFrame(
+            {
+                "time": pd.date_range("2024-01-01T12:00:00Z", periods=4, freq="D"),
+                "signal": 1,
+                "day_ahead_price": 50.0,
+                "system_sell_price": 20.0,
+                "system_buy_price": 50.0,
+            }
+        )
+        # 5 MWh per book; a 30-hour publication delay leaves the first loss
+        # unavailable until after the third book's auction.
+        result, metrics = run_backtest_from_dataframe(
+            df,
+            starting_capital=1000.0,
+            risk_pct=0.5,
+            cost_per_trade=0.0,
+            max_drawdown_pct=0.1,
+            sizing_prices=np.full(4, 100.0),
+            settlement_publication_lag_h=30.0,
+        )
+        np.testing.assert_allclose(result["pnl"], [-150.0, -150.0, -150.0, 0.0])
+        assert metrics["halted_at_period"] == 3
+
+    def test_dataframe_wrapper_sorts_reference_prices_with_their_rows(self):
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(["2024-01-02", "2024-01-01"], utc=True),
+                "signal": 1,
+                "day_ahead_price": 50.0,
+                "system_sell_price": 60.0,
+                "system_buy_price": 50.0,
+            }
+        )
+        result, _ = run_backtest_from_dataframe(
+            df,
+            starting_capital=1000.0,
+            risk_pct=0.5,
+            cost_per_trade=0.0,
+            sizing_prices=np.array([100.0, 50.0]),
+        )
+        np.testing.assert_allclose(result["pnl"], [100.0, 50.0])
+
+    def test_simulation_halts_once_the_loss_has_actually_settled(self):
+        # Day 1 loses the account through the floor. Day 2's book was bid at
+        # 10:30 on day 1, while day 1 was still delivering, so the halt cannot
+        # know yet. It bites at day 3, the first auction held after day 1's
+        # settlement was observable.
+        sigs = np.array([1, 1, 1])
         da = np.array([50.0, 50.0, 50.0])
         ssp = np.array([0.0, 0.0, 0.0])  # SSP=0 → big loss per trade
         sbp = np.array([55.0, 55.0, 55.0])
+        ts = pd.to_datetime(
+            ["2024-01-01T12:00:00Z", "2024-01-02T12:00:00Z", "2024-01-03T12:00:00Z"], utc=True
+        )
         pnl, metrics = run_backtest(
             sigs,
             da,
             ssp,
             sbp,
+            timestamps=ts,
             starting_capital=1_000,
             risk_pct=1.0,  # 100% risk → position = 1000/50 = 20 MWh
-            max_drawdown_pct=0.10,  # floor = 900; first loss = 20*(0-50) = -1000 → capital -0
+            max_drawdown_pct=0.10,  # floor = 900; day 1 loses 20*(0-50) = -1000
             cost_per_trade=0.0,
         )
         assert metrics["halted_at_period"] is not None
+        assert pnl[0] != 0.0  # day 1 traded
+        assert pnl[1] != 0.0  # day 2 was already committed and could not be pulled
+        assert pnl[2] == 0.0  # day 3 never bid
+
+    def test_halt_cannot_cancel_contracts_already_in_the_book(self):
+        # All three periods belong to one delivery day, so all three were bid at
+        # one auction. A mid-day breach cannot retract them: doing so would let
+        # the drawdown rule act on information that arrived after the commitment.
+        sigs = np.array([1, 1, 1])
+        da = np.array([50.0, 50.0, 50.0])
+        ssp = np.array([0.0, 0.0, 0.0])
+        sbp = np.array([55.0, 55.0, 55.0])
+        ts = pd.to_datetime(
+            ["2024-01-01T10:00:00Z", "2024-01-01T11:00:00Z", "2024-01-01T12:00:00Z"], utc=True
+        )
+        pnl, metrics = run_backtest(
+            sigs,
+            da,
+            ssp,
+            sbp,
+            timestamps=ts,
+            starting_capital=1_000,
+            risk_pct=1.0,
+            max_drawdown_pct=0.10,
+            cost_per_trade=0.0,
+        )
+        assert metrics["halted_at_period"] is None
+        assert (pnl != 0).all()
 
     def test_no_halt_when_pnl_positive(self):
         sigs = np.array([1, 1, 1])
@@ -687,3 +802,155 @@ class TestNaNPriceInputs:
         expected_pnl1 = expected_position * (70.0 - 50.0)
         assert pnl[1] == pytest.approx(expected_pnl1, rel=1e-6)
         assert np.isfinite(metrics["final_capital"])
+
+
+# ---------------------------------------------------------------------------
+# Auction-book sizing and the execution ledger
+# ---------------------------------------------------------------------------
+
+
+class TestAuctionBookSizing:
+    """One auction commits a whole delivery day, so sizing cannot learn from it."""
+
+    def _two_contracts(self, first_mid: float):
+        ts = pd.to_datetime(["2024-01-01T10:00:00Z", "2024-01-01T11:00:00Z"], utc=True)
+        return run_backtest(
+            signals=np.array([1, 1]),
+            da_prices=np.array([50.0, 50.0]),
+            system_sell_price=np.array([50.0, 50.0]),
+            system_buy_price=np.array([50.0, 50.0]),
+            timestamps=ts,
+            cost_per_trade=0.0,
+            mid_prices=np.array([first_mid, 60.0]),
+            predicted_spreads=np.array([10.0, 10.0]),
+            baseline_hedge_ratio=1.0,
+            slippage=0.0,
+        )[0]
+
+    def test_later_contract_is_unmoved_by_an_earlier_settlement(self):
+        # Both contracts were bid at the same auction. Changing the first one's
+        # cash-out price must not resize the second: it used to move it from
+        # £200 to £204, which is the second contract responding to information
+        # that did not exist when its quantity was chosen.
+        flat = self._two_contracts(50.0)
+        spiked = self._two_contracts(100.0)
+        assert flat[1] == pytest.approx(spiked[1])
+
+    def test_capital_compounds_once_a_book_has_settled(self):
+        # Equity is released with a one-book lag: day 2 is bid while day 1 is
+        # still delivering, so it cannot yet see day 1's result. Day 3 can.
+        ts = pd.to_datetime(
+            ["2024-01-01T12:00:00Z", "2024-01-02T12:00:00Z", "2024-01-03T12:00:00Z"], utc=True
+        )
+        pnl, _ = run_backtest(
+            signals=np.array([1, 1, 1]),
+            da_prices=np.array([50.0, 50.0, 50.0]),
+            system_sell_price=np.array([60.0, 60.0, 60.0]),
+            system_buy_price=np.array([60.0, 60.0, 60.0]),
+            timestamps=ts,
+            cost_per_trade=0.0,
+        )
+        assert pnl[1] == pytest.approx(pnl[0])  # day 2 sized before day 1 settled
+        assert pnl[2] > pnl[1]  # day 3 compounds on it
+
+    def test_a_settled_outcome_cannot_resize_an_already_committed_book(self):
+        # The cross-day version of the same rule: changing day 1's cash-out must
+        # not move day 2's quantity, because day 2 was bid before it landed.
+        def run(first_cashout):
+            ts = pd.to_datetime(["2024-01-01T20:00:00Z", "2024-01-02T20:00:00Z"], utc=True)
+            return run_backtest(
+                signals=np.array([1, 1]),
+                da_prices=np.array([50.0, 50.0]),
+                system_sell_price=np.array([first_cashout, 60.0]),
+                system_buy_price=np.array([first_cashout, 60.0]),
+                timestamps=ts,
+                cost_per_trade=0.0,
+            )[0]
+
+        assert run(50.0)[1] == pytest.approx(run(100.0)[1])
+
+    def test_book_exposure_budget_scales_the_day_back(self):
+        ts = pd.to_datetime([f"2024-01-01T{h:02d}:00:00Z" for h in range(10)], utc=True)
+        common = dict(
+            signals=np.ones(10, dtype=int),
+            da_prices=np.full(10, 50.0),
+            system_sell_price=np.full(10, 60.0),
+            system_buy_price=np.full(10, 60.0),
+            timestamps=ts,
+            cost_per_trade=0.0,
+            risk_pct=0.5,  # 10 x 50% of equity would be 5x the balance sheet
+        )
+        capped, _ = run_backtest(max_book_exposure_pct=1.0, **common)
+        uncapped, _ = run_backtest(max_book_exposure_pct=100.0, **common)
+        assert capped.sum() < uncapped.sum()
+
+
+class TestExecutionLedger:
+    def test_costs_are_weighted_by_traded_mwh_not_trade_count(self):
+        # A trade count times a £/MWh fee is not a cost. On the saved winning run
+        # that shortcut reported £1,069 of drag against £29,760.67 actually paid.
+        sigs = np.array([1])
+        da = np.array([50.0])
+        _, metrics = run_backtest(
+            sigs,
+            da,
+            np.array([70.0]),
+            np.array([70.0]),
+            starting_capital=50_000,
+            risk_pct=0.02,
+            cost_per_trade=1.0,
+        )
+        position = 50_000 * 0.02 / 50.0
+        assert metrics["total_position_mwh"] == pytest.approx(position)
+        assert metrics["total_transaction_costs"] == pytest.approx(position * 1.0)
+        assert metrics["total_transaction_costs"] != pytest.approx(metrics["n_trades"] * 1.0)
+
+    def test_gross_less_costs_equals_net(self):
+        sigs = np.array([1, -1])
+        _, metrics = run_backtest(
+            sigs,
+            np.array([50.0, 80.0]),
+            np.array([70.0, 55.0]),
+            np.array([70.0, 60.0]),
+            cost_per_trade=1.0,
+        )
+        assert metrics["gross_pnl"] - metrics["total_transaction_costs"] == pytest.approx(
+            metrics["total_pnl"]
+        )
+
+    def test_n_trades_counts_executions_not_proposals(self):
+        # The middle period has no price, so it is proposed but never filled.
+        sigs = np.array([1, 1, 1])
+        da = np.array([50.0, np.nan, 50.0])
+        _, metrics = run_backtest(sigs, da, np.full(3, 60.0), np.full(3, 60.0), cost_per_trade=0.0)
+        assert metrics["n_signals_proposed"] == 3
+        assert metrics["n_trades"] == 2
+
+    def test_first_loss_is_a_drawdown(self):
+        # Running the high-water mark over cumulative P&L alone made an account
+        # that only ever lost report a £0 maximum drawdown.
+        sigs = np.array([1])
+        _, metrics = run_backtest(
+            sigs,
+            np.array([50.0]),
+            np.array([30.0]),
+            np.array([30.0]),
+            starting_capital=10_000,
+            risk_pct=0.05,
+            cost_per_trade=0.0,
+        )
+        assert metrics["max_drawdown"] < 0.0
+
+    def test_calmar_and_return_to_dd_are_reported_separately(self):
+        ts = pd.to_datetime([f"2024-01-{d:02d}T12:00:00Z" for d in range(1, 11)], utc=True)
+        _, metrics = run_backtest(
+            signals=np.ones(10, dtype=int),
+            da_prices=np.full(10, 50.0),
+            system_sell_price=np.full(10, 55.0),
+            system_buy_price=np.full(10, 55.0),
+            timestamps=ts,
+            cost_per_trade=0.0,
+        )
+        assert "calmar_ratio" in metrics
+        assert "return_to_dd" in metrics
+        assert "sharpe_cash" in metrics

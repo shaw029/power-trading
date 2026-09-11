@@ -363,14 +363,30 @@ def chart_soc_tracker(
     return fig
 
 
-def chart_capture_spread_daily(df: pd.DataFrame, degradation_cost: float = 0.0) -> go.Figure:
+def chart_capture_spread_daily(
+    df: pd.DataFrame,
+    degradation_cost: float = 0.0,
+    charge_efficiency: float = 1.0,
+    discharge_efficiency: float = 1.0,
+) -> go.Figure:
     """The benchmark's gross margin per MWh discharged, day by day.
 
     ``df`` columns: ``date`` and ``capture_spread`` (£/MWh). The same measure
     the fleet page reports, so the simulated battery and the real ones can be
-    compared on margin rather than only on £/MW/day. ``degradation_cost``
-    draws the wear line the lever is set to: days below it earned less per MWh
-    than the cycling cost, which is the point at which trading destroys value.
+    compared on margin rather than only on £/MW/day.
+
+    The wear line is drawn on the *same denominator as the series it crosses*.
+    ``degradation_cost`` is charged per MWh of throughput — every MWh in plus
+    every MWh out — while capture spread is margin per MWh **discharged**. Those
+    are different quantities in the same units, so plotting the raw £/MWh lever
+    as a line across a £/MWh-discharged series understates the hurdle by roughly
+    the round trip. At the shipped 0.94/0.94 efficiencies a £5/MWh throughput
+    charge is £10.66 per MWh discharged, so a £7 capture spread sits above the
+    naive line while failing to pay for the cycling that produced it.
+
+    Converting: releasing 1 MWh draws ``1 / discharge_efficiency`` from storage,
+    which needed ``1 / (charge_efficiency * discharge_efficiency)`` put in, so
+    throughput per discharged MWh is ``1 + 1/(eta_c * eta_d)``.
     """
     d = df.copy()
     d["date"] = pd.to_datetime(d["date"])
@@ -394,10 +410,15 @@ def chart_capture_spread_daily(df: pd.DataFrame, degradation_cost: float = 0.0) 
         annotation_font=dict(size=11, color=_MUTED),
     )
     if degradation_cost > 0:
+        eta = max(charge_efficiency * discharge_efficiency, 1e-9)
+        wear_per_discharged_mwh = degradation_cost * (1.0 + 1.0 / eta)
         fig.add_hline(
-            y=degradation_cost,
+            y=wear_per_discharged_mwh,
             line=dict(color=COLORS["cost"], width=1, dash="dot"),
-            annotation_text=f"degradation £{degradation_cost:,.1f}/MWh",
+            annotation_text=(
+                f"degradation £{wear_per_discharged_mwh:,.1f}/MWh discharged "
+                f"(£{degradation_cost:,.1f}/MWh throughput)"
+            ),
             annotation_position="bottom left",
             annotation_font=dict(size=11, color=COLORS["cost"]),
         )
@@ -1601,21 +1622,38 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
             # an accepted bid *removes* discharge, so the segment goes the other
             # way. Stacked, the two sum to what was physically delivered, which
             # is the honest answer to "was this genuine trading or dispatch?".
-            for col, pn_col, name, colour, sign in (
-                ("discharge_mwh", "discharge_mwh_pn", "Discharged", COLORS["discharge"], 1.0),
-                ("charge_mwh", "charge_mwh_pn", "Charged", COLORS["charge"], -1.0),
+            for col, pn_col, name, verb, colour, sign in (
+                (
+                    "discharge_mwh",
+                    "discharge_mwh_pn",
+                    "Discharged",
+                    "discharge",
+                    COLORS["discharge"],
+                    1.0,
+                ),
+                ("charge_mwh", "charge_mwh_pn", "Charged", "charging", COLORS["charge"], -1.0),
             ):
                 notified = daily_df[pn_col] * sign
-                instructed = (daily_df[col] - daily_df[pn_col]) * sign
+                delta = daily_df[col] - daily_df[pn_col]
+                instructed = delta * sign
                 fig.add_trace(
                     go.Bar(
                         x=dates,
                         y=notified,
                         name=f"{name} — notified",
                         marker_color=colour,
-                        hovertemplate=f"{name} notified: %{{y:,.0f}} MWh<extra></extra>",
+                        hovertemplate=f"{name} notified: %{{customdata:,.0f}} MWh<extra></extra>",
+                        customdata=daily_df[pn_col].abs(),
                     )
                 )
+                # A balancing segment is signed against the direction it moves,
+                # so it can point *back through zero*: when the operator cuts
+                # charging below what was notified, the charge segment renders
+                # above the axis. That is the stack working — notified plus
+                # balancing equals delivered — but read naively it says
+                # "charging was positive", which is the opposite of what
+                # happened. The hover therefore names the direction rather than
+                # leaving a bare signed number to be misread.
                 fig.add_trace(
                     go.Bar(
                         x=dates,
@@ -1624,13 +1662,32 @@ def chart_fleet_daily(daily_df: pd.DataFrame, metric: str = "revenue"):
                         marker_color=colour,
                         marker_pattern_shape="/",
                         marker_line=dict(width=0),
-                        hovertemplate=f"{name} balancing: %{{y:,.0f}} MWh<extra></extra>",
+                        customdata=np.stack(
+                            [
+                                np.where(delta.to_numpy() >= 0, "added", "removed"),
+                                delta.abs().to_numpy(),
+                            ],
+                            axis=-1,
+                        ),
+                        hovertemplate=(
+                            f"Balancing %{{customdata[0]}} %{{customdata[1]:,.0f}} MWh "
+                            f"of {verb}<extra></extra>"
+                        ),
                     )
                 )
             title = "Fleet energy by day — notified vs balancing-instructed"
         apply_theme(fig, height=DEFAULT_CHART_HEIGHT, title=title)
         fig.update_layout(barmode="relative", hovermode="x unified")
-        fig.update_yaxes(title_text="Energy (MWh; charge shown negative)")
+        # "Charge shown negative" describes the *notified* bars and the net
+        # result, not every segment: a balancing bar that removes charging
+        # points upward by construction. Say so on the axis rather than letting
+        # the reader infer a rule the chart does not follow.
+        fig.update_yaxes(
+            title_text=(
+                "Energy (MWh) — discharge above zero, charge below; "
+                "balancing bars point against the energy they remove"
+            )
+        )
         return fig
 
     if metric in ("cycles", "capacity", "capture"):
@@ -1988,8 +2045,7 @@ def chart_daytype_ratio(df: pd.DataFrame) -> go.Figure:
             textfont=dict(size=11, color=_INK),
             customdata=d["days"],
             hovertemplate=(
-                "%{y}<br>%{x:.0%} of the ceiling · %{customdata} day(s)"
-                "<extra></extra>"
+                "%{y}<br>%{x:.0%} of the ceiling · %{customdata} day(s)" "<extra></extra>"
             ),
         )
     )

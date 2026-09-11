@@ -115,11 +115,51 @@ def process_lolpdrm(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def process_market_index_price(df: pd.DataFrame) -> pd.DataFrame:
-    """MID → mid_price, APXMIDP provider only (30-min native)."""
+    """MID → mid_price, APXMIDP provider only (30-min native).
+
+    **A zero-volume record carries no price.** The Market Index Price is the
+    volume-weighted average of qualifying trades in a settlement period, so when
+    no qualifying trade happened Elexon reports ``volume: 0.0`` alongside
+    ``price: 0.0``. That zero means "no trades", not "the market cleared at
+    nothing", and taking it at face value put £0.00 into the price series.
+
+    The correspondence is exact rather than approximate: across the 2018 APXMIDP
+    feed all 212 zero-volume records carry price 0.0, and no zero-volume record
+    carries a non-zero price. Three records pair a genuine £0 print with real
+    volume and are kept, which is why the test is on volume rather than on the
+    price being zero.
+
+    Left uncorrected this is not merely cosmetic. ``mid_price`` prices the
+    virtual engine's take-profit/stop-loss exits and settles the BESS intraday
+    deviations, so a phantom £0 reads as a catastrophic price move: it trips the
+    stop and then "fills" at a price that never existed. Thirteen such periods
+    fall inside the traded window of the canonical run and seven of them carry a
+    live signal.
+
+    Zero-volume periods therefore come back as NaN, which the live adapter
+    already knows how to record as a proxy rather than a print.
+    """
     df = df.copy()
     df = df[df["dataProvider"] == "APXMIDP"].copy()
     df.index = _utc_index(df["startTime"])
     df["mid_price"] = pd.to_numeric(df["price"], errors="coerce")
+
+    if "volume" in df.columns:
+        volume = pd.to_numeric(df["volume"], errors="coerce")
+        no_trades = volume.notna() & (volume <= 0)
+        if no_trades.any():
+            logger.info(
+                "Market index: %d settlement period(s) had no qualifying trade "
+                "(zero volume); their price is dropped rather than read as £0",
+                int(no_trades.sum()),
+            )
+        df.loc[no_trades, "mid_price"] = float("nan")
+    else:
+        logger.warning(
+            "Market index feed carries no volume column — zero-volume periods "
+            "cannot be distinguished from a genuine £0 print"
+        )
+
     df = df[["mid_price"]].sort_index()
     df = df[~df.index.duplicated(keep="first")]
     logger.info("Market index price (APXMIDP) processed. Shape: %s", df.shape)
@@ -276,8 +316,13 @@ def process_day_ahead_price(df: pd.DataFrame) -> pd.DataFrame:
     df.index.name = "time"
     df = df[~df.index.duplicated(keep="first")].sort_index()
 
-    # Hourly → 30-min
-    df = df.resample(_30MIN).ffill()
+    # Expand each hourly product to its two settlement periods. Bounded expansion
+    # preserves the last :30 and cannot fill an absent hour from an earlier one.
+    if not df.empty:
+        half = df.copy()
+        half.index = half.index + pd.Timedelta(minutes=30)
+        df = pd.concat([df, half]).sort_index()
+        df = df[~df.index.duplicated(keep="first")].asfreq(_30MIN)
     logger.info("Day-ahead price processed (30-min). Shape: %s", df.shape)
     return df
 
@@ -316,8 +361,37 @@ def process_demand_forecast(df: pd.DataFrame) -> pd.DataFrame:
         result = rolling.join(static, how="outer")
 
     result.index.name = "time"
-    result = result.sort_index().resample(_30MIN).ffill()
-    logger.info("Demand forecast processed (30-min snapshots). Shape: %s", result.shape)
+    result = result.sort_index().resample(_30MIN).mean()
+
+    # NESO's NDFD publishes ~12 *cardinal points* per market day (overnight
+    # trough, morning rise, evening peak, …) rather than a 48-period curve, so
+    # the resampled frame is mostly gaps. Holding the last point flat would put
+    # a step between the 04:30 trough and the 08:00 morning peak and read as
+    # several GW of instantaneous demand; interpolating in time between the
+    # published points reconstructs the shape those points were chosen to
+    # describe. This is a reconstruction, not a native half-hourly forecast, and
+    # is documented as such wherever the feature is quoted.
+    #
+    # **Interpolate within one market day, never across the boundary.**
+    # Each ``fc_da_*`` column is assembled by picking, per delivery period, the
+    # latest publication eligible at that period's own cutoff — so consecutive
+    # cardinal points on opposite sides of a midnight boundary can carry
+    # different information vintages. Interpolating straight down the index
+    # bridges them, and the earlier day's "frozen" value then moves when a
+    # *later* publication changes. On the 2018 cache that affected 283 rows; a
+    # two-point probe moved a 23:00 delivery's demand from 166.67 to 300 MW by
+    # editing only the next day's forecast. Grouping by market day confines each
+    # interpolation to a single auction's information set.
+    london_day = result.index.tz_convert("Europe/London").normalize()
+    result = (
+        result.groupby(london_day, group_keys=False)
+        .apply(lambda day: day.interpolate(method="time", limit_area="inside"))
+        .sort_index()
+    )
+    logger.info(
+        "Demand forecast processed (30-min, interpolated within market day). Shape: %s",
+        result.shape,
+    )
     return result
 
 

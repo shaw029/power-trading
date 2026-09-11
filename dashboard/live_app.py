@@ -163,14 +163,66 @@ def _dates() -> tuple:
 # --------------------------------------------------------------------------- #
 # Data + settlement (cached)
 # --------------------------------------------------------------------------- #
-@st.cache_data(show_spinner=False)
-def _fetch_day(date_iso: str):
-    """Live prices + context for one day. Cached on the date alone, so changing
-    a parameter slider never re-fetches — only re-settles."""
+#: Days within this many days of today are still filling in — Elexon and the
+#: Nord Pool portal both revise recent settlement periods — so their cache
+#: entries carry an hourly vintage and expire. Anything older is settled and
+#: keyed on the date alone, which is what makes the window cheap to re-render.
+PROVISIONAL_DAYS = 5
+_RECENT_TTL_SECONDS = 900
+
+
+def _vintage(date_iso: str) -> str:
+    """Cache-key component that changes while a day is still provisional.
+
+    Caching purely on the date meant a day fetched during an outage — or before
+    the feed had published its later periods — kept its gaps for the life of the
+    session, however much the upstream data improved. Recent days therefore get
+    an hourly bucket in the key; settled days get a constant so their entries
+    stay warm.
+    """
+    try:
+        age = (dt.date.today() - dt.date.fromisoformat(date_iso)).days
+    except ValueError:
+        return "final"
+    if age > PROVISIONAL_DAYS:
+        return "final"
+    return f"provisional-{dt.datetime.now(dt.timezone.utc):%Y%m%dT%H}"
+
+
+@st.cache_data(show_spinner=False, ttl=_RECENT_TTL_SECONDS)
+def _fetch_day_provisional(date_iso: str, vintage: str):
     date = dt.date.fromisoformat(date_iso)
-    prices = fetch_live.get_day_prices(date)
-    context = fetch_live.get_day_context(date)
-    return prices, context
+    return fetch_live.get_day_prices(date), fetch_live.get_day_context(date)
+
+
+@st.cache_data(show_spinner=False)
+def _fetch_day_final(date_iso: str):
+    date = dt.date.fromisoformat(date_iso)
+    return fetch_live.get_day_prices(date), fetch_live.get_day_context(date)
+
+
+def _fetch_day(date_iso: str):
+    """Live prices + context for one day.
+
+    Settled days are cached on the date alone, so moving a parameter slider never
+    re-fetches — only re-settles. Days still being revised go through a
+    vintage-keyed, expiring entry instead, so a provisional or gap-ridden fetch
+    cannot outlive the feed catching up.
+    """
+    vintage = _vintage(date_iso)
+    if vintage == "final":
+        return _fetch_day_final(date_iso)
+    return _fetch_day_provisional(date_iso, vintage)
+
+
+def _clear_fetch_day_cache() -> None:
+    """Drop both backing caches. Keeps ``_fetch_day.clear()`` working now that
+    the settled and provisional paths are two separate cached functions."""
+    _fetch_day_final.clear()
+    _fetch_day_provisional.clear()
+
+
+_fetch_day.clear = _clear_fetch_day_cache  # type: ignore[attr-defined]
 
 
 def _make_cfg(cycle_target, degradation, soc_min, soc_max, commit) -> dict:
@@ -246,14 +298,19 @@ def _warm_fetch(date_isos: tuple, system_isos: tuple | None = None) -> None:
     warmed_system |= todo_system
 
 
-@st.cache_data(show_spinner="Settling the benchmark battery…")
-def _settle_range(date_isos: tuple, duration, cycle_target, degradation, soc_min, soc_max, commit):
+@st.cache_data(show_spinner="Settling the benchmark battery…", ttl=_RECENT_TTL_SECONDS)
+def _settle_range(
+    date_isos: tuple, duration, cycle_target, degradation, soc_min, soc_max, commit, vintages=()
+):
     """Settle every day in ``date_isos`` (oldest first) carrying SOC forward, for
     the single selected ``duration``.
 
-    Cached on the dates, the duration and the five parameter levers, so the engine
-    only re-runs when one of those actually changes. Returns one record per
-    settled day with its result, context and labels.
+    Cached on the dates, the duration, the five parameter levers **and the data
+    vintage** of each day, so the engine re-runs when one of those changes. The
+    vintage matters: without it a settlement computed from a provisional fetch
+    stayed cached after the underlying prices were revised, and the page went on
+    showing a result derived from data that no longer existed. Returns one record
+    per settled day with its result, context and labels.
     """
     cfg = _make_cfg(cycle_target, degradation, soc_min, soc_max, commit)
     assets = _build_asset(cfg, duration, degradation, soc_min, soc_max)
@@ -280,7 +337,7 @@ def _settle_range(date_isos: tuple, duration, cycle_target, degradation, soc_min
     return out
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=_RECENT_TTL_SECONDS)
 def _fleet_day(date_iso: str) -> pd.DataFrame:
     """Per-site metrics for every real fleet battery on one day.
 
@@ -513,7 +570,16 @@ def _benchmark_view():
     # days should cost seven days of work, not sixty.
     settle_isos = _settle_window(date_isos, start, end)
     _warm_fetch(settle_isos, system_isos=tuple(d for d in date_isos if start <= d <= end))
-    days = _settle_range(settle_isos, duration, cycle_target, degradation, soc_min, soc_max, commit)
+    days = _settle_range(
+        settle_isos,
+        duration,
+        cycle_target,
+        degradation,
+        soc_min,
+        soc_max,
+        commit,
+        vintages=tuple(_vintage(iso) for iso in settle_isos),
+    )
     shown = _filter_days(days, start, end, day_types)
 
     if not days:
@@ -640,10 +706,15 @@ def _page_day():
         _unit_label("Capture spread", "£/MWh"),
         f"{row['capture_spread']:,.1f}" if pd.notna(row["capture_spread"]) else "—",
         help="Gross trading margin on every MWh physically discharged today, "
-        "before wear and slippage. Shares units with the degradation lever "
-        f"(£{params['degradation']:,.1f}/MWh), so a day below that earned less "
-        "per MWh than cycling cost it.",
+        "before wear and slippage. The degradation lever charges both charging and "
+        "discharging throughput; compare capture with total daily wear divided "
+        "by discharged MWh, not directly with that lever.",
     )
+
+    if record["result"].mid_proxy_periods:
+        st.warning(
+            f"MID coverage: {record['result'].mid_proxy_periods} hourly bins include substituted DA prices."
+        )
 
     st.markdown("**GB system**")
     sysc = st.columns(4)
@@ -860,7 +931,18 @@ def _page_history():
     )
 
     st.plotly_chart(chart_daily_attribution(results_df), width="stretch")
-    st.plotly_chart(chart_capture_spread_daily(results_df, params["degradation"]), width="stretch")
+    # The wear line has to be converted onto the capture spread's own
+    # denominator (£ per MWh *discharged*), so the efficiencies go with it.
+    _cfg = bess_config()
+    st.plotly_chart(
+        chart_capture_spread_daily(
+            results_df,
+            params["degradation"],
+            charge_efficiency=_cfg["charge_efficiency"],
+            discharge_efficiency=_cfg["discharge_efficiency"],
+        ),
+        width="stretch",
+    )
 
     # Price-capture profile over the whole range, as a per-day average: totals
     # here would say more about how many days were selected than about the
@@ -1705,7 +1787,7 @@ def _page_fleet():
     _render_fleet(fleet_df, _day_labels(window), start, end, day_types)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=_RECENT_TTL_SECONDS)
 def _system_day(date_iso: str) -> pd.DataFrame:
     """Whole-system half-hourly snapshot for one day (cached on the date)."""
     return fetch_live.get_day_system(dt.date.fromisoformat(date_iso))
@@ -2455,8 +2537,7 @@ def _page_methodology():
 
     st.divider()
     st.subheader("4 · How to read the dashboard")
-    st.markdown(
-        """
+    st.markdown("""
 - **Pages are grouped by epistemic status** — *Benchmark* is simulated,
   *GB power system* is observed public data, *Research* is analysis using both.
 - **The sidebar defines the window** (period, day types). The Daily summary's
@@ -2464,8 +2545,7 @@ def _page_methodology():
   pages pick their own exemplar days and say so on the page.
 - **Benchmark levers appear only on the pages they affect.** Observed pages carry
   a note in their place, so a lever never silently fails to apply.
-"""
-    )
+""")
 
     st.divider()
     st.subheader("5 · Definitions")

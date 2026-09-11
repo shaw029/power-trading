@@ -29,13 +29,16 @@ def _asset(soc: float = 0.5) -> BESSAsset:
     )
 
 
-def test_residual_load_subtracts_wind_and_solar():
+def test_residual_load_subtracts_transmission_wind_only():
+    # ITSDO is already net of embedded solar, so solar must not come off again.
+    # Holding demand and wind fixed while solar varies must leave the residual
+    # flat; the old formula walked it down by the full solar output.
     idx = _idx(4)
     system = pd.DataFrame(
         {
             "demand_actual": [30000.0, 30000.0, 30000.0, 30000.0],
-            "gen_WIND": [10000.0, 5000.0, 0.0, 10000.0],
-            "solar_mw": [0.0, 5000.0, 10000.0, 0.0],
+            "gen_WIND": [10000.0, 10000.0, 10000.0, 10000.0],
+            "solar_mw": [0.0, 3000.0, 7000.0, 10000.0],
         },
         index=idx,
     )
@@ -43,15 +46,36 @@ def test_residual_load_subtracts_wind_and_solar():
     assert res.tolist() == [20000.0, 20000.0, 20000.0, 20000.0]
 
 
-def test_residual_load_missing_component_propagates_nan():
-    # A day without a solar feed must not classify as demand-minus-wind only —
-    # the whole day's residual comes back NaN and is excluded downstream.
+def test_residual_load_tracks_wind_not_solar():
+    idx = _idx(3)
+    system = pd.DataFrame(
+        {
+            "demand_actual": [30000.0, 30000.0, 30000.0],
+            "gen_WIND": [10000.0, 5000.0, 0.0],
+            "solar_mw": [5000.0, 5000.0, 5000.0],
+        },
+        index=idx,
+    )
+    assert resilience.residual_load(system).tolist() == [20000.0, 25000.0, 30000.0]
+
+
+def test_residual_load_missing_wind_propagates_nan():
+    # Wind is a required component: without it the residual would read as
+    # demand-minus-nothing and raise false stress flags.
+    idx = _idx(2)
+    system = pd.DataFrame({"demand_actual": [25000.0, 26000.0]}, index=idx)
+    assert resilience.residual_load(system).isna().all()
+
+
+def test_residual_load_does_not_require_solar():
+    # Solar is no longer an input, so a missing solar feed is not a reason to
+    # throw the day away.
     idx = _idx(2)
     system = pd.DataFrame(
         {"demand_actual": [25000.0, 26000.0], "gen_WIND": [8000.0, 8000.0]},
         index=idx,
     )
-    assert resilience.residual_load(system).isna().all()
+    assert resilience.residual_load(system).tolist() == [17000.0, 18000.0]
 
 
 def test_classify_periods_excludes_unclassifiable_periods():

@@ -4,7 +4,7 @@ Two things: the analysis, and the board that presents it.
 
 ```
 research/
-├── notebooks/    01 to 10, in dependency order
+├── notebooks/    01 to 10, with 02 split into 02a and its qualifier 02b
 │   ├── robustness/   scripts that check what the notebooks claim
 │   ├── figexport.py  print-resolution figure export, imported by 04-10
 │   └── build_digest.py
@@ -30,7 +30,8 @@ best read in order, because each interrogates the one before it.
 | | | |
 |---|---|---|
 | **01** | Day-ahead positioning backtest | Virtual trading against imbalance. Baseline, model selection, walk-forward calibration, execution limits. |
-| **02** | Hybrid execution hedge ratio | Holds 01's entry signals fixed and sweeps the execution layer alone. |
+| **02a** | Pricing the imbalance hedge | Identical signals and fixed MWh; five static exit mixes, profit/risk trade-offs, additive hedge costs, monthly stability and a stress-day explanation. |
+| **02b** | Start-date sensitivity | **Qualifies 02a.** Restarts the same policies from five monthly inceptions: the ordering moves, and at the original sizing four of five halt on the capital floor. 02a's ranking holds for its window, not in general. |
 | **03** | BESS dispatch analysis | The battery strategy over 01's window. Much of this became the dashboard's benchmark pages. |
 | **04** | Alignment gap | **The research question.** How much profit-optimal battery behaviour coincides with what a resilient system needs, and what does closing the gap cost? |
 | **05** | Stress response study | Takes the question to the real fleet, measured against the operator's own scarcity instruments rather than a price proxy. |
@@ -39,6 +40,16 @@ best read in order, because each interrogates the one before it.
 | **08** | Stress response, modern era | Re-cuts 05 on the post-break window, because 07 showed 05's window spans a structural break. |
 | **09** | Model vs fleet | Reconciles 04 and 05, which answered different questions with different rulers and were never comparable. Puts both on one yardstick. |
 | **10** | Acceptances | **Corrects 05, 08 and 09.** They measure from Final Physical Notifications, which are plans; the Balancing Mechanism instructs units away from them, and for GB batteries the accepted volume is of the same order as the notified position. |
+
+**02b is a qualification, not an appendix.** It sits beside 02a because 02a cannot
+be quoted without it: the same five policies restarted from five monthly inceptions
+change order, and at the original 2% sizing four of them halt. 02b also declares the
+funded-account book-risk policy and replays these exits under it — none of them halt
+under managed book risk. Notebook 02a saves only its README
+overview (`notebooks/assets/equity_curve.png`); its other charts and 02b's figures
+remain in committed notebook outputs, with no separate PNG copies. Study JSON/CSV ledgers live in ignored
+`artifacts/`; duplicated summaries are not exported. Poster exports from
+04–10 keep their existing workflow.
 
 04 asks, 05 measures, 06 supplies the denominator, 07 challenges, 08 re-measures,
 09 reconciles, 10 corrects.
@@ -72,6 +83,16 @@ python research/notebooks/robustness/statistical_checks.py
 built from NESO, Elexon and ENTSO-E feeds that is roughly 18 GB and is not in the
 repository. Rebuild it first with `scripts/build_stress_store.py` and
 `scripts/backfill_market_data.py` — hours, and an ENTSO-E API key.
+
+**And a rebuild will not stay possible indefinitely.** The GB day-ahead price
+comes from the Nord Pool data portal, which serves a rolling window of roughly
+65 days. The 2026 alignment window (`2026-06-26` to `2026-08-24`) is an archived window; its older dates may no longer be downloadable from the public endpoint
+; current code plus an API key is therefore not always enough, and the study becomes reproducible only from the
+cached day-files under `data/raw_new/NORDPOOL_DA/` — which are subject to Nord
+Pool's licence and are not redistributed here. Anyone depending on an exact
+rebuild should archive that cache now rather than assume the feed will still
+answer. The 2018 trading study has no such problem: ENTSO-E serves its window
+historically, and the raw day-files it needs are cached in `data/raw_2018/`.
 
 That is also why notebook **outputs are committed**: they are the only way to read
 the study without rebuilding the data, they render on GitHub, and

@@ -1,41 +1,98 @@
-# Quantitative Strategy Whitepaper: Day-Ahead Power Positioning
+# Strategy architecture: GB power positioning and BESS dispatch
 
-## 1. Executive Summary: Virtual Trading & Imbalance Proxying
-This system models the behavior of a **Non-Physical Participant (Virtual Trader)** in the Great Britain (GB) wholesale power market. Lacking physical generation or demand, the strategy seeks to extract Alpha from structural grid forecasting inefficiencies (e.g., wind forecast errors vs. actual delivery).
+## 1. Day-ahead entry: forecast the settlement basis
 
-**The Objective:** The strategy takes directional exposure in the **EPEX SPOT Day-Ahead (DA) auction** based on expected system imbalance, then manages exit through a two-slice hybrid engine:
+The virtual research strategy takes a financial position in a half-hour delivery
+contract at the day-ahead auction and settles the unclosed volume at imbalance.
+It predicts `SSP − DA` using information assigned to the D−1 10:30 London decision
+cutoff. A long earns `(SSP − DA) × MWh`; a short earns `(DA − SBP) × MWh`, before
+costs. Cashout is the settlement mechanism for the residual position, not a quoted
+execution venue. The framework does not model participant access or collateral.
 
-1. **Passive slice** (`baseline_hedge_ratio`, default 15%) — always unwound at the Market Index Price (MID), the continuous intraday mid-market, paying the modelled spread-to-MID execution cost.
-2. **Active slice** (`1 − baseline_hedge_ratio`) — exits at MID if a Take-Profit or Stop-Loss level is reached; if neither trigger fires, it settles at the system imbalance price (SSP for longs, SBP for shorts). Imbalance is the terminal fallback for this slice, not an accident of undeliverable volume.
+Notebook 01 selects the model on development MAE and signal settings on development
+account Sharpe within the specified cost tier. The current selected run is
+`s4_n15_t30_vm00_tc10`: linear regression, up to 15 periods per direction per market
+day, £3/MWh threshold, zero volatility multiplier and £1/entry-MWh fees. The fee
+buffer is added to the threshold, so the effective entry hurdle is £4/MWh for this
+cashout-only configuration. Top-N limits the schedule; it does not establish
+market depth or independent risk across those periods.
 
-*Crucial Market Distinction:* The strategy does *not* treat the Imbalance mechanism (SSP/SBP) as a primary liquidity venue for arbitrage. Instead, it uses machine learning to proxy expected system imbalance via forecast-driven residual load. **Mispricing is explicitly defined as the deviation between the model-implied fair value (derived from residual load and forecast dynamics) and the observed Day-Ahead auction price.** A DA position is taken when this mispricing is detected; the passive slice always exits at MID, and the active slice targets MID via TP/SL — with imbalance as its deliberate terminal settlement when the price target is not reached within the delivery window.
+A contract covers one half-hour of delivery. Its exposure starts at the preceding
+day's auction and lasts until closure or settlement; its holding horizon is not
+just the half-hour delivery duration. The selected signal is fixed at auction.
 
-## 2. Market Regime & Data Justification (2018)
-The current backtest engine is validated on 2018 market data (January–December).
+## 2. Execution: decide how much exposure to close
 
-* **Stable Baseline for Alpha Validation:** Developing a foundational algorithm during structural market breaks (e.g., the 2020 COVID demand crash or the 2022 European gas crisis) introduces extreme volatility that can generate false-positive returns. Isolating the development phase to a stable regime proves the ML feature engineering possesses a genuine statistical edge independent of macro black swans.
-* **Data Fidelity (Pre-Brexit):** Post-Brexit (Jan 1, 2021), the UK decoupled from the EU Internal Energy Market (IEM), fracturing established data pipelines. Pre-decoupling data guarantees high-fidelity, contiguous inputs.
-* **Regime Limitations (Intellectual Honesty):** It is explicitly noted that 2018 represents a relatively low-renewables penetration regime compared to the current grid. The model's robustness in modern, high-volatility, wind-dominated regimes (post-2021) remains an area for future out-of-sample stress testing and regime segmentation.
+Three separate experiments use the same framework:
 
-## 3. System Boundaries & Signal Logic
-The pipeline implements a directional DA trading desk with strict institutional portfolio constraints:
-
-* **Strict Leakage Prevention:** The DA auction closes at 11:00 AM on Day-1. The feature set relies entirely on the D-1 10:30 AM pre-auction forecast vintage. Latency and gate closure constraints are strictly observed. No same-day actuals are included; lagged data uses a strict 48-period (24-hour) offset.
-* **Signal Definition & Volatility Gating:** A position is initiated *only* when the model predicts a forward price deviation exceeding a volatility-adjusted threshold, which is calibrated using historical imbalance spread distributions. This ensures exposure is taken only when conviction outweighs the expected cost of residual imbalance.
-* **Long vs Short — Direction Rule:** The model predicts `spread = SSP − DA_price` for each half-hour settlement period. A **LONG** (buy DA, settle at SSP) fires when `predicted_spread > gate`; a **SHORT** (sell DA, settle at SBP) fires when `predicted_spread < −gate`. The gate is `clip(penalty_buffer, 0) + max(threshold, vol_multiplier × vol_threshold)`, where `penalty_buffer` is the rolling SBP−SSP spread cost, `threshold` is the configured minimum floor (default 5.0 £/MWh), and `vol_threshold` is a lagged rolling standard deviation of the imbalance spread. A long is the view that the grid will be short — SSP will exceed the DA clearing price. A short is the view that the grid will be long — SBP will be below DA, allowing a buy-back at a cheaper imbalance price.
-* **Execution Constraints & Risk Budgeting (`signal.top_n`):** Signals are capped at the top-N highest-conviction periods per direction per day, controlled by the configurable `signal.top_n` parameter (default 5, calibrated via the tournament sweep in `research/notebooks/01_da_positioning_backtest.ipynb`). Within each direction, periods are ranked by `|predicted_spread|` and only the top-N are retained. This constraint approximates real-world liquidity and capital allocation limits, ensuring the strategy concentrates risk in the highest-confidence signals rather than diluting exposure across the full curve.
-* **Position Horizon:** Positions are held over a single settlement interval (half-hourly) unless rebalanced by updated signals, ensuring strict alignment with short-term forecast error resolution dynamics.
-
-### Feature Engineering
-
-All features are constructed from the D-1 10:30 pre-auction forecast vintage. No same-day actuals are used; lagged inputs apply a strict 48-period (24-hour) minimum offset.
-
-| Group | Features | Rationale |
+| Study | Quantity and exit | What it measures |
 |---|---|---|
-| **Auction Fundamentals** | `auction_residual_load` | Demand forecast minus wind forecast at the 10:30 vintage — the primary proxy for grid tightness and the core mispricing signal |
-| **Pre-Auction Drift** | `wind_auction_drift` | Wind forecast at 10:30 minus wind forecast at 07:00 — captures how much the grid picture shifted in the hours before auction close, signalling late-breaking supply uncertainty |
-| **Historical Lags** | `day_ahead_price_lag48`, `day_ahead_price_lag96`, `system_sell_price_lag48`, `system_sell_price_lag96`, `system_buy_price_lag48`, `system_buy_price_lag96`, `imbalance_spread_lag48`, `imbalance_spread_lag96` | 24 h and 48 h lookbacks on DA price, both imbalance settlement legs (SSP and SBP), and their spread (SBP − SSP). In GB's dual-price system tracking only SSP omits the buy-side cost signal; the spread is also the quantity the signal gate is calibrated against. The 48-period offset is the minimum lag that avoids forward leakage at 30-minute resolution. |
-| **Temporal** | `hour_sin`, `hour_cos`, `dow_sin`, `dow_cos` | Cyclical sine/cosine encoding of settlement period (0.0–23.5 fractional hour) and day-of-week, computed in the Europe/London calendar to correctly handle BST transitions |
+| Notebook 01 | Auction-equity sizing; selected cashout exit | Signal performance under the specified account rules |
+| Notebook 02a | Fixed 1 MWh per signal; 0/25/50/75/100% intraday closure, TP/SL off | Cost and risk trade-off of the exit mix on matched observations |
+| Notebook 02b | Account restarts and optional book stress budgets | Capital survival and path dependence |
+
+For a hedge share `h`, the engine can close `h × MWh` at MID, adjusted for crossing
+cost. Its remaining slice can use conditional TP/SL proxy exits or settle at SSP
+for longs / SBP for shorts. Setting `h=0` alone does **not** disable TP/SL when MID
+and forecast inputs are supplied. The generic API retains its legacy 15% hedge
+and active-gate defaults; these are not selected production parameters. Use the
+explicit example config for the canonical study.
+
+Notebook 02a isolates pure static hedges. It charges £1 per entry MWh and £2 per
+intraday MWh, uses one shared complete-price mask, and attributes hedge PnL as
+`h × signed_MWh × (MID − cashout) − h × MWh × crossing_cost`. With fixed volume,
+net PnL is linear in `h`; an interior hedge choice requires a risk preference or
+constraint rather than a claim of higher absolute profit. Its 148 priced forecast
+dates exclude two unpriced dates and the 12-day gap without forecasts. Partial
+price days remain matched-observation subtotals, not complete-day estimates.
+
+MID is an aggregate of completed trades, not a bid/offer quote or an intraday
+path. A TP/SL threshold is tested against the single adjusted MID observation;
+if triggered, the exit is that observation, which can be beyond the threshold.
+A stop therefore does not cap the realised loss. Timestamped executable prices
+are required to evaluate a deployable intraday decision rule.
+
+## 3. Forecasts, timing and signal construction
+
+Features use the pre-auction forecast vintage and lagged prices. The model input
+contains auction residual load (demand forecast less wind forecast), the change
+in wind forecasts between 07:00 and 10:30, 48/72-hour price and cashout-basis lags,
+and cyclical London hour/day-of-week terms. Lag checks enforce availability
+against each delivery row's auction decision time; label availability includes
+settlement-period end plus the declared publication delay.
+
+The directional gate is
+`max(execution_buffer, 0) + max(threshold, vol_multiplier × vol_threshold)`.
+The buffer reflects entry fees and, for an intraday exit configuration, crossing
+cost. Volatility is measured on the lagged cashout-to-DA basis, not `SBP − SSP`.
+Longs require predicted spread above the gate; shorts require it below the
+negative gate. Within each direction, retain the top-N absolute forecasts.
+
+The 2018 archive supplies training data and the saved July–December forecast
+sample. It provides one historical regime, not proof of a stable edge. The final
+60 market dates were excluded from the current selection but inspected in earlier
+research, so they are retrospective evaluation. Revised historical observations
+are not a point-in-time publication archive. Coverage gaps and uncertainty are
+reported with the results; no period is removed merely because it loses money.
+
+## 4. Account sizing and risk
+
+The engine sizes a delivery book from equity observable at its auction, using a
+fixed £50/MWh reference by default. The 2% reference-notional allocation per signal
+is not 2% cash loss at risk. A common book cap can scale correlated entries together,
+though at the published settings it never engages — see section 7;
+settlement PnL is released after the delivery day ends plus the one-hour assumption.
+The legacy `max_drawdown_pct` stops new books at a floor relative to initial capital,
+while previously committed books still settle. It is not a trailing peak limit.
+
+An optional book-risk policy reserves stress capacity for unsettled books and tests
+smaller aggregate allocations; it is declared in `configs/execution_risk_study.yaml`
+and driven by `scripts/run_execution_risk_study.py`. `scripts/run_start_date_study.py`
+restarts empty accounts without rebasing an existing PnL path. Both are retrospective
+implementation studies, and
+[notebook 02b](../research/notebooks/02b_start_date_sensitivity.ipynb) runs and
+documents them. Notebook 02a's fixed-volume ledger does not simulate this capital
+process.
 
 ## 5. Phase 3: Physical Asset (BESS) Optimisation
 
@@ -49,9 +106,9 @@ The BESS strategy decomposes the trading day into three settlement layers, each 
 
 2. **Intraday (Rolling-Horizon Re-Optimisation — DA-Proxy MID):** The day-ahead schedule is locked at the 11:00 auction and its *financial* position cannot be changed, but during delivery the battery's *physical* dispatch can still deviate from the plan and settle the deviation in the continuous intraday market. A linear program re-optimises the physical schedule over the remaining horizon and books the deviation against the benchmark. The frozen DA schedule is what a trader is measured against; everything the re-optimisation adds on top is consolidated into a single **Intraday DA Improvement** bucket.
 
-   - **Observed now, proxied for the future.** The intraday market is *continuous*, so the price each quarter-hour is trading at becomes **visible shortly before its delivery** — the current period's MID is *observed*, not guessed. Only the not-yet-visible **future** periods are uncertain, and those are priced from a **DA proxy**: the cleared DA price (known since the 11:00 auction) ± a configurable basis — extra discharge assumed to clear at `da − margin_sell`, extra charge at `da + margin_buy`. The basis is **conservatism on the proxy only**: it tempers netting the locked DA commitment or opening a new position on a still-*guessed* future price. The visible current period carries no such hurdle — its price is known.
+   - **Observed now, proxied for the future.** The intraday market is *continuous*, so the price for each configured delivery period is **represented in this simulation by its MID aggregate** — the current period's MID is *observed*, not guessed. Only the not-yet-visible **future** periods are uncertain, and those are priced from a **DA proxy**: the cleared DA price (known since the 11:00 auction) ± a configurable basis — extra discharge assumed to clear at `da − margin_sell`, extra charge at `da + margin_buy`. The basis is **conservatism on the proxy only**: it tempers netting the locked DA commitment or opening a new position on a still-*guessed* future price. The current-period proxy carries no such hurdle; its executable availability is not established by the historical MID archive.
 
-   - **Rolling walk, execute only the visible period.** Because only the current period is tradeable (its price is visible), the engine walks the day period by period. At step `h` it re-solves an LP over the **remaining** horizon `[h:]` — the current period priced at the observed MID, every future period at the hurdled proxy — then **executes and locks only period `h`**, advances SOC and the cycle budget, and rolls to `h+1`, where one more real MID has appeared. The LP chooses the physical net dispatch `P_k` maximising the value of the deviations `dev_k = P_k − da_schedule_k`, net of execution friction and degradation:
+   - **Rolling walk, execute only the visible period.** Under the simulation’s one-visible-period convention, the engine walks the day period by period. At step `h` it re-solves an LP over the **remaining** horizon `[h:]` — the current period priced at the observed MID, every future period at the hurdled proxy — then **executes and locks only period `h`**, advances SOC and the cycle budget, and rolls to `h+1`, where one more real MID has appeared. The LP chooses the physical net dispatch `P_k` maximising the value of the deviations `dev_k = P_k − da_schedule_k`, net of execution friction and degradation:
 
      ```
      max Σ_{k≥h} [ dev⁺_k · sell_k − dev⁻_k · buy_k
@@ -65,7 +122,7 @@ The BESS strategy decomposes the trading day into three settlement layers, each 
 
    - **Live-benchmark variant (perfect foresight).** The live GB BESS dashboard settles on *realised* data, so it opts into a single whole-day LP that prices every period at its **actual MID** (`run_intraday_session(..., perfect_foresight=True)`) rather than the DA proxy. Because following the DA plan is always feasible, that idealised optimum is bounded below by the benchmark — the intraday layer can only add value. The Phase-3 backtest above keeps the rolling, no-lookahead engine.
 
-   > **No look-ahead bias.** The current period's MID is genuinely observable before its delivery in the continuous market, so reading it is not a peek; future periods are *not* read — they fall back to the DA proxy (prices the trader already holds from the 11:00 auction). The walk never prices a future period off unrealised intraday data, and each period is executed only once its own price is visible.
+   > **Execution proxy limitation.** MID is an aggregate of completed trades, not an executable pre-delivery quote. The rolling simulation reads the current period's MID and uses DA proxies for future periods. This avoids reading future MID periods, but remains an idealised execution study; it does not establish a fully point-in-time trading backtest.
 
 3. **Imbalance Settlement (Ex-Post):** Any volume that could not be physically delivered or absorbed — because SOC hit an absolute bound — is settled at the system imbalance price (SSP/SBP), appearing as a residual cost or credit.
 
@@ -96,7 +153,7 @@ net_pnl = benchmark_da_revenue + intraday_da_improvement − execution_costs_pai
 
 - **`benchmark_da_revenue`** — the planned LP schedule settled at the *actual* cleared DA prices, frozen up front before any intraday action is taken. This is the benchmark.
 - **`intraday_da_improvement`** — the cash the rolling re-optimisation adds on top of the benchmark: for each period, the value of its executed physical deviation `dev_h = P_h − da_schedule_h` **settled at that period's observed MID**, summed over the day and reported **gross** of execution friction.
-- **`execution_costs_paid`** — slippage (`execution.slippage`, default 2.0 £/MWh — a realistic spread-to-MID for GB continuous half-hourly products) paid on every traded (deviated) MWh, isolated into its own bucket rather than netted into the improvement.
+- **`execution_costs_paid`** — slippage (`execution.slippage`, default 2.0 £/MWh — an illustrative crossing-cost assumption) paid on every traded (deviated) MWh, isolated into its own bucket rather than netted into the improvement.
 - **`imbalance_pnl`** — retained at ≈ 0. Each executed period is clamped to what the battery can physically deliver and any gap to the DA commitment is flattened at MID, so no volume spills to SSP/SBP in this phase; the bucket stays for continuity and the Phase-4 case where a forecast can leave a position unflattened at gate closure.
 - **`degradation_cost`** — throughput wear on the physically cycled volume `Σ |P_h|`.
 
@@ -104,8 +161,19 @@ The buckets sum exactly to Net PnL. For continuity the engine also surfaces `da_
 
 This decomposition lets the analyst attribute value to each layer independently — see `research/notebooks/03_bess_dispatch_analysis.ipynb` for the full waterfall.
 
-## 6. Validated Results
+## 6. Results and selection
 
 Performance numbers are run-specific and live with the experiment that produced them. See the equity curve, drawdown analysis, and sensitivity sweep in `research/notebooks/01_da_positioning_backtest.ipynb`; quantitative metrics are saved to `artifacts/{strategy}/{run_name}/{mode}/trading/metrics.json` after each run.
 
-**Best-run selection criterion (Section 4 sweep):** configurations are ranked by **Calmar Ratio** (primary), then Sharpe Ratio, then Profit Factor, then Total Return, evaluated within the TC = £1.00/MWh execution cost tier with a minimum 500-trade liquidity floor. This priority reflects the quant PM view: drawdown-adjusted return (Calmar) is the headline risk metric; Sharpe and Profit Factor confirm consistency; raw return is the tiebreak only.
+**Best-run selection criterion:** choose the model family/hyperparameters on development MAE. Within the £1/MWh cost tier, require at least one executed trade per development market day; rank signal settings on development Sharpe, breaking ties on return-to-drawdown. Calmar is descriptive and uses annualised return divided by peak-relative drawdown. Candidate runs reserve the last 60 market days without predicting them (`evaluate_holdout=False`). Only the frozen configuration evaluates that tail. Because it was inspected in earlier research, it is a retrospective evaluation split, not a new untouched sample.
+
+## 7. Timing, coverage and reproducibility
+
+- Quantity uses a fixed pre-auction £50/MWh sizing reference by default, floored at £10 in the optional `sizing_prices` input. The book exposure cap uses that same reference; it is a reference-notional budget, not a guarantee on realised cleared notional. The sizing reference cancels out of the cap's comparison, which therefore reduces to a contract count: the cap binds only above `max_book_exposure_pct / risk_pct` contracts in one book, or 50 at the defaults, against a delivery day of at most 48 settlement periods. It is a backstop against a future sizing change and constrains none of the published runs; the per-signal allocation is what limits them. The funded-account book-risk policy in notebook 02b is the control that does bind.
+- Each London delivery book is committed at D−1 10:30. Its PnL enters available auction equity only at the next London midnight plus a one-hour publication assumption, including empty days and date gaps. The halt is a loss floor against starting capital, not a trailing peak limit.
+- Training labels and lag checks use settlement-period end plus a one-hour publication assumption. Historical revised prices are not a point-in-time publication archive, so this timing convention cannot prove vintage availability.
+- Demand interpolation remains within eligible daily forecast vintages. Missing values remain missing in saved features. The virtual model drops incomplete feature rows; BESS fills missing inputs using medians fitted separately within each training fold and records `feature_imputed` on predictions.
+- BESS research dispatch uses exact London market-day indices (23/24/25 hours) with two observed half-hours required per hourly price/forecast bin. Forecasts are joined by timestamp. Opening SOC is conditional on carried inventory; pre-auction uncertainty about that inventory is not simulated. The live policy benchmark instead uses explicitly labelled UTC days, always 24 hours, consistently with its existing charts and policy study.
+- Research cache manifests hash code/configuration and the raw-file path/size/modification-time manifest; dependent runs additionally hash feature bytes. Changing an input revision must update its modification time. A missing or mismatched manifest rebuilds the cache. Data period ends are exclusive London boundaries.
+- Recent raw Elexon, Nord Pool and fleet files expire after 15 minutes for a five-day provisional window. Older files are archived observations, not guaranteed final revisions. Substituted MID coverage is retained in settlement results and displayed in the live dashboard.
+- Bootstrap intervals resample observed daily cash PnL and daily percentage returns (10,000 independent day draws, seed 7). They are conditional on the observed selected experiment: they do not rerun sizing, halts or parameter selection, and do not account for serial dependence. The always-short control uses model-selected periods, so it is a directional control, not a model-free scheduling baseline.

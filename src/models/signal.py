@@ -4,84 +4,101 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 7-day rolling window (48 half-hours × 7) with a 48-h lag
-_PENALTY_WINDOW = 336
-_PENALTY_LAG = 96
-
-# Volatility window matches penalty buffer to keep the two estimates in sync
+# Rolling window for the volatility estimate: 7 days (48 half-hours × 7),
+# lagged 48 h so every value is admissible at the auction it gates.
 _VOL_WINDOW = 336
 _VOL_LAG = 96
 
 
-def compute_penalty_buffer(
-    system_buy_price: np.ndarray | pd.Series,
-    system_sell_price: np.ndarray | pd.Series,
-) -> np.ndarray:
-    """Rolling 7-day mean of (SBP − SSP), lagged 48 h.
+def compute_execution_buffer(
+    transaction_cost: float = 0.0,
+    slippage: float = 0.0,
+) -> float:
+    """The per-MWh hurdle a position must clear before it is worth taking.
 
-    Estimates the expected round-trip imbalance cost for use as a dynamic
-    signal threshold.  Pass the full price series (not just the test window)
-    so the rolling window is correctly warmed up from training history.
+    This replaces the old "penalty buffer", a rolling mean of (SBP − SSP) meant
+    to stand for the expected round-trip imbalance cost. GB has settled on a
+    *single* cash-out price since BSC P305 (5 November 2015): SBP and SSP are
+    the same number in every settlement period, so that difference was
+    identically zero across all 17,660 non-null pairs of the 2018 sample and the
+    term added nothing to the gate. There is no bid-ask to pay in imbalance
+    settlement; what a round trip actually costs is fees plus crossing the
+    spread in the market the position is closed in, which is a known quantity
+    rather than something to estimate from settlement history.
+
+    Args:
+        transaction_cost: Fee charged per MWh of position, £/MWh.
+        slippage:         Bid-ask crossing cost on intraday exits, £/MWh.
+
+    Returns:
+        Scalar hurdle in £/MWh.
     """
-    buy = pd.Series(np.asarray(system_buy_price, dtype=float))
-    sell = pd.Series(np.asarray(system_sell_price, dtype=float))
-    return (  # type: ignore[no-any-return]
-        (buy - sell).shift(_PENALTY_LAG).rolling(_PENALTY_WINDOW, min_periods=48).mean().values
-    )
+    return float(transaction_cost) + float(slippage)
 
 
 def compute_volatility_threshold(
-    system_buy_price: np.ndarray | pd.Series,
-    system_sell_price: np.ndarray | pd.Series,
+    system_price: np.ndarray | pd.Series,
+    day_ahead_price: np.ndarray | pd.Series,
     window: int = _VOL_WINDOW,
     lag: int = _VOL_LAG,
 ) -> np.ndarray:
-    """Rolling std of the imbalance spread (SBP − SSP), lagged to avoid lookahead.
+    """Rolling std of the cash-out-to-auction gap, lagged to stay pre-auction.
 
-    Calibrates the signal gate to the recent spread distribution — widening
-    the band in volatile regimes so only genuinely exceptional predicted
-    edges pass through.  Pass the full price series (training + test) so the
-    window is warmed up before the test period begins.
+    The quantity that puts a day-ahead position at risk is the gap between the
+    imbalance cash-out price and the price the auction cleared at — that gap is
+    the strategy's entire P&L per MWh. Its recent dispersion is therefore what a
+    volatility gate should widen against.
+
+    The previous definition used (SBP − SSP), which under GB's single cash-out
+    price is zero in every period: the warmed-up series had no non-zero value
+    anywhere in the sample, so ``vol_multiplier`` and ``vol_window`` were inert
+    and the "adaptive risk gate" was always just the fixed floor.
+
+    Pass the full series (training + test) so the window is warmed up before the
+    test period begins. The default 96-period lag keeps every value admissible at
+    the D-1 10:30 auction for the period it gates.
 
     Args:
-        system_buy_price:  SBP series, £/MWh.
-        system_sell_price: SSP series, £/MWh.
-        window:            Rolling std lookback in half-hour periods (default 336 = 7 days).
-        lag:               Shift applied before rolling to prevent lookahead
-                           (default 96 = 48 h).
+        system_price:    Imbalance cash-out price series, £/MWh.
+        day_ahead_price: Cleared day-ahead price series, £/MWh.
+        window:          Rolling std lookback in half-hour periods (default 336 = 7 days).
+        lag:             Shift applied before rolling to keep the estimate
+                         pre-auction (default 96 = 48 h).
 
     Returns:
         Float array, same length as inputs.  NaN where the window is not yet
         warmed up.
     """
-    buy = pd.Series(np.asarray(system_buy_price, dtype=float))
-    sell = pd.Series(np.asarray(system_sell_price, dtype=float))
+    system = pd.Series(np.asarray(system_price, dtype=float))
+    da = pd.Series(np.asarray(day_ahead_price, dtype=float))
     return (  # type: ignore[no-any-return]
-        (buy - sell).shift(lag).rolling(window, min_periods=48).std().values
+        (system - da).shift(lag).rolling(window, min_periods=48).std().values
     )
 
 
 def generate_signal(
     predicted_spread: np.ndarray,
-    penalty_buffer: np.ndarray,
+    execution_buffer: float = 0.0,
     threshold: float = 5.0,
     vol_threshold: np.ndarray | None = None,
     vol_multiplier: float = 1.0,
 ) -> np.ndarray:
     """Generate day-ahead auction signals from a predicted imbalance spread.
 
-    A signal fires only when the predicted edge exceeds the expected cost of
-    imbalance settlement (the penalty buffer) plus a volatility-adjusted gate.
-    This prevents entries where the spread is unlikely to cover round-trip costs
-    and suppresses noise-driven signals in high-volatility regimes.
+    A signal fires only when the predicted edge clears the known cost of the
+    round trip (fees plus spread crossing) plus a volatility-adjusted gate. This
+    keeps out entries that cannot pay for their own execution and suppresses
+    noise-driven signals when the cash-out-to-auction gap is dispersed.
 
     Args:
-        predicted_spread:  Predicted (SSP − DA price) per settlement period, £/MWh.
-        penalty_buffer:    Rolling 7-day mean of (SBP − SSP), lagged 48 h (£/MWh).
-                           NaNs are treated as zero (no penalty assumed).
+        predicted_spread:  Predicted (cash-out − DA price) per settlement period, £/MWh.
+        execution_buffer:  Round-trip execution hurdle in £/MWh, from
+                           compute_execution_buffer(). A scalar, because it is a
+                           fee schedule rather than an estimate from settlement
+                           history.
         threshold:         Minimum edge floor, £/MWh.  Acts as a lower bound on
                            the gate regardless of volatility.  Default 5.0.
-        vol_threshold:     Rolling std of (SBP − SSP), lagged 48 h (£/MWh), from
+        vol_threshold:     Rolling std of (cash-out − DA), lagged 48 h (£/MWh), from
                            compute_volatility_threshold().  When supplied, the gate
                            widens with market volatility.  NaNs treated as 0.
         vol_multiplier:    Number of spread std-devs required to fire.  Scales
@@ -92,18 +109,12 @@ def generate_signal(
         Integer array: 1 = BUY (Long DA), −1 = SELL (Short DA), 0 = NEUTRAL.
 
     Signal rules:
-        gate = clip(penalty_buffer, 0) + max(threshold, vol_multiplier × vol_threshold)
+        gate = max(execution_buffer, 0) + max(threshold, vol_multiplier × vol_threshold)
         BUY  if predicted_spread  >  gate
         SELL if predicted_spread  < −gate
     """
     predicted_spread = np.asarray(predicted_spread, dtype=float)
-    penalty = np.nan_to_num(np.asarray(penalty_buffer, dtype=float), nan=0.0)
-
-    if len(predicted_spread) != len(penalty):
-        raise ValueError(
-            f"predicted_spread length {len(predicted_spread)} ≠ "
-            f"penalty_buffer length {len(penalty)}"
-        )
+    buffer = max(float(execution_buffer), 0.0)
 
     if vol_threshold is not None:
         vol = np.nan_to_num(np.asarray(vol_threshold, dtype=float), nan=0.0)
@@ -116,7 +127,7 @@ def generate_signal(
     else:
         dynamic_gate = np.full(len(predicted_spread), threshold)
 
-    adjusted = np.clip(penalty, 0.0, None) + dynamic_gate
+    adjusted = buffer + dynamic_gate
 
     signals = np.zeros(len(predicted_spread), dtype=int)
     signals[predicted_spread > adjusted] = 1
@@ -220,9 +231,9 @@ def build_daily_schedule(
 def generate_signal_from_dataframe(
     df: pd.DataFrame,
     pred_col: str = "predicted_spread",
-    penalty_col: str = "penalty_buffer",
     vol_col: str = "vol_threshold",
     timestamp_col: str = "time",
+    execution_buffer: float = 0.0,
     threshold: float = 5.0,
     vol_multiplier: float = 1.0,
     top_n: int | None = None,
@@ -238,9 +249,9 @@ def generate_signal_from_dataframe(
     Args:
         df:            Input DataFrame.
         pred_col:      Column name for predicted spread values.
-        penalty_col:   Column name for penalty buffer (optional).
         vol_col:       Column name for volatility threshold (optional).
         timestamp_col: Column name for UTC timestamps, used by top-N ranking.
+        execution_buffer: Round-trip execution hurdle, £/MWh.
         threshold:     Static threshold floor, £/MWh.
         vol_multiplier: Scales the volatility-adjusted gate.
         top_n:         Max active trades per direction per day.  Pass None to
@@ -249,13 +260,12 @@ def generate_signal_from_dataframe(
     if pred_col not in df.columns:
         raise KeyError(f"Column '{pred_col}' not found in DataFrame")
 
-    penalty = df[penalty_col].values if penalty_col in df.columns else np.zeros(len(df))
     vol = df[vol_col].values if vol_col in df.columns else None
 
     df = df.copy()
     raw_signals = generate_signal(
         predicted_spread=df[pred_col].values,
-        penalty_buffer=penalty,
+        execution_buffer=execution_buffer,
         threshold=threshold,
         vol_threshold=vol,
         vol_multiplier=vol_multiplier,

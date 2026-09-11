@@ -4,6 +4,7 @@ import re
 import pandas as pd
 import requests
 import logging
+from src.utils.raw_cache import cache_is_fresh
 import os
 from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
@@ -59,8 +60,9 @@ def _save_raw_json(dataset_name: str, filename: str, payload: object) -> None:
     dataset_dir = os.path.join(RAW_DATA_DIR, dataset_name)
     os.makedirs(dataset_dir, exist_ok=True)
     raw_path = os.path.join(dataset_dir, filename)
-    with open(raw_path, "w", encoding="utf-8") as fp:
+    with open(raw_path + ".tmp", "w", encoding="utf-8") as fp:
         json.dump(payload, fp, indent=2)
+    os.replace(raw_path + ".tmp", raw_path)
     logger.info(f"Saved raw JSON to {raw_path}")
 
 
@@ -76,7 +78,8 @@ def _chunk_has_raw_files(dataset: str, date_str: str) -> bool:
     dataset_dir = _raw_dataset_dir(dataset)
     if not os.path.isdir(dataset_dir):
         return False
-    return bool(glob.glob(os.path.join(dataset_dir, f"{dataset}_{date_str}_page_*.json")))
+    files = glob.glob(os.path.join(dataset_dir, f"{dataset}_{date_str}_page_*.json"))
+    return bool(files) and all(cache_is_fresh(path, date_str) for path in files)
 
 
 def _load_raw_records_from_file(filepath: str) -> list[dict]:
@@ -140,6 +143,7 @@ def download_elexon_dataset(dataset: str, start_date: str, end_date: str) -> Non
 
         url: str | None = base_url
         page = 1
+        fetched_pages = []
         while url:
             request_params = params if url == base_url else None
             response = requests.get(
@@ -149,7 +153,7 @@ def download_elexon_dataset(dataset: str, start_date: str, end_date: str) -> Non
             payload = response.json()
 
             raw_path = _raw_json_path(dataset, date_str, page)
-            _save_raw_json(dataset, os.path.basename(raw_path), payload)
+            fetched_pages.append((os.path.basename(raw_path), payload))
 
             if isinstance(payload, dict) and "data" in payload:
                 records = payload["data"]
@@ -168,6 +172,15 @@ def download_elexon_dataset(dataset: str, start_date: str, end_date: str) -> Non
                 url = None
             page += 1
 
+        if fetched_pages:
+            for filename, payload in fetched_pages:
+                _save_raw_json(dataset, filename, payload)
+            keep = {filename for filename, _ in fetched_pages}
+            for old in glob.glob(
+                os.path.join(_raw_dataset_dir(dataset), f"{dataset}_{date_str}_page_*.json")
+            ):
+                if os.path.basename(old) not in keep:
+                    os.unlink(old)
         current_date = next_date
 
 
@@ -401,16 +414,27 @@ def download_neso_ndfd_range(start_date: str, end_date: str, chunk_days: int = 3
         current_date = chunk_end + timedelta(days=1)
 
 
-def read_neso_ndfd() -> pd.DataFrame:
+def read_neso_ndfd(start_date: str | None = None, end_date: str | None = None) -> pd.DataFrame:
     """
     Read cached NESO NDFD JSON files and combine into DataFrame.
     Expects files at: data/raw/NESO_NDFD/NESO_NDFD_YYYYMMDD_page_*.json
+
+    ``start_date``/``end_date`` restrict which day-files are read. Without them
+    the whole cache is returned, which is what silently widened the 2018 feature
+    build to every year on disk.
     """
     dataset_dir = _raw_dataset_dir("NESO_NDFD")
     if not os.path.isdir(dataset_dir):
         raise ValueError("No cached files found for NESO_NDFD")
 
     files = sorted(glob.glob(os.path.join(dataset_dir, "NESO_NDFD_*_page_*.json")))
+    # As above: honour the requested window instead of returning the whole cache.
+    if start_date and end_date:
+        # As above: an empty match means "no cached days in this window", not
+        # "read everything".
+        _window = _files_in_range(files, "NESO_NDFD", start_date, end_date, margin_days=1)
+        if any(re.search(r"NESO_NDFD_(\d{8})_page_", os.path.basename(f)) for f in files):
+            files = _window
     if not files:
         raise ValueError("No cached raw files found for NESO_NDFD")
 
@@ -467,6 +491,33 @@ def fetch_neso_sql(resource_id: str, date_filter: str | None = None) -> pd.DataF
     return pd.DataFrame(all_records)
 
 
+def _london_to_utc(naive: pd.Series) -> pd.Series:
+    """Localise a naive Europe/London wall-clock series to UTC.
+
+    DST edges are resolved the way a market calendar has to resolve them:
+    the repeated autumn hour takes its first (BST) occurrence, and the spring
+    hour that does not exist is shifted forward rather than dropped.
+    """
+    return naive.dt.tz_localize(
+        "Europe/London", ambiguous=True, nonexistent="shift_forward"
+    ).dt.tz_convert("UTC")
+
+
+def _ndfd_delivery_time(target_date: pd.Series, cp_st_time: pd.Series) -> pd.Series:
+    """Delivery instant (UTC) from NDFD's TARGETDATE + CP_ST_TIME pair.
+
+    ``cp_st_time`` is an HHMM clock string with leading zeros stripped, so it is
+    zero-padded before being split. "2400" denotes midnight *ending* the market
+    date and therefore rolls onto the following day.
+    """
+    date = pd.to_datetime(target_date, errors="coerce").dt.normalize()
+    hhmm = cp_st_time.astype(str).str.strip().str.zfill(4)
+    hours = pd.to_numeric(hhmm.str[:2], errors="coerce")
+    minutes = pd.to_numeric(hhmm.str[2:], errors="coerce")
+    naive = date + pd.to_timedelta(hours, unit="h") + pd.to_timedelta(minutes, unit="m")
+    return _london_to_utc(naive)
+
+
 def _normalize_neso_ndfd(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normalize NESO NDFD (day-ahead demand forecast) data.
@@ -480,25 +531,51 @@ def _normalize_neso_ndfd(df: pd.DataFrame) -> pd.DataFrame:
     else:
         raise ValueError(f"forecastdemand column not found. Available: {df.columns.tolist()}")
 
-    time_col = None
-    for name in ["deliverytime", "starttime", "time", "cp_st_time", "targetdate"]:
-        if name in col_lower:
-            time_col = col_lower[name]
-            break
+    # NDFD is a *cardinal point* feed: ~12 named points per market day (peaks,
+    # troughs, transitions) rather than a 48-period curve. The delivery instant
+    # is TARGETDATE (market date) plus CP_ST_TIME, an HHMM clock string with the
+    # leading zeros stripped ("30" = 00:30, "430" = 04:30, "1700" = 17:00,
+    # "2400" = midnight ending the day). Both are Europe/London wall-clock: the
+    # publish stamp sits at ~08:45 in every month of the year, which is a fixed
+    # operational schedule rather than a UTC instant.
+    #
+    # Parsing CP_ST_TIME as a date is what the generic branch below used to do,
+    # and "1700" then reads as the year 1700 — every row lands in the 18th
+    # century, the snapshot builders find nothing eligible, and the whole demand
+    # forecast silently disappears from the feature set.
+    if "targetdate" in col_lower and "cp_st_time" in col_lower:
+        df["time"] = _ndfd_delivery_time(df[col_lower["targetdate"]], df[col_lower["cp_st_time"]])
+    else:
+        time_col = None
+        for name in ["deliverytime", "starttime", "time", "targetdate"]:
+            if name in col_lower:
+                time_col = col_lower[name]
+                break
 
-    if not time_col:
-        raise ValueError(f"No delivery/start time column found. Available: {df.columns.tolist()}")
+        if not time_col:
+            raise ValueError(
+                f"No delivery/start time column found. Available: {df.columns.tolist()}"
+            )
 
-    df["time"] = pd.to_datetime(df[time_col], utc=True, errors="coerce")
+        df["time"] = pd.to_datetime(df[time_col], utc=True, errors="coerce")
 
     forecast_col = None
-    for name in ["publishtime", "forecasttime", "publishedtime"]:
+    for name in ["publishtime", "forecasttime", "publishedtime", "forecast_timestamp"]:
         if name in col_lower:
             forecast_col = col_lower[name]
             break
 
     if forecast_col:
-        df["forecast_time"] = pd.to_datetime(df[forecast_col], utc=True, errors="coerce")
+        stamped = pd.to_datetime(df[forecast_col], errors="coerce")
+        # NDFD publish stamps are naive Europe/London wall-clock (they sit at
+        # ~08:45 in every month, so they track the clock, not UTC). Reading them
+        # as UTC would move the auction cutoff by an hour through BST and let a
+        # forecast published after 10:30 look eligible.
+        if stamped.dt.tz is None:
+            stamped = _london_to_utc(stamped)
+        else:
+            stamped = stamped.dt.tz_convert("UTC")
+        df["forecast_time"] = stamped
     else:
         logger.warning(
             "No forecast/publish time column found. Falling back to using delivery time."
@@ -532,7 +609,7 @@ def fetch_neso_ndfd(start_date: str = START_DATE, end_date: str = END_DATE) -> p
     logger.info("Fetching NESO NDFD via daily chunking")
 
     download_neso_ndfd_daily(start_date, end_date)
-    df = read_neso_ndfd()
+    df = read_neso_ndfd(start_date, end_date)
     logger.info(f"Read {len(df)} rows from NESO NDFD cache")
 
     for col in df.columns:
@@ -683,7 +760,7 @@ def _fetch_pvlive_day(market_day: pd.Timestamp) -> list[dict]:
     cache_dir = os.path.join(RAW_DATA_DIR, "PVLIVE_SOLAR")
     daily_file = os.path.join(cache_dir, f"PVLIVE_SOLAR_{date_str}.json")
 
-    if os.path.exists(daily_file):
+    if cache_is_fresh(daily_file, date_str):
         with open(daily_file, encoding="utf-8") as fp:
             cached: list[dict] = json.load(fp).get("data", [])
         return cached
@@ -767,7 +844,7 @@ def _fetch_lolpdrm_day(market_day: pd.Timestamp) -> list[dict]:
     cache_dir = os.path.join(RAW_DATA_DIR, "LOLPDRM")
     daily_file = os.path.join(cache_dir, f"LOLPDRM_{date_str}.json")
 
-    if os.path.exists(daily_file):
+    if cache_is_fresh(daily_file, date_str):
         with open(daily_file, encoding="utf-8") as fp:
             cached: list[dict] = json.load(fp).get("data", [])
         return cached
@@ -840,7 +917,7 @@ def fetch_cmn_notices(number: int = 200) -> list[dict]:
     cache_dir = os.path.join(RAW_DATA_DIR, "CMN")
     daily_file = os.path.join(cache_dir, f"CMN_{today_str}.json")
 
-    if os.path.exists(daily_file):
+    if cache_is_fresh(daily_file, today_str):
         with open(daily_file, encoding="utf-8") as fp:
             cached: list[dict] = json.load(fp).get("data", [])
         return cached
@@ -1006,7 +1083,7 @@ def _fetch_nordpool_da_day(market_day: pd.Timestamp) -> pd.DataFrame:
     cache_dir = os.path.join(RAW_DATA_DIR, "NORDPOOL_DA")
     daily_file = os.path.join(cache_dir, f"NORDPOOL_DA_{date_str}.json")
 
-    if os.path.exists(daily_file):
+    if cache_is_fresh(daily_file, date_str):
         with open(daily_file, encoding="utf-8") as fp:
             records = json.load(fp).get("data", [])
     else:
@@ -1103,7 +1180,7 @@ def fetch_day_ahead_price(
             RAW_DATA_DIR, "entsoe_day_ahead_price", f"entsoe_day_ahead_price_{date_str}.json"
         )
 
-        if os.path.exists(daily_file):
+        if cache_is_fresh(daily_file, date_str):
             logger.info(f"Loading cached ENTSO-E {current.date()}")
             try:
                 with open(daily_file, encoding="utf-8") as fp:
@@ -1275,7 +1352,7 @@ def fetch_entsoe_demand_forecast(
         date_str = current.strftime("%Y%m%d")
         daily_file = os.path.join(RAW_DATA_DIR, dataset_name, f"{dataset_name}_{date_str}.json")
 
-        if os.path.exists(daily_file):
+        if cache_is_fresh(daily_file, date_str):
             logger.info("Loading cached ENTSO-E demand forecast %s", current.date())
             try:
                 with open(daily_file, encoding="utf-8") as fp:
@@ -1338,7 +1415,7 @@ def download_b1770(start_date: str, end_date: str) -> None:
         date_iso = current.strftime("%Y-%m-%d")
         cache_path = os.path.join(dataset_dir, f"{dataset}_{date_str}_page_1.json")
 
-        if os.path.exists(cache_path):
+        if cache_is_fresh(cache_path, date_str):
             logger.info(f"Skipping B1770 {date_iso}: already cached")
             current += timedelta(days=1)
             continue
@@ -1462,6 +1539,23 @@ def fetch_imbalance_price(
     if not files:
         logger.warning("No B1770 files found; skipping imbalance_price feature")
         return pd.DataFrame()
+
+    # Read only the day-files asked for, the same way read_elexon_dataset does.
+    # Globbing the whole cache ignored start_date/end_date entirely: a request
+    # for 2018 came back with every settlement day on disk, 2017 through 2026.
+    # Downstream that silently widened the feature frame to 8x the configured
+    # study window, and the BESS pipeline — which derives its price-fetch range
+    # from that frame — then tried to fetch years of day-ahead prices that do
+    # not exist for GB.
+    # Use the filtered window even when it is empty. Falling back to the whole
+    # cache on an empty match reproduces the very failure this filter exists to
+    # prevent — a request for a window with no cached days silently returning
+    # every unrelated year on disk. `_files_in_range` returns [] only when no
+    # filename carries a parseable date, which is a different condition and the
+    # one the fallback is for.
+    window = _files_in_range(files, "B1770", start_date, end_date, margin_days=1)
+    if any(re.search(r"B1770_(\d{8})_page_", os.path.basename(f)) for f in files):
+        files = window
 
     all_records = []
     for f in files:

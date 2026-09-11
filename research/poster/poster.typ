@@ -215,7 +215,7 @@
     A utilisation measure, not shortage. Sections 2 and 3, #n4.window_days.
     #v(2mm)
     #text(weight: "bold", fill: discharge.darken(20%))[Scarcity: the operator
-    short of slack.] Loss-of-load probability at or above 10⁻⁴, 2,075
+    short of slack.] Loss-of-load probability at or above 10⁻⁴, #n5.n_lolp
     half-hours, with de-rated margin below 1 GW (n = #n5.n_drm) and Capacity
     Market Notices (n = #n5.n_cmn) as rarer instruments. Section 4, 2018 to 2026.
     #v(2mm)
@@ -262,14 +262,18 @@ are excluded from every state-of-charge figure.
   schedule against, or pay directly for the charging behaviour that GB leaves
   unrewarded.
   #v(1.5mm)
-  *Belgium prices scarcity continuously,* through adders derived from an
-  operating-reserve demand curve, published since October 2019.
+  *Belgium computes a continuous scarcity price,* through adders derived from an
+  operating-reserve demand curve. Elia has published them D+1 since October 2019
+  as information, not settlement: no battery has been paid them. Its settled
+  alpha adder tracks system imbalance, not loss-of-load probability. Running
+  alongside the market is a different claim from paying for scarcity.
   #v(1mm)
-  *France pays for the charging behaviour directly.* Under TURPE 7, in force
-  August 2025,
-  distribution-connected batteries receive up to €69/MWh to charge in midday
-  solar hours and are penalised for discharging at the wrong ones; the storage
-  component applies from August 2026.
+  *France pays for the charging behaviour directly.* TURPE 7's injection-withdrawal
+  component is *optional* and *locational*: from 1 August 2026, for storage at
+  HTA, HTB 1 and HTB 2, and only in zones CRE has designated as having
+  predictable local constraints. Where it applies, distribution-connected
+  batteries receive up to €69/MWh to charge in midday solar hours and are
+  penalised for discharging at the wrong ones. Unlike Belgium's, this settles.
   #v(1mm)
   *GB applies neither instrument.* Scarcity reaches the battery only through
   cash-out. The
@@ -314,17 +318,18 @@ cash-out, so it never enters the day-ahead objective. It was exactly zero in
 #lead[The cost of alignment and the duration constraint]
 
 Buying every top-decile hour costs #metric[#n4.cost_all]
-#text(size: 16pt)[(£3.5 to £9.0)], which is #n4.cost_all_share. Buying the
+#text(size: 16pt)[(#n4.cost_all_ci)], which is #n4.cost_all_share. Buying the
 entire system-value schedule, a broader objective that also credits surplus
-absorption, costs #metric[£50/MW/day] #text(size: 16pt)[(£38 to £62)]. No
+absorption, costs #metric[#n4.cost_full_align] #text(size: 16pt)[(#n4.resample_range)]. Within this conditional grid, no
 payment lifts the two-hour asset past #metric[#n4.dur2_best] of what six hours
 of storage reaches, a level the longer asset attains at
 #metric[#n4.dur6_free] before any payment.
 
 #panel("nb04_fig_duration_frontier.svg", ratio: 100%)[
   Figure 3. Each curve sweeps the weight on system value for one duration; the
-  dot marks its profit schedule. Capital cost of the extra energy is not
-  modelled.
+  dot marks its profit schedule. Each day restarts at 50% SOC; inventory
+  resets and extra energy capacity are unpriced. These are conditional daily
+  comparisons, not continuous strategies or procurement bounds.
 ]
 
 #colbreak()
@@ -389,8 +394,8 @@ and the window is summer.
 
 #lead[The fleet usually responds during scarcity]
 
-In the flagged half-hours the fleet is net discharging 87% of the time, at
-#metric[+0.060 MW per MW online] against #n5.baseline overall. Clustering by event
+In the flagged half-hours the fleet is net discharging #n5.lolp_discharge_share of the time, at
+#metric[#n5.lolp_response] against #n5.baseline overall. Clustering by event
 preserves the era difference:
 #metric[#sx.resp_mod_cl #sx.resp_mod_ci] from #n8.era_start against
 #metric[#sx.resp_pre_cl #sx.resp_pre_ci] before.
@@ -497,11 +502,11 @@ compositional: a fixed panel of #n7.panel_sites sites shifts
       outturn. \
       *Operator disclosures:* site energy capacity, each carrying its source
       and read date.
-      #v(2.5mm)
+      #v(1.5mm)
       All feeds are public. The census, the dispatch engine and every figure
       here rebuild from them at #box[*github.com/shaw029/power-trading*], with the
       full methods and limitations.
-      #v(2.5mm)
+      #v(1.5mm)
       *Policy, external to this study:* Papavasiliou et al., _The Electricity
       Journal_ 33 (2020); CRE, _TURPE 7_ (2025); DESNZ, _REMA Summer Update_
       (10 July 2025).

@@ -6,8 +6,11 @@ discharge when the system is stressed and absorb energy when it is in surplus?
 
 Definitions (all computed from the same public feeds the benchmark uses):
 
-* **Residual load** — transmission demand minus wind minus embedded solar
-  (MW, half-hourly). The system quantity the rest of the fleet must serve.
+* **Residual load** — transmission demand (ITSDO) minus transmission-connected
+  wind (MW, half-hourly). The system quantity the rest of the transmission fleet
+  must serve. Embedded solar is *not* netted off again: ITSDO already excludes
+  it, because distribution-connected generation suppresses measured transmission
+  demand rather than appearing as supply. See :func:`residual_load`.
 * **Stress period** — a half-hour whose residual load is in the top decile of
   the analysis window.
 * **Surplus period** — a half-hour whose residual load is in the bottom decile
@@ -40,6 +43,7 @@ import pandas as pd
 import pulp
 
 from src.bess.bess_asset import BESSAsset
+from src.bess.lp_common import add_mutual_exclusion, validate_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -55,21 +59,45 @@ DRM_TIGHT_MW = 2000.0
 
 
 def residual_load(system: pd.DataFrame) -> pd.Series:
-    """Residual load (MW) from a whole-system snapshot frame.
+    """Residual load (MW): transmission demand the non-wind fleet has to serve.
 
     ``system`` is the half-hourly frame from
     :func:`live.fetch_live.get_day_system` (or several concatenated days).
+
+    **Embedded solar is deliberately not subtracted.** ``demand_actual`` is
+    ITSDO — Initial Transmission System Demand Outturn, which NESO identifies
+    with Transmission System Demand. It measures demand at the *transmission
+    boundary*, and GB solar is almost entirely distribution-connected, so
+    embedded solar never enters it as generation: it enters as demand that has
+    already gone away. NESO's demand definitions put it plainly — embedded
+    generation's "effect is to suppress the electricity demand during periods of
+    high radiation". ``src/utils/config.py`` says the same thing about the
+    PV_Live feed, that solar "is distribution-connected and invisible to
+    transmission metering".
+
+    Subtracting it again therefore removes the same megawatts twice, and does it
+    hardest in exactly the sunny hours the alignment study is about. On the
+    stored 2026-06-26 to 2026-08-24 window the double subtraction moved the
+    90th-percentile threshold from 24,800.9 MW down to 23,343.6 MW and swapped
+    81 of the 288 top-decile half-hours (28.1%), reclassifying 162 periods.
+
+    Both sides of the accounting sit at the transmission boundary: transmission
+    demand less transmission-connected wind. A whole-system measure would have to
+    reconstruct total underlying demand and then net off *every* embedded source,
+    not just the one series that happens to be available — and with solar as the
+    only embedded feed on hand, that reconstruction reduces to this same
+    expression anyway.
+
     Missing data propagates as NaN rather than being zero-filled: a period
-    without a wind or solar print would otherwise read as demand-minus-nothing
-    — an inflated residual that can raise false stress flags downstream.
-    Periods (or whole days) with any component missing therefore come back as
-    NaN and are excluded from classification, never fabricated.
+    without a wind print would otherwise read as demand-minus-nothing — an
+    inflated residual that can raise false stress flags downstream. Periods (or
+    whole days) with a required component missing therefore come back as NaN and
+    are excluded from classification, never fabricated.
     """
     nan = pd.Series(float("nan"), index=system.index)
     demand = system.get("demand_actual", nan)
     wind = system.get("gen_WIND", nan)
-    solar = system.get("solar_mw", nan)
-    return (demand - wind - solar).rename("residual_mw")
+    return (demand - wind).rename("residual_mw")
 
 
 def classify_periods(
@@ -86,7 +114,7 @@ def classify_periods(
     caller) adds negative-price periods to the surplus set — being paid to
     consume is surplus by definition regardless of residual level.
 
-    Periods whose residual is NaN (missing demand, wind or solar data) are
+    Periods whose residual is NaN (missing demand or wind data) are
     dropped from the output entirely: they are *unclassifiable*, which is
     different from being not-stressed, and must not enter the quantiles or
     the flags.
@@ -309,6 +337,7 @@ def optimize_resilience_dispatch(
 
     charge = [pulp.LpVariable(f"c_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
     discharge = [pulp.LpVariable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
+    add_mutual_exclusion(prob, charge, discharge, asset.power_mw, tag="_res")
     min_soc = asset.min_soc_pct * asset.capacity_mwh
     max_soc = asset.max_soc_pct * asset.capacity_mwh
     soc = [pulp.LpVariable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)]
@@ -360,7 +389,16 @@ def optimize_resilience_dispatch(
         )
         return [0.0] * n
 
-    return [discharge[h].varValue - charge[h].varValue for h in periods]
+    schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
+    validate_schedule(
+        schedule,
+        asset,
+        duration_h,
+        target_daily_cycles,
+        label="resilience dispatch",
+        strict=True,
+    )
+    return schedule
 
 
 #: Weights on the system-value term. Kept identical to the pure-resilience LP
@@ -408,6 +446,7 @@ def optimize_blended_dispatch(
 
     charge = [pulp.LpVariable(f"c_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
     discharge = [pulp.LpVariable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
+    add_mutual_exclusion(prob, charge, discharge, asset.power_mw, tag="_blend")
     min_soc = asset.min_soc_pct * asset.capacity_mwh
     max_soc = asset.max_soc_pct * asset.capacity_mwh
     soc = [pulp.LpVariable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)]
@@ -467,7 +506,11 @@ def optimize_blended_dispatch(
         )
         return [0.0] * n
 
-    return [discharge[h].varValue - charge[h].varValue for h in periods]
+    schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
+    validate_schedule(
+        schedule, asset, duration_h, target_daily_cycles, label="blended dispatch", strict=True
+    )
+    return schedule
 
 
 def alignment_gap(

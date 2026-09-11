@@ -8,26 +8,66 @@ from src.utils.config import FEATURES_DATASET
 
 logger = logging.getLogger(__name__)
 
-# Pre-auction features — all known by 11:00 AM on Day-1 before the EPEX auction.
-# No Day-1 settlement data (system_buy/sell, niv, demand_actual) is included here.
+# Pre-auction features — every one admissible at the D-1 10:30 decision for its
+# own delivery period. No same-day settlement data, and no 24-hour lags: those
+# read a period that closes after the auction for every delivery hour past 10:30
+# (see src/features/build_features.py, which asserts the property).
+#
+# Only one cash-out leg appears. GB has settled on a single imbalance price
+# since BSC P305 (5 November 2015), so system_sell_price and system_buy_price
+# are the same series to the penny — carrying both would double-count one
+# signal and read as two.
 _FEATURE_COLS = [
     "wind_fc_da_d1_10h30",  # wind auction fundamental
     "demand_fc_da_d1_10h30",  # demand auction fundamental
     "auction_residual_load",  # demand_da - wind_da (computed in build_features)
     "wind_auction_drift",  # wind_da_10h30 - wind_da_07h (momentum)
-    "day_ahead_price_lag48",  # DA price 24 h ago (last complete day)
     "day_ahead_price_lag96",  # DA price 48 h ago
-    "system_sell_price_lag48",  # imbalance sell price 24 h ago
-    "system_sell_price_lag96",  # imbalance sell price 48 h ago
-    "system_buy_price_lag48",  # imbalance buy price 24 h ago
-    "system_buy_price_lag96",  # imbalance buy price 48 h ago
-    "imbalance_spread_lag48",  # SBP − SSP spread 24 h ago
-    "imbalance_spread_lag96",  # SBP − SSP spread 48 h ago
+    "day_ahead_price_lag144",  # DA price 72 h ago
+    "system_buy_price_lag96",  # cash-out price 48 h ago
+    "system_buy_price_lag144",  # cash-out price 72 h ago
+    "imbalance_gap_lag96",  # cash-out minus DA, 48 h ago
+    "imbalance_gap_lag144",  # cash-out minus DA, 72 h ago
     "hour_sin",
     "hour_cos",
     "dow_sin",
     "dow_cos",
 ]
+
+# Features the research thesis actually rests on. Residual-load mispricing is
+# the explanation the README gives for the whole strategy, so a run that
+# quietly drops it is not the strategy being described — it is a different,
+# undocumented model wearing its name. Missing these is a failed run, not a
+# warning: both were absent from every saved artifact before this was enforced.
+_REQUIRED_FEATURE_COLS = frozenset(
+    {
+        "wind_fc_da_d1_10h30",
+        "demand_fc_da_d1_10h30",
+        "auction_residual_load",
+    }
+)
+
+
+def _resolve_features(df: pd.DataFrame) -> list[str]:
+    """Feature columns present in ``df``, failing if an indispensable one is not.
+
+    Raises:
+        ValueError: if any of ``_REQUIRED_FEATURE_COLS`` is absent.
+    """
+    missing_required = sorted(_REQUIRED_FEATURE_COLS - set(df.columns))
+    if missing_required:
+        raise ValueError(
+            "Feature set is missing indispensable auction fundamentals: "
+            f"{missing_required}. These carry the residual-load signal the "
+            "strategy is built on; rebuild features rather than training without "
+            "them. (Check the NESO NDFD demand forecast parsed correctly.)"
+        )
+
+    features = [c for c in _FEATURE_COLS if c in df.columns]
+    optional_missing = [c for c in _FEATURE_COLS if c not in df.columns]
+    if optional_missing:
+        logger.warning("Optional feature columns absent (skipped): %s", optional_missing)
+    return features
 
 
 def _fit_model(
@@ -78,6 +118,11 @@ def _fit_model(
         )
 
     logger.info("Training %s on %d rows", model_type, len(X_train))
+    from sklearn.impute import SimpleImputer
+    from sklearn.pipeline import make_pipeline
+
+    # Imputation is fitted inside each training fold, never on evaluation rows.
+    model = make_pipeline(SimpleImputer(strategy="median", keep_empty_features=True), model)
     model.fit(X_train, y_train)
     return model
 
@@ -97,7 +142,50 @@ def _make_predictions_df(
     for col in ("day_ahead_price", "mid_price", "system_sell_price", "system_buy_price"):
         if col in test_df.columns:
             result[col] = test_df[col].ffill().values if col == "mid_price" else test_df[col].values
+    if "feature_imputed" in test_df.columns:
+        result["feature_imputed"] = test_df["feature_imputed"].values
     return pd.DataFrame(result)
+
+
+def _final_estimator(model):
+    """The estimator itself, reached through the imputation pipeline if present.
+
+    ``_fit_model`` wraps every model in ``make_pipeline(SimpleImputer, model)``
+    so imputation is fitted per fold. A Pipeline does not forward
+    ``feature_importances_``, so a plain ``hasattr`` check on the returned object
+    silently stopped reporting importances for every tree model.
+    """
+    return model[-1] if hasattr(model, "steps") else model
+
+
+def purge_unavailable_labels(
+    train_df: pd.DataFrame, first_test_time, label_lag: pd.Timedelta | None = None
+) -> pd.DataFrame:
+    """Purge labels unavailable at the first test book's D-1 10:30 decision.
+
+    Timestamps label settlement-period starts. Availability is period end (30
+    minutes later) plus a conservative one-hour publication assumption by default.
+    Historical revised prices are not a point-in-time publication archive.
+    The same conservative convention is applied to both target models.
+    """
+    from src.features.build_features import auction_decision_time
+
+    first = pd.Series([pd.to_datetime(first_test_time, utc=True)])
+    cutoff = auction_decision_time(first).iloc[0]
+    lag = pd.Timedelta(hours=1) if label_lag is None else label_lag
+    if lag < pd.Timedelta(0):
+        raise ValueError("label_lag must be non-negative")
+
+    times = pd.to_datetime(train_df["time"], utc=True)
+    keep = times + pd.Timedelta(minutes=30) + lag <= cutoff
+    dropped = int((~keep).sum())
+    if dropped:
+        logger.info(
+            "Purged %d training rows whose label postdates the %s decision",
+            dropped,
+            cutoff.isoformat(),
+        )
+    return train_df[keep].reset_index(drop=True)
 
 
 def train_with_validation(
@@ -110,10 +198,24 @@ def train_with_validation(
     wf_train_days: int = 200,
     wf_test_days: int = 30,
     wf_step_days: int = 30,
+    holdout_days: int = 0,
+    evaluate_holdout: bool = True,
     actual_col: str = "actual_spread",
     predicted_col: str = "predicted_spread",
 ) -> tuple:
     """Split df, fit model(s), and return out-of-sample predictions.
+
+    With ``holdout_days`` set, the final stretch of the sample is cut away before
+    any folding and never participates in selection. Walk-forward runs on what is
+    left (the *development* period), and the held-back days are scored once by a
+    model fitted on all of development. Rows come back in one frame tagged by a
+    ``split`` column so the caller can report the two separately.
+
+    This is what makes an out-of-sample claim mean something once hyperparameters,
+    signal settings and execution parameters have all been chosen by looking at
+    walk-forward results: every one of those choices has seen the development
+    folds, so the development curve is an in-sample artefact of the selection
+    procedure no matter how chronological the folds inside it were.
 
     Args:
         df:             NaN-free DataFrame with features, target, and price columns.
@@ -145,6 +247,7 @@ def train_with_validation(
 
         train_df = df[market_day.isin(train_dates)].reset_index(drop=True)
         test_df = df[market_day.isin(test_dates)].reset_index(drop=True)
+        train_df = purge_unavailable_labels(train_df, test_df["time"].min())
 
         logger.info(
             "Static split — train: %d rows (%d days) | test: %d rows (%d days)",
@@ -167,13 +270,39 @@ def train_with_validation(
     elif validation_type == "walk_forward":
         from src.evaluation.splitter import walk_forward_split
 
+        market_day = (
+            pd.to_datetime(df["time"], utc=True).dt.tz_convert("Europe/London").dt.normalize()
+        )
+        all_dates = sorted(market_day.unique())
+
+        if holdout_days > 0:
+            if holdout_days >= len(all_dates):
+                raise ValueError(
+                    f"holdout_days={holdout_days} leaves no development period "
+                    f"({len(all_dates)} market days available)"
+                )
+            holdout_dates = set(all_dates[-holdout_days:])
+            dev_df = df[~market_day.isin(holdout_dates)].reset_index(drop=True)
+            holdout_df = df[market_day.isin(holdout_dates)].reset_index(drop=True)
+            logger.info(
+                "Outer holdout reserved: %d market days (%s onward), excluded from selection",
+                holdout_days,
+                min(holdout_dates).date(),
+            )
+        else:
+            dev_df = df
+            holdout_df = df.iloc[0:0]
+
         folds: list[pd.DataFrame] = []
         model = None
         X_test_last = None
 
         for fold_idx, (train_df, test_df) in enumerate(
-            walk_forward_split(df, wf_train_days, wf_test_days, wf_step_days)
+            walk_forward_split(dev_df, wf_train_days, wf_test_days, wf_step_days)
         ):
+            # Chronological is not the same as available: purge labels the first
+            # test book's auction could not have seen.
+            train_df = purge_unavailable_labels(train_df, test_df["time"].min())
             X_train = train_df[features]
             y_train = train_df[target_col]
             X_test = test_df[features]
@@ -191,9 +320,19 @@ def train_with_validation(
                 fold_mae,
             )
 
-            folds.append(
-                _make_predictions_df(test_df, y_test, predictions, actual_col, predicted_col)
+            fold_preds = _make_predictions_df(
+                test_df, y_test, predictions, actual_col, predicted_col
             )
+            # Provenance travels with the prediction. Downstream stages used to
+            # keep only the *dates* covered here and then re-predict them with
+            # whichever model happened to be fitted last — which for the earlier
+            # folds is a model trained on the very rows it is scoring. Carrying
+            # the fold's identity and training boundary makes that substitution
+            # detectable instead of invisible.
+            fold_preds["fold_id"] = fold_idx
+            fold_preds["train_end"] = pd.to_datetime(train_df["time"], utc=True).max()
+            fold_preds["split"] = "development"
+            folds.append(fold_preds)
             X_test_last = X_test
 
         if not folds:
@@ -204,6 +343,34 @@ def train_with_validation(
             )
 
         logger.info("Walk-forward complete: %d folds", len(folds))
+
+        if len(holdout_df) > 0 and evaluate_holdout:
+            # One model, fitted on everything development had that the holdout's
+            # first auction could actually have seen, scored once on the
+            # untouched tail. No selection has seen these rows.
+            outer_train = purge_unavailable_labels(dev_df, holdout_df["time"].min())
+            final_model = _fit_model(
+                outer_train[features], outer_train[target_col], model_type, model_params
+            )
+            holdout_preds = _make_predictions_df(
+                holdout_df,
+                holdout_df[target_col],
+                final_model.predict(holdout_df[features]),
+                actual_col,
+                predicted_col,
+            )
+            holdout_preds["fold_id"] = -1
+            holdout_preds["train_end"] = pd.to_datetime(outer_train["time"], utc=True).max()
+            holdout_preds["split"] = "holdout"
+            folds.append(holdout_preds)
+            model = final_model
+            X_test_last = holdout_df[features]
+            logger.info(
+                "Holdout scored: %d rows | MAE: %.2f",
+                len(holdout_preds),
+                mean_absolute_error(holdout_preds[actual_col], holdout_preds[predicted_col]),
+            )
+
         predictions_df = (
             pd.concat(folds, ignore_index=True).sort_values("time").reset_index(drop=True)
         )
@@ -223,6 +390,8 @@ def train_model(
     wf_train_days: int = 200,
     wf_test_days: int = 30,
     wf_step_days: int = 30,
+    holdout_days: int = 0,
+    evaluate_holdout: bool = True,
 ) -> tuple:
     """Load features, prepare data, and run train_with_validation.
 
@@ -254,10 +423,7 @@ def train_model(
 
     df["target_pnl_long"] = df["system_sell_price"] - df["day_ahead_price"]
 
-    features = [c for c in _FEATURE_COLS if c in df.columns]
-    missing = [c for c in _FEATURE_COLS if c not in df.columns]
-    if missing:
-        logger.warning("Missing feature columns (skipped): %s", missing)
+    features = _resolve_features(df)
     logger.info("Using %d features: %s", len(features), features)
 
     valid = ~(df[features].isna().any(axis=1) | df["target_pnl_long"].isna())
@@ -274,6 +440,8 @@ def train_model(
         wf_train_days=wf_train_days,
         wf_test_days=wf_test_days,
         wf_step_days=wf_step_days,
+        holdout_days=holdout_days,
+        evaluate_holdout=evaluate_holdout,
     )
 
     mae = mean_absolute_error(predictions_df["actual_spread"], predictions_df["predicted_spread"])
@@ -282,8 +450,9 @@ def train_model(
     )
     logger.info("Overall — MAE: %.2f £/MWh | RMSE: %.2f £/MWh", mae, rmse)
 
-    if hasattr(model, "feature_importances_"):
-        importances = sorted(zip(features, model.feature_importances_), key=lambda x: -x[1])
+    estimator = _final_estimator(model)
+    if hasattr(estimator, "feature_importances_"):
+        importances = sorted(zip(features, estimator.feature_importances_), key=lambda x: -x[1])
         logger.info("Top-5 features: %s", importances[:5])
 
     return model, predictions_df, X_test
@@ -297,6 +466,8 @@ def train_da_price_model(
     wf_train_days: int = 200,
     wf_test_days: int = 30,
     wf_step_days: int = 30,
+    holdout_days: int = 0,
+    evaluate_holdout: bool = True,
 ) -> tuple:
     """Train an ML model to predict day-ahead prices from pre-auction features.
 
@@ -327,13 +498,11 @@ def train_da_price_model(
     if "day_ahead_price" not in df.columns:
         raise ValueError("Features dataset must contain day_ahead_price")
 
-    features = [c for c in _FEATURE_COLS if c in df.columns]
-    missing = [c for c in _FEATURE_COLS if c not in df.columns]
-    if missing:
-        logger.warning("Missing feature columns (skipped): %s", missing)
+    features = _resolve_features(df)
     logger.info("Using %d features: %s", len(features), features)
 
-    valid = ~(df[features].isna().any(axis=1) | df["day_ahead_price"].isna())
+    valid = df["day_ahead_price"].notna()
+    df["feature_imputed"] = df[features].isna().any(axis=1)
     df_valid = df[valid].reset_index(drop=True)
     logger.info("After NaN drop: %d rows remain (dropped %d)", len(df_valid), (~valid).sum())
 
@@ -347,6 +516,8 @@ def train_da_price_model(
         wf_train_days=wf_train_days,
         wf_test_days=wf_test_days,
         wf_step_days=wf_step_days,
+        holdout_days=holdout_days,
+        evaluate_holdout=evaluate_holdout,
         actual_col="actual_da_price",
         predicted_col="predicted_da_price",
     )
@@ -359,8 +530,9 @@ def train_da_price_model(
     )
     logger.info("DA price model — MAE: %.2f £/MWh | RMSE: %.2f £/MWh", mae, rmse)
 
-    if hasattr(model, "feature_importances_"):
-        importances = sorted(zip(features, model.feature_importances_), key=lambda x: -x[1])
+    estimator = _final_estimator(model)
+    if hasattr(estimator, "feature_importances_"):
+        importances = sorted(zip(features, estimator.feature_importances_), key=lambda x: -x[1])
         logger.info("Top-5 features: %s", importances[:5])
 
     return model, predictions_df, X_test

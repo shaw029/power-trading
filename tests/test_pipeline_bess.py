@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pytest
 import pandas as pd
 
 from src.pipeline import run_full_pipeline
@@ -34,7 +35,7 @@ def _synthetic_dst_prices(start_date, end_date):
     tz = "Europe/London"
     start = pd.Timestamp(start_date, tz=tz)
     end = pd.Timestamp(end_date, tz=tz)
-    index = pd.date_range(start, end, freq="1h", inclusive="left")
+    index = pd.date_range(start, end, freq="30min", inclusive="left")
 
     rng = np.random.default_rng(42)
     n = len(index)
@@ -73,14 +74,14 @@ def _synthetic_features(price_df):
             "demand_fc_da_d1_10h30": rng.uniform(25000, 45000, n),
             "auction_residual_load": rng.uniform(15000, 35000, n),
             "wind_auction_drift": rng.normal(0, 500, n),
-            "day_ahead_price_lag48": np.full(n, 40.0),
             "day_ahead_price_lag96": np.full(n, 40.0),
-            "system_sell_price_lag48": np.full(n, 35.0),
+            "day_ahead_price_lag144": np.full(n, 40.0),
             "system_sell_price_lag96": np.full(n, 35.0),
-            "system_buy_price_lag48": np.full(n, 50.0),
+            "system_sell_price_lag144": np.full(n, 35.0),
             "system_buy_price_lag96": np.full(n, 50.0),
-            "imbalance_spread_lag48": np.full(n, 15.0),
-            "imbalance_spread_lag96": np.full(n, 15.0),
+            "system_buy_price_lag144": np.full(n, 50.0),
+            "imbalance_gap_lag96": np.full(n, 15.0),
+            "imbalance_gap_lag144": np.full(n, 15.0),
             "hour_sin": np.sin(2 * np.pi * hour / 24),
             "hour_cos": np.cos(2 * np.pi * hour / 24),
             "dow_sin": np.sin(2 * np.pi * dow / 7),
@@ -239,7 +240,7 @@ class TestBESSPipelineIntegration:
         fall_back = results_df[results_df["date"].astype(str) == "2024-10-27"]
         assert len(fall_back) == 1
 
-    def test_insufficient_feature_data_for_date(self, tmp_path, monkeypatch):
+    def test_day_absent_from_predictions_is_not_dispatched(self, tmp_path, monkeypatch):
         da, mid, imb = _synthetic_prices(4)
 
         monkeypatch.setattr("src.pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
@@ -254,26 +255,13 @@ class TestBESSPipelineIntegration:
         times = pd.to_datetime(features_df["time"], utc=True)
         london_dates = sorted(times.dt.tz_convert("Europe/London").dt.date.unique())
 
-        sparse_date = london_dates[1]
-        features_df["_london_date"] = times.dt.tz_convert("Europe/London").dt.date
-        mask = features_df["_london_date"] == sparse_date
-        trimmed = (
-            pd.concat(
-                [
-                    features_df[~mask],
-                    features_df[mask].iloc[:1],
-                ]
-            )
-            .drop(columns=["_london_date"])
-            .sort_values("time")
-            .reset_index(drop=True)
-        )
-
+        # Features cover every day; the predictions deliberately skip one.
         features_dir = tmp_path / "artifacts" / "bess_test" / "integration_run" / "features"
         features_dir.mkdir(parents=True)
-        trimmed.to_parquet(features_dir / "features.parquet", index=False)
+        features_df.to_parquet(features_dir / "features.parquet", index=False)
 
-        oos_dates = set(london_dates[1:])
+        missing_date = london_dates[2]
+        oos_dates = set(london_dates[1:]) - {missing_date}
         oos_mask = times.dt.tz_convert("Europe/London").dt.date.isin(oos_dates)
         oos_rows = features_df[oos_mask]
 
@@ -309,11 +297,15 @@ class TestBESSPipelineIntegration:
 
         results = run_full_pipeline(config=config)
 
+        # Dispatch follows the walk-forward predictions, so a day the model never
+        # scored out-of-sample simply is not traded. It is no longer enough for a
+        # date to appear in the feature file: the forecast for it has to exist.
         assert "results_df" in results
         result_dates = set(results["results_df"]["date"].astype(str))
-        assert str(sparse_date) not in result_dates
+        assert str(missing_date) not in result_dates
+        assert len(result_dates) == 2
 
-    def test_insufficient_feature_data_for_resolution(self, tmp_path, monkeypatch):
+    def test_empty_predictions_raise_rather_than_returning_nothing(self, tmp_path, monkeypatch):
         da, mid, imb = _synthetic_prices(4)
 
         monkeypatch.setattr("src.pipeline.fetch_day_ahead_price", lambda *a, **kw: None)
@@ -354,9 +346,8 @@ class TestBESSPipelineIntegration:
             },
         }
 
-        results = run_full_pipeline(config=config)
-
-        assert "results_df" not in results
+        with pytest.raises(RuntimeError, match="no out-of-sample predictions"):
+            run_full_pipeline(config=config)
 
     def test_forecast_aggregation(self, tmp_path, monkeypatch):
         da, mid, imb = _synthetic_prices(4)
@@ -405,7 +396,16 @@ class TestBESSPipelineIntegration:
 
         assert len(captured_forecasts) == 3
 
-        for forecast in captured_forecasts:
+        # Each delivery day is dispatched on *its own* walk-forward prediction,
+        # aggregated from half-hourly to the hourly dispatch grid by timestamp.
+        # The predictions are a ramp across the whole OOS window, so consecutive
+        # days must carry consecutive stretches of it. Re-predicting every day
+        # with the last fitted model instead produced the identical forecast on
+        # all three days, which is what this used to assert.
+        for day_offset, forecast in enumerate(captured_forecasts):
             assert len(forecast) == 24
-            expected = [i * 2 + 0.5 for i in range(24)]
+            base = day_offset * 48
+            expected = [base + i * 2 + 0.5 for i in range(24)]
             np.testing.assert_allclose(forecast, expected)
+
+        assert captured_forecasts[0] != captured_forecasts[1]

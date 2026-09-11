@@ -48,3 +48,9 @@ configs/config.yaml
 .DS_Store
 .ipynb_checkpoints/
 .vscode/*.log
+
+# Standalone notebook images: only the two root-README assets are published.
+# All other charts stay inline; poster publication has its own assets directory.
+/research/notebooks/assets/*
+!/research/notebooks/assets/equity_curve.png
+!/research/notebooks/assets/bess_strategy_showcase.png
