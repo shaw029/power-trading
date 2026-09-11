@@ -79,7 +79,8 @@ reported with the results; no period is removed merely because it loses money.
 
 The engine sizes a delivery book from equity observable at its auction, using a
 fixed £50/MWh reference by default. The 2% reference-notional allocation per signal
-is not 2% cash loss at risk. A common book cap scales correlated entries together;
+is not 2% cash loss at risk. A common book cap can scale correlated entries together,
+though at the published settings it never engages — see section 7;
 settlement PnL is released after the delivery day ends plus the one-hour assumption.
 The legacy `max_drawdown_pct` stops new books at a floor relative to initial capital,
 while previously committed books still settle. It is not a trailing peak limit.
@@ -168,7 +169,7 @@ Performance numbers are run-specific and live with the experiment that produced 
 
 ## 7. Timing, coverage and reproducibility
 
-- Quantity uses a fixed pre-auction £50/MWh sizing reference by default, floored at £10 in the optional `sizing_prices` input. The book exposure cap uses that same reference; it is a reference-notional budget, not a guarantee on realised cleared notional.
+- Quantity uses a fixed pre-auction £50/MWh sizing reference by default, floored at £10 in the optional `sizing_prices` input. The book exposure cap uses that same reference; it is a reference-notional budget, not a guarantee on realised cleared notional. The sizing reference cancels out of the cap's comparison, which therefore reduces to a contract count: the cap binds only above `max_book_exposure_pct / risk_pct` contracts in one book, or 50 at the defaults, against a delivery day of at most 48 settlement periods. It is a backstop against a future sizing change and constrains none of the published runs; the per-signal allocation is what limits them. The funded-account book-risk policy in notebook 02b is the control that does bind.
 - Each London delivery book is committed at D−1 10:30. Its PnL enters available auction equity only at the next London midnight plus a one-hour publication assumption, including empty days and date gaps. The halt is a loss floor against starting capital, not a trailing peak limit.
 - Training labels and lag checks use settlement-period end plus a one-hour publication assumption. Historical revised prices are not a point-in-time publication archive, so this timing convention cannot prove vintage availability.
 - Demand interpolation remains within eligible daily forecast vintages. Missing values remain missing in saved features. The virtual model drops incomplete feature rows; BESS fills missing inputs using medians fitted separately within each training fold and records `feature_imputed` on predictions.

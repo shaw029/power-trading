@@ -35,7 +35,8 @@ def run_backtest(
     was bid. Every contract for a market date is sized from the same figure,
     because they were all committed at the same auction; the day's realised P&L
     becomes available only after delivery ends plus the publication lag. The book is scaled back pro-rata
-    if its total notional would exceed max_book_exposure_pct of that equity.
+    if its total notional would exceed max_book_exposure_pct of that equity —
+    which, at the default settings, it never does; see that argument's note.
 
     The simulation halts at an auction boundary if the account has breached the
     loss floor relative to initial capital (not a trailing peak drawdown):
@@ -57,7 +58,15 @@ def run_backtest(
         risk_pct:             Fraction of auction equity to commit per trade.
         max_drawdown_pct:     Halt threshold — fraction of starting capital lost.
         max_book_exposure_pct: Cap on one delivery day's total notional as a
-                              fraction of auction equity.
+                              fraction of auction equity. The price term cancels
+                              out of the comparison, so this binds only when a
+                              book carries more than max_book_exposure_pct /
+                              risk_pct contracts. At the defaults (1.00 / 0.02)
+                              that is 50, and a GB delivery day has 48 half-hour
+                              periods — so the cap is inert unless it is lowered
+                              or risk_pct raised. It is a backstop against a
+                              future sizing change, not an active constraint on
+                              the published runs.
         mid_prices:           Intraday market index price series (£/MWh).
         predicted_spreads:    Raw model spread forecasts (£/MWh).
         baseline_hedge_ratio: Fraction of position hedged at execution (0–1).
@@ -221,6 +230,15 @@ def run_backtest(
         # fraction of equity is a per-trade rule; a day that fires many of them
         # still has to fit inside one balance sheet, so the book is scaled back
         # pro-rata if its total notional would exceed the budget.
+        #
+        # Note what this does *not* do at the published settings. Each size is
+        # equity x risk_pct / price and is then multiplied back by that same
+        # price, so the price cancels and the book's notional is simply
+        # n_contracts x equity x risk_pct. The test is therefore purely a count:
+        # n > max_book_exposure_pct / risk_pct, or 50 at the defaults, against a
+        # day that holds at most 48 settlement periods. Raising risk_pct or
+        # lowering the cap makes it bite; the canonical runs never reach it, and
+        # the per-trade rule is what actually limits them.
         notional = sum(sizes[i] * max(abs(sizing[i]), 10.0) for i in tradable)
         budget = auction_capital * max_book_exposure_pct
         if notional > budget > 0:
