@@ -147,6 +147,17 @@ def _make_predictions_df(
     return pd.DataFrame(result)
 
 
+def _final_estimator(model):
+    """The estimator itself, reached through the imputation pipeline if present.
+
+    ``_fit_model`` wraps every model in ``make_pipeline(SimpleImputer, model)``
+    so imputation is fitted per fold. A Pipeline does not forward
+    ``feature_importances_``, so a plain ``hasattr`` check on the returned object
+    silently stopped reporting importances for every tree model.
+    """
+    return model[-1] if hasattr(model, "steps") else model
+
+
 def purge_unavailable_labels(
     train_df: pd.DataFrame, first_test_time, label_lag: pd.Timedelta | None = None
 ) -> pd.DataFrame:
@@ -439,8 +450,9 @@ def train_model(
     )
     logger.info("Overall — MAE: %.2f £/MWh | RMSE: %.2f £/MWh", mae, rmse)
 
-    if hasattr(model, "feature_importances_"):
-        importances = sorted(zip(features, model.feature_importances_), key=lambda x: -x[1])
+    estimator = _final_estimator(model)
+    if hasattr(estimator, "feature_importances_"):
+        importances = sorted(zip(features, estimator.feature_importances_), key=lambda x: -x[1])
         logger.info("Top-5 features: %s", importances[:5])
 
     return model, predictions_df, X_test
@@ -518,8 +530,9 @@ def train_da_price_model(
     )
     logger.info("DA price model — MAE: %.2f £/MWh | RMSE: %.2f £/MWh", mae, rmse)
 
-    if hasattr(model, "feature_importances_"):
-        importances = sorted(zip(features, model.feature_importances_), key=lambda x: -x[1])
+    estimator = _final_estimator(model)
+    if hasattr(estimator, "feature_importances_"):
+        importances = sorted(zip(features, estimator.feature_importances_), key=lambda x: -x[1])
         logger.info("Top-5 features: %s", importances[:5])
 
     return model, predictions_df, X_test

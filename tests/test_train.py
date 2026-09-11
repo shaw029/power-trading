@@ -111,3 +111,38 @@ class TestLabelAvailabilityPurge:
         df = self._frame(periods=4)  # 1 July only
         kept = purge_unavailable_labels(df, pd.Timestamp("2018-07-03T00:00:00Z"))
         assert len(kept) == len(df)
+
+
+class TestFeatureImportanceReporting:
+    """The imputation pipeline must not hide the estimator's importances.
+
+    ``_fit_model`` wraps every model in ``make_pipeline(SimpleImputer, model)``.
+    A ``Pipeline`` does not forward ``feature_importances_``, so the plain
+    ``hasattr(model, ...)`` check the reporting used silently stopped firing for
+    every tree model — no error, just a diagnostic that quietly went away.
+    """
+
+    def test_importances_are_reachable_through_the_imputation_pipeline(self):
+        from sklearn.ensemble import RandomForestRegressor
+        from sklearn.impute import SimpleImputer
+        from sklearn.pipeline import make_pipeline
+
+        from src.models.train import _final_estimator
+
+        X = np.arange(20, dtype=float).reshape(10, 2)
+        y = np.arange(10, dtype=float)
+        pipeline = make_pipeline(
+            SimpleImputer(strategy="median", keep_empty_features=True),
+            RandomForestRegressor(n_estimators=3, random_state=0),
+        ).fit(X, y)
+
+        assert not hasattr(pipeline, "feature_importances_")
+        assert hasattr(_final_estimator(pipeline), "feature_importances_")
+
+    def test_an_unwrapped_estimator_is_returned_unchanged(self):
+        from sklearn.ensemble import RandomForestRegressor
+
+        from src.models.train import _final_estimator
+
+        bare = RandomForestRegressor(n_estimators=3, random_state=0)
+        assert _final_estimator(bare) is bare
