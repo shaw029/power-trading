@@ -41,6 +41,13 @@
 // Type ramp, raised one point throughout so every relationship holds:
 // 60 title, 30 subtitle, 25 author, 26 banner, 23 finding lead, 28 section,
 // 19.5 body, 18 supporting block, 17 caption, 15.5 footer.
+//
+// Prose uses those steps and nothing else — an inline aside is 17, not 16, and a
+// supporting block is 18, not 18.5. The smaller sizes below the ramp are box
+// furniture, fitted to the thing that contains them rather than to the text
+// scale: 16/13 legend name and subtitle, 15 basis label, 13 tag pill and axis
+// annotation, 12.5 QR caption, 11 the LinkedIn glyph. Changing those changes a
+// box, not a heading level.
 #set text(font: ("Helvetica Neue", "Helvetica", "Arial"), size: 19.5pt, fill: ink)
 #set par(justify: true, leading: 0.72em, spacing: 1.0em)
 
@@ -298,7 +305,7 @@ With no system-value term in the objective, the profit-optimal schedule still
 places #metric[#n4.top_decile_pct] of its discharge in top-decile hours and
 draws #metric[#n4.surplus_pct] of its charging from surplus. It delivers
 #metric[#n4.free_share] of achievable energy at no sacrifice of market value
-#text(size: 16pt)[(aggregate basis 82%)], forgoing #metric[#n4.forgone_pct]
+#text(size: 17pt)[(aggregate basis 82%)], forgoing #metric[#n4.forgone_pct]
 #n4.forgone_ci.
 
 #lead[Scarcity settles outside the scheduling price]
@@ -317,9 +324,9 @@ cash-out, so it never enters the day-ahead objective. It was exactly zero in
 #lead[The cost of alignment and the duration constraint]
 
 Buying every top-decile hour costs #metric[#n4.cost_all]
-#text(size: 16pt)[(#n4.cost_all_ci)], which is #n4.cost_all_share. Buying the
+#text(size: 17pt)[(#n4.cost_all_ci)], which is #n4.cost_all_share. Buying the
 entire system-value schedule, a broader objective that also credits surplus
-absorption, costs #metric[#n4.cost_full_align] #text(size: 16pt)[(#n4.resample_range)]. Within this conditional grid, no
+absorption, costs #metric[#n4.cost_full_align] #text(size: 17pt)[(#n4.resample_range)]. Within this conditional grid, no
 payment lifts the two-hour asset past #metric[#n4.dur2_best] of what six hours
 of storage reaches, a level the longer asset attains at
 #metric[#n4.dur6_free] before any payment.
@@ -340,7 +347,7 @@ of storage reaches, a level the longer asset attains at
 
 #v(1mm)
 #block(inset: (left: 1mm))[
-  #text(size: 18.5pt)[
+  #text(size: 18pt)[
     #metric[#nb.ach_nameplate], the most registered power could deliver \
     #h(3mm) ↓ #text(fill: cost-red.darken(10%), weight: "bold")[#nb.gate_declared]
     #h(0.5mm) *declared* available to the operator \
