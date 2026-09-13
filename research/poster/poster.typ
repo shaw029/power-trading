@@ -305,7 +305,7 @@ With no system-value term in the objective, the profit-optimal schedule still
 places #metric[#n4.top_decile_pct] of its discharge in top-decile hours and
 draws #metric[#n4.surplus_pct] of its charging from surplus. It delivers
 #metric[#n4.free_share] of achievable energy at no sacrifice of market value
-#text(size: 17pt)[(aggregate basis 82%)], forgoing #metric[#n4.forgone_pct]
+#text(size: 17pt)[#n4.free_share_ci], forgoing #metric[#n4.forgone_pct]
 #n4.forgone_ci.
 
 #lead[Scarcity settles outside the scheduling price]
@@ -315,10 +315,10 @@ cash-out, so it never enters the day-ahead objective. It was exactly zero in
 #metric[#n4.scarcity_zero] of settlement periods.
 
 #panel("nb04_fig2_diurnal_mismatch.svg", ratio: 100%)[
-  Figure 2. Discharge peaks at #n4.peak_hour with the load, so the shortfall
-  is not one of timing: the store reaches its #n4.soc_floor floor by
-  #n4.floor_hour while the system remains tight in #n4.tight_at_floor of those
-  days.
+  Figure 2. Discharge peaks at #n4.peak_hour with the load: the shortfall is
+  not timing. The store hits its #n4.soc_floor floor by #n4.floor_hour while
+  the system is still tight on #n4.tight_at_floor of days. The system-value
+  line's charging is unpriced.
 ]
 
 #lead[The cost of alignment and the duration constraint]

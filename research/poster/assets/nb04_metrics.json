@@ -19,6 +19,7 @@
   "forgone_mwh": "469 of 2,399 MWh",
   "forgone_pct": "20%",
   "free_share": "83%",
+  "free_share_ci": "(74%\u201392%)",
   "frontier_shift": "12.3%",
   "median_base": "\u00a3123",
   "median_full": "\u00a3146",
