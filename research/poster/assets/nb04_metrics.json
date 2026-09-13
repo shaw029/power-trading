@@ -31,6 +31,7 @@
   "scarcity_mean": "\u00a30.00/MWh",
   "scarcity_zero": "99.5%",
   "soc_floor": "10%",
+  "soc_reset": "50%",
   "surplus_pct": "20%",
   "thresh_gap_range": "20%\u201323%",
   "tight_at_floor": "56%",

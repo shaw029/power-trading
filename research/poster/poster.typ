@@ -333,7 +333,7 @@ of storage reaches, a level the longer asset attains at
 
 #panel("nb04_fig_duration_frontier.svg", ratio: 100%)[
   Figure 3. Each curve sweeps the weight on system value for one duration; the
-  dot marks its profit schedule. Each day restarts at 50% SOC; inventory
+  dot marks its profit schedule. Each day restarts at #n4.soc_reset SOC; inventory
   resets and extra energy capacity are unpriced. These are conditional daily
   comparisons, not continuous strategies or procurement bounds.
 ]
