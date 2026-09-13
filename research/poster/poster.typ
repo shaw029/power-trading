@@ -238,11 +238,9 @@ energy, are not estimated.
 
 #lead[Constructing the population]
 
-No public register labels a Balancing Mechanism unit a battery. Units
-declaring symmetric import and export capability, corroborated against public
-registers, recover #metric[#n6.curated_recovered] of the #n6.curated_bmus BM
-Units in a hand-built registry the rule never sees. That bounds misses, not
-false positives. #n6.mwh_none sites publish no energy capacity and
+No public register labels a Balancing Mechanism unit a battery. The population
+here is units declaring symmetric import and export capability, corroborated
+against public registers. #n6.mwh_none sites publish no energy capacity and
 are excluded from every state-of-charge figure.
 
 #panel("nb06_fig1_census_composition.svg", ratio: 100%)[
@@ -316,9 +314,10 @@ cash-out, so it never enters the day-ahead objective. It was exactly zero in
 #metric[#n4.scarcity_zero] of settlement periods.
 
 #panel("nb04_fig2_diurnal_mismatch.svg", ratio: 100%)[
-  Figure 2. Discharge peaks at #n4.peak_hour with the load: the shortfall is
-  not timing. The store hits its #n4.soc_floor floor by #n4.floor_hour while
-  the system is still tight on #n4.tight_at_floor of days. The line is the schedule the cost prices.
+  Figure 2. Discharge peaks at #n4.peak_hour with the load. Both stores reach the
+  #n4.soc_floor floor by #n4.floor_hour while the system is still tight on
+  #n4.tight_at_floor of days, so the evening shortfall is a duration limit rather
+  than an incentive one.
 ]
 
 #lead[The cost of alignment and the duration constraint]
