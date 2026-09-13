@@ -305,6 +305,13 @@ def tier_metrics(
     }
 
 
+#: Weight on system value at which the blended objective reproduces the
+#: resilience LP's behaviour while price only breaks ties between schedules that
+#: are equally good for the system. Converged well below this: on the study
+#: window lam = 100, 500, 1000 and 5000 all return identical dispatch.
+PRICE_AWARE_LAM = 1000.0
+
+
 def optimize_resilience_dispatch(
     stress: list[bool],
     surplus: list[bool],
@@ -533,7 +540,25 @@ def alignment_gap(
     * ``stress_mwh_forgone`` — stress-hour energy the profit-optimal dispatch
       leaves undelivered relative to the resilience-optimal one.
     """
-    res_dispatch = optimize_resilience_dispatch(
+    # The counterfactual is priced, not price-blind. `optimize_resilience_dispatch`
+    # scores off-flag charging at a tie-break weight, so it is indifferent about
+    # *when* it refills and picks arbitrarily — and on this study's window 82% of
+    # its charging is off-flag. Valuing that schedule charges the alignment
+    # account for the timing as well as the behaviour: it reports £80/MW/day
+    # where buying the identical behaviour — same stress delivery, same surplus
+    # absorption, same total charging — costs £20 once the counterfactual is
+    # allowed to refill when power is cheap. The blended objective at
+    # PRICE_AWARE_LAM is that schedule, so the gap prices the behaviour alone.
+    res_dispatch = optimize_blended_dispatch(
+        day_ahead_prices,
+        stress,
+        surplus,
+        asset,
+        PRICE_AWARE_LAM,
+        duration_h,
+        target_daily_cycles,
+    )
+    blind_dispatch = optimize_resilience_dispatch(
         stress, surplus, asset, duration_h, target_daily_cycles
     )
 
@@ -569,4 +594,8 @@ def alignment_gap(
         "stress_mwh_res": stress_res,
         "stress_mwh_forgone": stress_res - stress_arb,
         "res_dispatch": res_dispatch,
+        # Retained so the timing premium stays visible rather than being
+        # silently absorbed into the headline.
+        "profit_cost_of_alignment_price_blind": profit_arb - value(blind_dispatch),
+        "stress_mwh_res_price_blind": stress_mwh(blind_dispatch),
     }

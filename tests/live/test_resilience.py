@@ -419,3 +419,46 @@ def test_blend_rejects_mismatched_input_lengths():
     prices, stress, surplus = _blend_inputs()
     with pytest.raises(ValueError, match="same length"):
         resilience.optimize_blended_dispatch(prices[:-1], stress, surplus, _asset(), lam=1.0)
+
+
+def test_alignment_counterfactual_is_priced_not_price_blind():
+    """The gap must price the behaviour, not the arbitrary timing of a refill.
+
+    `optimize_resilience_dispatch` scores off-flag charging at a tie-break
+    weight, so it has no opinion about *when* it refills and picks arbitrarily.
+    Valuing that schedule bills the alignment account for the timing as well as
+    the behaviour. The counterfactual is therefore the blended objective at
+    PRICE_AWARE_LAM, which buys the same system behaviour at the cheapest
+    timing — so the gap can never exceed the price-blind one, and must not
+    deliver less stress energy to get there.
+    """
+    # A cheap hour early, an expensive hour late, one stress hour at the end:
+    # the refill can happen at £5 or at £60 and the system cannot tell them
+    # apart, but the alignment bill can.
+    stress = [False, False, False, True]
+    surplus = [False, False, False, False]
+    prices = [5.0, 60.0, 60.0, 90.0]
+    arb = [0.0, 50.0, 0.0, 0.0]
+    gap = resilience.alignment_gap(arb, prices, stress, surplus, _asset(soc=0.0))
+
+    assert gap["profit_cost_of_alignment"] <= gap["profit_cost_of_alignment_price_blind"] + 1e-6
+    assert gap["stress_mwh_res"] >= gap["stress_mwh_res_price_blind"] - 1e-6
+
+
+def test_price_aware_lambda_is_past_convergence():
+    """Above PRICE_AWARE_LAM the schedule must not keep moving.
+
+    The constant is only meaningful if the system-value terms already dominate
+    at it; if a larger weight still changed the dispatch, the counterfactual
+    would be an arbitrary point on the frontier rather than its endpoint.
+    """
+    stress = [False, False, True, True]
+    surplus = [True, False, False, False]
+    prices = [10.0, 55.0, 70.0, 95.0]
+    at = resilience.optimize_blended_dispatch(
+        prices, stress, surplus, _asset(soc=0.2), resilience.PRICE_AWARE_LAM
+    )
+    beyond = resilience.optimize_blended_dispatch(
+        prices, stress, surplus, _asset(soc=0.2), resilience.PRICE_AWARE_LAM * 10
+    )
+    assert at == pytest.approx(beyond, abs=1e-6)
