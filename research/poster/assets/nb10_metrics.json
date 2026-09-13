@@ -21,6 +21,7 @@
   "ratio_boa": "2.1x",
   "ratio_pn": "2.5x",
   "response_boa": "+0.056",
+  "response_cut_pct": "6%",
   "response_pn": "+0.060",
   "share_declared_boa": "62%",
   "share_declared_pn": "85%",

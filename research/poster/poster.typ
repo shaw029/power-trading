@@ -298,14 +298,13 @@ are excluded from every state-of-charge figure.
 #section("2 · The modelled incentive", cost-red)
 #basis("UTILISATION · top-decile residual load · " + winA, cost-red)
 
-#lead[Profit-optimal dispatch concentrates in peak hours]
+#lead[Most peak delivery arrives without being paid for]
 
-With no system-value term in the objective, the profit-optimal schedule still
-places #metric[#n4.top_decile_pct] of its discharge in top-decile hours and
-draws #metric[#n4.surplus_pct] of its charging from surplus. It delivers
-#metric[#n4.free_share] of achievable energy at no sacrifice of market value
-#text(size: 17pt)[#n4.free_share_ci], forgoing #metric[#n4.forgone_pct]
-#n4.forgone_ci.
+The day-ahead objective carries no system-value term. The schedule it produces
+still delivers #metric[#n4.free_share] #text(size: 17pt)[#n4.free_share_ci] of
+the top-decile energy this asset reaches when paid to prioritise it. Against the
+system-optimal schedule, an upper bound no payment attains, it leaves
+#metric[#n4.forgone_pct] #n4.forgone_ci undelivered.
 
 #lead[Scarcity settles outside the scheduling price]
 
@@ -359,7 +358,6 @@ of storage reaches, a level the longer asset attains at
 ]
 #v(2mm)
 
-The fourth, whether stored energy lasts the event, is the subject of Section 4.
 The largest loss occurs at the first gate, and it does not concern dispatch:
 declared availability supports #nb.gate_declared of registered power. Given what was
 declared, the fleet scheduled #metric[#nb.gate_planned] of it, close to the
@@ -378,13 +376,14 @@ choice are not separable here.
   metered output.
 ]
 
-#lead[Delivery falls as ancillary earnings rise]
+#lead[The most-ancillary quartile delivers about half as much]
 
 The least-ancillary quartile delivers #metric[#n9.low_anc_delivered], the
 most-ancillary #metric[#n9.high_anc_delivered]: Spearman
 #metric[#n9.anc_corr] (p #n9.anc_p, n = #n9.anc_sites), surviving a duration
-control. The relationship is associational: contracted volume is unobserved
-and the window is summer.
+control. The relationship is associational, on a summer window. Earnings stand
+in for committed capacity: auction volume sums a block count differing by an
+order of magnitude between services, so it tracks service mix.
 
 #panel("nb09_fig_revenue_stack.svg", ratio: 100%)[
   Figure 5. Quartile means run #n9.low_anc_delivered to
@@ -399,19 +398,19 @@ and the window is summer.
 
 #lead[The fleet usually responds during scarcity]
 
-In the flagged half-hours the fleet is net discharging #n5.lolp_discharge_share of the time, at
-#metric[#n5.lolp_response] against #n5.baseline overall. Clustering by event
-preserves the era difference:
-#metric[#sx.resp_mod_cl #sx.resp_mod_ci] from #n8.era_start against
-#metric[#sx.resp_pre_cl #sx.resp_pre_ci] before.
+In the flagged half-hours the fleet is net discharging
+#n5.lolp_discharge_share of the time, at #metric[#n5.lolp_response] against
+#n5.baseline overall. Response is stronger from #n8.era_start,
+#metric[#sx.resp_mod_cl] against #metric[#sx.resp_pre_cl] before it, and the
+difference holds when whole scarcity episodes are resampled rather than
+individual half-hours.
 
 #lead[Readiness has changed]
 
-Across #n5.events events the median inferred onset charge is
+Across #n5.events events the median inferred charge at onset is
 #metric[#n5.soc_at_onset], no fuller than on matched control days, and
-#metric[#n5.dispatch_gap] of usable energy is still held at the deepest point.
-No separately identifiable payment is observed for entering a scarcity event
-at a high state of charge.
+#metric[#n5.dispatch_gap] of usable energy is still in the fleet at its
+deepest point. Nothing pays a battery for arriving charged.
 
 #v(2mm)
 #grid(
@@ -443,18 +442,19 @@ at a high state of charge.
 
 #lead[Acceptances change little on this basis]
 
-The response moves from #nb.response_pn to #metric[#nb.response_boa] and onset
-charge by two points, against the #metric[#nb.cut_pct] reduction in Section 3.
-The
-instruction effect is concentrated in high-load hours rather than in
-scarcity.
+Replacing notifications with acceptances cuts the scarcity response by
+#metric[#nb.response_cut_pct] and moves onset charge by two points. The same
+correction removes #metric[#nb.cut_pct] of delivered energy in Section 3, on a
+different window and stress definition. The instruction effect sits in
+high-load hours, not in scarcity.
 
 #lead[The level change is robust but its timing is not]
 
-Searching every candidate quarter, the imposed #n7.break_date boundary ranks
-#metric[#sx.break_rank] on the Akaike information criterion. The rise is not
-compositional: a fixed panel of #n7.panel_sites sites shifts
-#metric[#n7.panel_ratio], more than the fleet's #metric[#n7.fleet_ratio].
+The rise is not composition: a fixed panel of #n7.panel_sites sites shifts
+#metric[#n7.panel_ratio], more than the fleet's #metric[#n7.fleet_ratio]. The
+#n7.break_date boundary was imposed rather than found, and searching every
+candidate quarter it ranks #metric[#sx.break_rank] on the Akaike information
+criterion.
 
 #panel("nb07_fig_regime_shift.svg", ratio: 100%)[
   Figure 7. Later against earlier response under the same margin, by band.
