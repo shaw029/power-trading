@@ -3,7 +3,7 @@ import logging
 import pulp
 
 from src.bess.bess_asset import BESSAsset
-from src.bess.lp_common import add_mutual_exclusion, validate_schedule
+from src.bess.lp_common import add_mutual_exclusion, solve, validate_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -63,15 +63,15 @@ def _reoptimize_schedule(
     n = len(da_schedule)
     prob = pulp.LpProblem("Intraday_Reopt", pulp.LpMaximize)
 
-    charge = [pulp.LpVariable(f"c_{h}", lowBound=0, upBound=asset.power_mw) for h in range(n)]
-    discharge = [pulp.LpVariable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in range(n)]
+    charge = [prob.add_variable(f"c_{h}", lowBound=0, upBound=asset.power_mw) for h in range(n)]
+    discharge = [prob.add_variable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in range(n)]
     soc = [
-        pulp.LpVariable(f"s_{h}", lowBound=asset._min_soc_mwh, upBound=asset._max_soc_mwh)
+        prob.add_variable(f"s_{h}", lowBound=asset._min_soc_mwh, upBound=asset._max_soc_mwh)
         for h in range(n + 1)
     ]
     add_mutual_exclusion(prob, charge, discharge, asset.power_mw, tag="_id")
-    dev_pos = [pulp.LpVariable(f"dp_{h}", lowBound=0) for h in range(n)]  # extra discharge (sell)
-    dev_neg = [pulp.LpVariable(f"dn_{h}", lowBound=0) for h in range(n)]  # extra charge (buy)
+    dev_pos = [prob.add_variable(f"dp_{h}", lowBound=0) for h in range(n)]  # extra discharge (sell)
+    dev_neg = [prob.add_variable(f"dn_{h}", lowBound=0) for h in range(n)]  # extra charge (buy)
 
     prob += soc[0] == start_soc_mwh
     for h in range(n):
@@ -95,22 +95,15 @@ def _reoptimize_schedule(
     )
 
     try:
-        import highspy  # noqa: F401
-
-        solver = pulp.HiGHS(msg=0)
-    except ImportError:
-        solver = pulp.PULP_CBC_CMD(msg=0)
-
-    try:
-        status = prob.solve(solver)
+        status = solve(prob)
     except pulp.PulpSolverError:
         logger.warning("Intraday re-opt solver failed; falling back to the locked DA schedule")
         return list(da_schedule)
 
-    if pulp.LpStatus[status] != "Optimal":
+    if status != "Optimal":
         logger.warning(
             "Intraday re-opt non-optimal (%s); falling back to the locked DA schedule",
-            pulp.LpStatus[status],
+            status,
         )
         return list(da_schedule)
 

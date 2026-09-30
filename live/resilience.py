@@ -43,7 +43,7 @@ import pandas as pd
 import pulp
 
 from src.bess.bess_asset import BESSAsset
-from src.bess.lp_common import add_mutual_exclusion, validate_schedule
+from src.bess.lp_common import add_mutual_exclusion, solve, validate_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -342,12 +342,12 @@ def optimize_resilience_dispatch(
     periods = range(n)
     prob = pulp.LpProblem("Resilience_Dispatch", pulp.LpMaximize)
 
-    charge = [pulp.LpVariable(f"c_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
-    discharge = [pulp.LpVariable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
+    charge = [prob.add_variable(f"c_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
+    discharge = [prob.add_variable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
     add_mutual_exclusion(prob, charge, discharge, asset.power_mw, tag="_res")
     min_soc = asset.min_soc_pct * asset.capacity_mwh
     max_soc = asset.max_soc_pct * asset.capacity_mwh
-    soc = [pulp.LpVariable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)]
+    soc = [prob.add_variable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)]
 
     w_stress, w_surplus, w_block, tie_break = 2.0, 1.0, 2.0, 1e-3
 
@@ -379,20 +379,13 @@ def optimize_resilience_dispatch(
         )
 
     try:
-        import highspy  # noqa: F401
-
-        solver = pulp.HiGHS(msg=0)
-    except ImportError:
-        solver = pulp.PULP_CBC_CMD(msg=0)
-
-    try:
-        status = prob.solve(solver)
+        status = solve(prob)
     except pulp.PulpSolverError:
         logger.warning("Resilience LP failed; returning idle dispatch")
         return [0.0] * n
-    if pulp.LpStatus[status] != "Optimal":
+    if status != "Optimal":
         logger.warning(
-            "Resilience LP non-optimal (%s); returning idle dispatch", pulp.LpStatus[status]
+            "Resilience LP non-optimal (%s); returning idle dispatch", status
         )
         return [0.0] * n
 
@@ -451,12 +444,12 @@ def optimize_blended_dispatch(
     periods = range(n)
     prob = pulp.LpProblem("Blended_Dispatch", pulp.LpMaximize)
 
-    charge = [pulp.LpVariable(f"c_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
-    discharge = [pulp.LpVariable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
+    charge = [prob.add_variable(f"c_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
+    discharge = [prob.add_variable(f"d_{h}", lowBound=0, upBound=asset.power_mw) for h in periods]
     add_mutual_exclusion(prob, charge, discharge, asset.power_mw, tag="_blend")
     min_soc = asset.min_soc_pct * asset.capacity_mwh
     max_soc = asset.max_soc_pct * asset.capacity_mwh
-    soc = [pulp.LpVariable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)]
+    soc = [prob.add_variable(f"s_{h}", lowBound=min_soc, upBound=max_soc) for h in range(n + 1)]
 
     def _credit_discharge(h: int) -> float:
         return W_STRESS if stress[h] else -W_BLOCK
@@ -494,21 +487,14 @@ def optimize_blended_dispatch(
         )
 
     try:
-        import highspy  # noqa: F401
-
-        solver = pulp.HiGHS(msg=0)
-    except ImportError:
-        solver = pulp.PULP_CBC_CMD(msg=0)
-
-    try:
-        status = prob.solve(solver)
+        status = solve(prob)
     except pulp.PulpSolverError:
         logger.warning("Blended LP failed (lam=%s); returning idle dispatch", lam)
         return [0.0] * n
-    if pulp.LpStatus[status] != "Optimal":
+    if status != "Optimal":
         logger.warning(
             "Blended LP non-optimal (%s, lam=%s); returning idle dispatch",
-            pulp.LpStatus[status],
+            status,
             lam,
         )
         return [0.0] * n

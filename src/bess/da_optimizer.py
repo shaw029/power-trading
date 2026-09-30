@@ -3,7 +3,7 @@ import logging
 import pulp
 
 from src.bess.bess_asset import BESSAsset
-from src.bess.lp_common import add_mutual_exclusion, validate_schedule
+from src.bess.lp_common import add_mutual_exclusion, solve, validate_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +62,12 @@ def optimize_da_schedule(
     prob = pulp.LpProblem("DA_BESS_Schedule", pulp.LpMaximize)
 
     da_power = asset.power_mw * commit_fraction
-    charge = [pulp.LpVariable(f"charge_{h}", lowBound=0, upBound=da_power) for h in periods]
-    discharge = [pulp.LpVariable(f"discharge_{h}", lowBound=0, upBound=da_power) for h in periods]
+    charge = [prob.add_variable(f"charge_{h}", lowBound=0, upBound=da_power) for h in periods]
+    discharge = [prob.add_variable(f"discharge_{h}", lowBound=0, upBound=da_power) for h in periods]
     min_soc_mwh = asset.min_soc_pct * asset.capacity_mwh
     max_soc_mwh = asset.max_soc_pct * asset.capacity_mwh
     soc = [
-        pulp.LpVariable(f"soc_{h}", lowBound=min_soc_mwh, upBound=max_soc_mwh)
+        prob.add_variable(f"soc_{h}", lowBound=min_soc_mwh, upBound=max_soc_mwh)
         for h in range(n_periods + 1)
     ]
 
@@ -100,21 +100,14 @@ def optimize_da_schedule(
         )
 
     try:
-        import highspy  # noqa: F401
-
-        solver = pulp.HiGHS(msg=0)
-    except ImportError:
-        solver = pulp.PULP_CBC_CMD(msg=0)
-
-    try:
-        status = prob.solve(solver)
+        status = solve(prob)
     except pulp.PulpSolverError:
         logger.warning("DA solver failed; returning zero-dispatch fallback schedule")
         return [0.0] * n_periods
 
-    if pulp.LpStatus[status] != "Optimal":
+    if status != "Optimal":
         logger.warning(
-            "DA solver non-optimal (%s); returning zero-dispatch fallback", pulp.LpStatus[status]
+            "DA solver non-optimal (%s); returning zero-dispatch fallback", status
         )
         return [0.0] * n_periods
 

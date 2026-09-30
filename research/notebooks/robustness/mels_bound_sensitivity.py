@@ -30,6 +30,7 @@ warnings.filterwarnings("ignore")
 
 from fleet.research import census  # noqa: E402
 from fleet.population import census_population  # noqa: E402
+from src.bess.lp_common import solve  # noqa: E402
 from src.utils.config import load_config  # noqa: E402
 
 from scripts import build_stress_store as bss  # noqa: E402
@@ -88,22 +89,14 @@ sites = [s for s in SITE_MWH if s in pn_h.columns and s in mels_h.columns]
 print(f"Sites with MWh, PN and MELS in window: {len(sites)}\n")
 
 
-try:
-    import highspy  # noqa: F401
-
-    _SOLVER = pulp.HiGHS(msg=0)
-except ImportError:
-    _SOLVER = pulp.PULP_CBC_CMD(msg=0)
-
-
 def achievable(cap_mwh, limits, stress_flags, initial_soc=0.5):
     """Max top-decile MWh under a per-period power limit vector."""
     n = len(stress_flags)
     prob = pulp.LpProblem("res", pulp.LpMaximize)
-    ch = [pulp.LpVariable(f"c{h}", lowBound=0, upBound=float(limits[h])) for h in range(n)]
-    dis = [pulp.LpVariable(f"d{h}", lowBound=0, upBound=float(limits[h])) for h in range(n)]
+    ch = [prob.add_variable(f"c{h}", lowBound=0, upBound=float(limits[h])) for h in range(n)]
+    dis = [prob.add_variable(f"d{h}", lowBound=0, upBound=float(limits[h])) for h in range(n)]
     soc = [
-        pulp.LpVariable(f"s{h}", lowBound=MIN_SOC * cap_mwh, upBound=MAX_SOC * cap_mwh)
+        prob.add_variable(f"s{h}", lowBound=MIN_SOC * cap_mwh, upBound=MAX_SOC * cap_mwh)
         for h in range(n + 1)
     ]
     w_stress, w_block, tie = 2.0, 2.0, 1e-3
@@ -117,8 +110,7 @@ def achievable(cap_mwh, limits, stress_flags, initial_soc=0.5):
         prob += soc[h + 1] == soc[h] - dis[h] / ETA_D + ch[h] * ETA_C
     if CYCLES:
         prob += pulp.lpSum(dis) <= CYCLES * cap_mwh
-    prob.solve(_SOLVER)
-    if pulp.LpStatus[prob.status] != "Optimal":
+    if solve(prob) != "Optimal":
         return None
     return sum(dis[h].value() or 0.0 for h in range(n) if stress_flags[h])
 

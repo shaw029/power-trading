@@ -5,17 +5,7 @@ import pytest
 
 from src.bess.bess_asset import BESSAsset
 from src.bess.da_optimizer import optimize_da_schedule
-from src.bess.lp_common import add_mutual_exclusion, validate_schedule
-
-
-def _solver():
-    """Same solver preference as the optimisers themselves."""
-    try:
-        import highspy  # noqa: F401
-
-        return pulp.HiGHS(msg=0)
-    except ImportError:
-        return pulp.PULP_CBC_CMD(msg=0)
+from src.bess.lp_common import add_mutual_exclusion, solve, validate_schedule
 
 
 def _asset(**kw):
@@ -36,18 +26,18 @@ def _asset(**kw):
 class TestAddMutualExclusion:
     def test_only_one_leg_can_be_non_zero(self):
         prob = pulp.LpProblem("t", pulp.LpMaximize)
-        c = [pulp.LpVariable("c0", lowBound=0, upBound=10)]
-        d = [pulp.LpVariable("d0", lowBound=0, upBound=10)]
+        c = [prob.add_variable("c0", lowBound=0, upBound=10)]
+        d = [prob.add_variable("d0", lowBound=0, upBound=10)]
         add_mutual_exclusion(prob, c, d, 10.0)
         prob += c[0] + d[0]  # both at once would score 20
-        prob.solve(_solver())
+        assert solve(prob) == "Optimal"
         assert min(c[0].varValue, d[0].varValue) == pytest.approx(0.0)
         assert c[0].varValue + d[0].varValue == pytest.approx(10.0)
 
     def test_length_mismatch_raises(self):
         prob = pulp.LpProblem("t", pulp.LpMaximize)
         with pytest.raises(ValueError, match="same length"):
-            add_mutual_exclusion(prob, [pulp.LpVariable("a")], [], 1.0)
+            add_mutual_exclusion(prob, [prob.add_variable("a")], [], 1.0)
 
 
 class TestValidateSchedule:

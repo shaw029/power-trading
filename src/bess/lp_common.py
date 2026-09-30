@@ -41,6 +41,30 @@ logger = logging.getLogger(__name__)
 SOC_TOLERANCE_MWH = 1e-6
 
 
+def solve(prob: pulp.LpProblem) -> str:
+    """Solve ``prob`` with HiGHS (CBC if highspy is absent) and name the outcome.
+
+    Returns the status name — ``"Optimal"``, ``"Infeasible"`` and so on — the
+    same under PuLP 3.3, where ``solve`` returns an int looked up in
+    ``pulp.LpStatus``, and PuLP 4, where it returns stats carrying an
+    ``LpSolveStatus`` enum and ``pulp.LpStatus`` no longer exists.
+
+    Raises:
+        pulp.PulpSolverError: if the solver itself fails; callers pick their own
+        fallback schedule.
+    """
+    try:
+        import highspy  # noqa: F401
+
+        solver = pulp.HiGHS(msg=0)
+    except ImportError:
+        solver = pulp.PULP_CBC_CMD(msg=0)
+
+    result = prob.solve(solver)
+    status = getattr(result, "status", result)
+    return str(status.name if hasattr(status, "name") else pulp.LpStatus[status])
+
+
 def add_mutual_exclusion(
     prob: pulp.LpProblem,
     charge: list,
@@ -71,7 +95,7 @@ def add_mutual_exclusion(
             f"charge and discharge must be the same length, got {len(charge)} and {len(discharge)}"
         )
 
-    mode = [pulp.LpVariable(f"mode{tag}_{h}", cat="Binary") for h in range(len(charge))]
+    mode = [prob.add_variable(f"mode{tag}_{h}", cat="Binary") for h in range(len(charge))]
     for h in range(len(charge)):
         prob += charge[h] <= power_mw * mode[h]
         prob += discharge[h] <= power_mw * (1 - mode[h])
