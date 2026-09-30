@@ -11,5 +11,5 @@ PyYAML
 pyarrow
 streamlit
 plotly
-pulp
+pulp<4  # 4.0 removed LpVariable(name, lowBound=..., upBound=...), which the optimisers use
 highspy
