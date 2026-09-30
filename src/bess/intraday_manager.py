@@ -3,7 +3,12 @@ import logging
 import pulp
 
 from src.bess.bess_asset import BESSAsset
-from src.bess.lp_common import add_mutual_exclusion, solve, validate_schedule
+from src.bess.lp_common import (
+    add_mutual_exclusion,
+    net_dispatch,
+    solve,
+    validate_schedule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +112,7 @@ def _reoptimize_schedule(
         )
         return list(da_schedule)
 
-    schedule = [discharge[h].varValue - charge[h].varValue for h in range(n)]
+    schedule = net_dispatch(discharge, charge)
     validate_schedule(
         schedule,
         asset,

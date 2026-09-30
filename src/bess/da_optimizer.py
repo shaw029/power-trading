@@ -3,7 +3,12 @@ import logging
 import pulp
 
 from src.bess.bess_asset import BESSAsset
-from src.bess.lp_common import add_mutual_exclusion, solve, validate_schedule
+from src.bess.lp_common import (
+    add_mutual_exclusion,
+    net_dispatch,
+    solve,
+    validate_schedule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +114,7 @@ def optimize_da_schedule(
         logger.warning("DA solver non-optimal (%s); returning zero-dispatch fallback", status)
         return [0.0] * n_periods
 
-    schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
+    schedule = net_dispatch(discharge, charge)
     projected = _project_to_feasible(schedule, asset, duration_h)
     validate_schedule(
         projected,

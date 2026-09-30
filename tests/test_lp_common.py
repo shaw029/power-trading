@@ -5,7 +5,7 @@ import pytest
 
 from src.bess.bess_asset import BESSAsset
 from src.bess.da_optimizer import optimize_da_schedule
-from src.bess.lp_common import add_mutual_exclusion, solve, validate_schedule
+from src.bess.lp_common import add_mutual_exclusion, net_dispatch, solve, validate_schedule
 
 
 def _asset(**kw):
@@ -21,6 +21,34 @@ def _asset(**kw):
     )
     base.update(kw)
     return BESSAsset(**base)
+
+
+class TestSolve:
+    def test_names_the_outcome(self):
+        prob = pulp.LpProblem("t", pulp.LpMaximize)
+        x = prob.add_variable("x", lowBound=0, upBound=1)
+        prob += x
+        assert solve(prob) == "Optimal"
+
+    def test_missing_highs_raises_instead_of_idling(self, monkeypatch):
+        monkeypatch.setattr(pulp.HiGHS, "available", lambda self: False)
+        with pytest.raises(RuntimeError, match="highspy"):
+            solve(pulp.LpProblem("t", pulp.LpMaximize))
+
+
+class TestNetDispatch:
+    def test_discharge_minus_charge(self):
+        prob = pulp.LpProblem("t", pulp.LpMaximize)
+        d = [prob.add_variable(f"d{h}", lowBound=v, upBound=v) for h, v in enumerate([5, 0])]
+        c = [prob.add_variable(f"c{h}", lowBound=v, upBound=v) for h, v in enumerate([0, 3])]
+        prob += pulp.lpSum(d + c)
+        assert solve(prob) == "Optimal"
+        assert net_dispatch(d, c) == pytest.approx([5.0, -3.0])
+
+    def test_an_unsolved_variable_raises_rather_than_reading_as_zero(self):
+        prob = pulp.LpProblem("t", pulp.LpMaximize)
+        with pytest.raises(ValueError, match="no value"):
+            net_dispatch([prob.add_variable("d0")], [prob.add_variable("c0")])
 
 
 class TestAddMutualExclusion:

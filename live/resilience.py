@@ -43,7 +43,12 @@ import pandas as pd
 import pulp
 
 from src.bess.bess_asset import BESSAsset
-from src.bess.lp_common import add_mutual_exclusion, solve, validate_schedule
+from src.bess.lp_common import (
+    add_mutual_exclusion,
+    net_dispatch,
+    solve,
+    validate_schedule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -387,7 +392,7 @@ def optimize_resilience_dispatch(
         logger.warning("Resilience LP non-optimal (%s); returning idle dispatch", status)
         return [0.0] * n
 
-    schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
+    schedule = net_dispatch(discharge, charge)
     validate_schedule(
         schedule,
         asset,
@@ -497,7 +502,7 @@ def optimize_blended_dispatch(
         )
         return [0.0] * n
 
-    schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
+    schedule = net_dispatch(discharge, charge)
     validate_schedule(
         schedule, asset, duration_h, target_daily_cycles, label="blended dispatch", strict=True
     )

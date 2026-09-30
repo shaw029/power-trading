@@ -42,7 +42,11 @@ SOC_TOLERANCE_MWH = 1e-6
 
 
 def solve(prob: pulp.LpProblem) -> str:
-    """Solve ``prob`` with HiGHS (CBC if highspy is absent) and name the outcome.
+    """Solve ``prob`` with HiGHS and name the outcome.
+
+    HiGHS is the only solver: PuLP 4 no longer bundles CBC, and ``highspy`` is a
+    hard requirement. A missing ``highspy`` raises rather than letting every
+    optimiser quietly fall back to its zero-dispatch schedule.
 
     Returns the status name — ``"Optimal"``, ``"Infeasible"`` and so on — the
     same under PuLP 3.3, where ``solve`` returns an int looked up in
@@ -50,19 +54,35 @@ def solve(prob: pulp.LpProblem) -> str:
     ``LpSolveStatus`` enum and ``pulp.LpStatus`` no longer exists.
 
     Raises:
+        RuntimeError: if HiGHS is not installed.
         pulp.PulpSolverError: if the solver itself fails; callers pick their own
         fallback schedule.
     """
-    try:
-        import highspy  # noqa: F401
-
-        solver = pulp.HiGHS(msg=0)
-    except ImportError:
-        solver = pulp.PULP_CBC_CMD(msg=0)
+    solver = pulp.HiGHS(msg=0)
+    if not solver.available():
+        raise RuntimeError("HiGHS is unavailable; install highspy (see requirements.txt)")
 
     result = prob.solve(solver)
     status = getattr(result, "status", result)
-    return str(status.name if hasattr(status, "name") else pulp.LpStatus[status])
+    if hasattr(status, "name"):
+        return str(status.name)
+    return str(getattr(pulp, "LpStatus")[status])
+
+
+def net_dispatch(discharge: list[pulp.LpVariable], charge: list[pulp.LpVariable]) -> list[float]:
+    """Net MW per period — discharge minus charge — read off a solved model.
+
+    PuLP leaves a variable's value ``None`` until a solve sets it. After an
+    optimal solve none should be, so one that is raises instead of being read
+    as zero.
+    """
+    net = []
+    for d, c in zip(discharge, charge, strict=True):
+        d_mw, c_mw = d.varValue, c.varValue
+        if d_mw is None or c_mw is None:
+            raise ValueError(f"{d.name} / {c.name} have no value after an optimal solve")
+        net.append(d_mw - c_mw)
+    return net
 
 
 def add_mutual_exclusion(
