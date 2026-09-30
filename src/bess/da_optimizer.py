@@ -106,9 +106,7 @@ def optimize_da_schedule(
         return [0.0] * n_periods
 
     if status != "Optimal":
-        logger.warning(
-            "DA solver non-optimal (%s); returning zero-dispatch fallback", status
-        )
+        logger.warning("DA solver non-optimal (%s); returning zero-dispatch fallback", status)
         return [0.0] * n_periods
 
     schedule = [discharge[h].varValue - charge[h].varValue for h in periods]

@@ -384,9 +384,7 @@ def optimize_resilience_dispatch(
         logger.warning("Resilience LP failed; returning idle dispatch")
         return [0.0] * n
     if status != "Optimal":
-        logger.warning(
-            "Resilience LP non-optimal (%s); returning idle dispatch", status
-        )
+        logger.warning("Resilience LP non-optimal (%s); returning idle dispatch", status)
         return [0.0] * n
 
     schedule = [discharge[h].varValue - charge[h].varValue for h in periods]
